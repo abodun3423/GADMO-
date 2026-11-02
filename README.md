@@ -46,6 +46,10 @@ line: whether the code was accepted, did not match the newest code, had expired 
 used, or the number is locked after 5 wrong tries. If no `[OTP]` line appears when you press
 Continue, the app is talking to a different API than the window you are watching: close every
 other API window (`ss -ltnp | grep 4000` shows what holds port 4000) and start `pnpm dev:api` once.
+If it says "no active code" seconds after the code was sent, your computer's clock is jumping (a
+known WSL/Docker issue) and Redis expires codes early. Run `wsl --update` and `wsl --shutdown` in
+PowerShell, or add `DEV_LOGIN_CODE=123456` to `apps/api/.env` to sign in with that code while you
+develop. The API refuses to start with `DEV_LOGIN_CODE` outside development.
 
 ## Tests
 

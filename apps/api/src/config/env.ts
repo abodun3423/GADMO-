@@ -13,6 +13,15 @@ const envSchema = z
     SMS_PROVIDER: z.enum(['console', 'outbox', 'termii']).default('console'),
     SMS_API_KEY: z.string().optional(),
     SMS_SENDER_ID: z.string().default('GADMO'),
+    /**
+     * Development only: a fixed 6-digit code that always signs in, for computers where
+     * stored codes vanish (e.g. a jumping WSL/Docker clock). Refused outside development.
+     */
+    DEV_LOGIN_CODE: z
+      .string()
+      .regex(/^\d{6}$/, 'DEV_LOGIN_CODE must be 6 digits')
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && env.SMS_PROVIDER !== 'termii') {
@@ -20,6 +29,13 @@ const envSchema = z
         code: 'custom',
         path: ['SMS_PROVIDER'],
         message: `The ${env.SMS_PROVIDER} SMS provider exposes login codes and must never run in production`,
+      });
+    }
+    if (env.DEV_LOGIN_CODE && env.NODE_ENV !== 'development') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['DEV_LOGIN_CODE'],
+        message: 'DEV_LOGIN_CODE lets anyone sign in and only works when NODE_ENV=development',
       });
     }
     if (env.NODE_ENV === 'production' && !env.WEB_ORIGIN.startsWith('https://')) {

@@ -17,6 +17,9 @@ async function bootstrap(): Promise<void> {
     console.warn(`  Redis:    ${where(env.REDIS_URL)}`);
     console.warn(`  Database: ${where(env.DATABASE_URL)}`);
     console.warn(`  Login codes are printed below (SMS_PROVIDER=${env.SMS_PROVIDER}).`);
+    if (env.DEV_LOGIN_CODE) {
+      console.warn('  DEV_LOGIN_CODE is set: that code signs in any number (development only).');
+    }
   }
 }
 

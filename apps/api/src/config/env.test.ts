@@ -38,4 +38,22 @@ describe('loadEnv', () => {
       }),
     ).toThrow(/https/);
   });
+
+  it('allows DEV_LOGIN_CODE only in development', () => {
+    expect(loadEnv({ ...valid, DEV_LOGIN_CODE: '123456' }).DEV_LOGIN_CODE).toBe('123456');
+    expect(loadEnv({ ...valid, DEV_LOGIN_CODE: '' }).DEV_LOGIN_CODE).toBeUndefined();
+    expect(() => loadEnv({ ...valid, DEV_LOGIN_CODE: '12345' })).toThrow(/6 digits/);
+    expect(() => loadEnv({ ...valid, NODE_ENV: 'test', DEV_LOGIN_CODE: '123456' })).toThrow(
+      /DEV_LOGIN_CODE/,
+    );
+    expect(() =>
+      loadEnv({
+        ...valid,
+        NODE_ENV: 'production',
+        SMS_PROVIDER: 'termii',
+        WEB_ORIGIN: 'https://gadmo.ng',
+        DEV_LOGIN_CODE: '123456',
+      }),
+    ).toThrow(/DEV_LOGIN_CODE/);
+  });
 });
