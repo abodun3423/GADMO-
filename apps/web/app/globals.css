@@ -12,6 +12,7 @@
   --surface: #ffffff;
   --line: #d9dce8;
   --warn: #f2b705;
+  --spark: #f2b705;
   --ok: #1e7f4f;
   --error: #b3261e;
   --focus: #f2b705;
@@ -90,7 +91,42 @@ a {
   font-weight: 800;
   color: var(--indigo);
   text-decoration: none;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1;
+}
+
+.logo-mark {
+  width: 30px;
+  height: 30px;
+  flex: none;
+}
+
+.logo-word {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.logo-o {
+  width: 0.86em;
+  height: 0.86em;
+}
+
+.logo-ink {
+  stroke: currentColor;
+}
+
+.logo-spark {
+  fill: var(--spark);
 }
 
 .topbar-link {

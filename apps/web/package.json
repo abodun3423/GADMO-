@@ -24,6 +24,7 @@
     "lint": "eslint app components lib proxy.ts e2e",
     "typecheck": "next typegen && tsc --noEmit",
     "test:e2e": "playwright test",
-    "check:size": "node scripts/check-size.mjs"
+    "check:size": "node scripts/check-size.mjs",
+    "icons": "node scripts/make-icons.mjs"
   }
 }
