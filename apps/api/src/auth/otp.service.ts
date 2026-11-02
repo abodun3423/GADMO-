@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { redactPhone } from '@gadmo/shared';
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import type Redis from 'ioredis';
 import { ENV, type Env } from '../config/env';
@@ -17,6 +18,8 @@ export type OtpVerifyResult = 'ok' | 'invalid' | 'locked';
  */
 @Injectable()
 export class OtpService {
+  private readonly logger = new Logger('OTP');
+
   constructor(
     @Inject(REDIS) private readonly redis: Redis,
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
@@ -36,6 +39,7 @@ export class OtpService {
       .set(this.codeKey(phone), this.hash(phone, code), 'EX', OTP_TTL_SECONDS)
       .del(this.attemptsKey(phone))
       .exec();
+    this.devLog(phone, 'new code stored; any earlier code for this number no longer works');
 
     await this.sms.send(
       phone,
@@ -57,11 +61,15 @@ export class OtpService {
     const attemptCount = Number(attempts?.[0]?.[1] ?? 0);
     if (attemptCount > OTP_MAX_ATTEMPTS) {
       await this.redis.del(this.codeKey(phone));
+      this.devLog(phone, 'refused: too many wrong tries, ask for a new code');
       return 'locked';
     }
 
     const stored = await this.redis.get(this.codeKey(phone));
-    if (!stored) return 'invalid';
+    if (!stored) {
+      this.devLog(phone, 'refused: no active code (expired after 5 minutes, or already used)');
+      return 'invalid';
+    }
 
     const expected = Buffer.from(stored, 'hex');
     const actual = Buffer.from(this.hash(phone, code), 'hex');
@@ -70,15 +78,29 @@ export class OtpService {
         // Last guess used up: destroy the code but keep the counter, so later
         // guesses are told to ask for a new code.
         await this.redis.del(this.codeKey(phone));
+        this.devLog(phone, 'refused: wrong code, that was the last try');
         return 'locked';
       }
+      this.devLog(
+        phone,
+        `refused: the code typed does not match the newest code (try ${attemptCount} of ${OTP_MAX_ATTEMPTS})`,
+      );
       return 'invalid';
     }
 
     // Single use: delete atomically so two parallel requests can't both succeed.
     const deleted = await this.redis.del(this.codeKey(phone));
     await this.redis.del(this.attemptsKey(phone));
+    this.devLog(phone, deleted === 1 ? 'accepted: signed in' : 'refused: code was just used');
     return deleted === 1 ? 'ok' : 'invalid';
+  }
+
+  /**
+   * Development only: explains each sign-in attempt in the API window, so a refused
+   * code can be diagnosed. Never logs the code or the full phone number.
+   */
+  private devLog(phone: string, message: string): void {
+    if (this.env.NODE_ENV === 'development') this.logger.log(`${redactPhone(phone)}: ${message}`);
   }
 
   private hash(phone: string, code: string): string {

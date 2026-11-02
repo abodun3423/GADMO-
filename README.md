@@ -41,6 +41,12 @@ In development, login codes are printed in the API console (the `pnpm dev:api` w
 being sent by SMS.
 `apps/api/.env` holds local secrets; it is git-ignored and must never be committed.
 
+**A login code is refused?** The `pnpm dev:api` window explains every attempt with an `[OTP]`
+line: whether the code was accepted, did not match the newest code, had expired or was already
+used, or the number is locked after 5 wrong tries. If no `[OTP]` line appears when you press
+Continue, the app is talking to a different API than the window you are watching: close every
+other API window (`ss -ltnp | grep 4000` shows what holds port 4000) and start `pnpm dev:api` once.
+
 ## Tests
 
 ```bash
