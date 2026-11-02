@@ -45,7 +45,7 @@ export function Catalogue({ groups }: { groups: CategoryGroup[] | null }) {
         </div>
       </section>
 
-      <div className="page">
+      <div className="page page-wide">
         {groups === null ? (
           <p className="alert alert-error" role="alert">
             Services could not be loaded. Check your connection and refresh the page.
