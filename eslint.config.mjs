@@ -11,4 +11,9 @@ export default tseslint.config(
       'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
   },
+  {
+    // Command-line scripts (setup, demo) talk to the person running them.
+    files: ['**/scripts/**'],
+    rules: { 'no-console': 'off' },
+  },
 );

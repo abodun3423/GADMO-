@@ -14,7 +14,11 @@
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "setup:env": "node scripts/setup-env.mjs",
+    "setup:local": "node scripts/setup-env.mjs && pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api db:migrate && pnpm --filter @gadmo/api db:seed",
+    "dev:api": "pnpm --filter @gadmo/api dev",
+    "demo": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api demo"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

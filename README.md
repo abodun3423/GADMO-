@@ -15,18 +15,24 @@ Product requirements: [GADMO PRD v1.0](https://claude.ai/artifact/N4HEkdBtJKrYrZ
 
 ## Run it locally
 
-Requirements: Node 22+, pnpm 10, and Docker (or your own Postgres 16 + Redis 7).
+Requirements: Node 22+, pnpm 10, and Docker Desktop (or your own Postgres 16 + Redis 7).
+Works on Windows, macOS and Linux.
 
 ```bash
 pnpm install
-docker compose up -d            # Postgres + PostGIS and Redis on localhost only
-cp .env.example apps/api/.env   # then fill in the secrets (openssl rand -base64 48)
-pnpm --filter @gadmo/api db:migrate
-pnpm --filter @gadmo/api db:seed
-pnpm --filter @gadmo/api dev    # http://localhost:4000/health
+docker compose up -d   # Postgres + PostGIS and Redis, reachable only from your computer
+pnpm setup:local       # creates apps/api/.env with fresh secrets, migrates and seeds the database
+pnpm dev:api           # starts the API on http://localhost:4000 (check http://localhost:4000/health)
+```
+
+Then, in a second terminal, run the guided walkthrough:
+
+```bash
+pnpm demo              # signs up test users, posts a job, checks privacy and money rules
 ```
 
 In development, login codes are printed in the API console instead of being sent by SMS.
+`apps/api/.env` holds local secrets; it is git-ignored and must never be committed.
 
 ## Tests
 

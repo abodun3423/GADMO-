@@ -1,4 +1,5 @@
 /** Applies pending SQL migrations from ./drizzle. Run with: pnpm db:migrate */
+import { loadDotEnv } from '../config/load-dotenv';
 import path from 'node:path';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -14,6 +15,7 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
 }
 
 if (require.main === module) {
+  loadDotEnv();
   const url = process.env.DATABASE_URL;
   if (!url) {
     console.error('DATABASE_URL is not set');
