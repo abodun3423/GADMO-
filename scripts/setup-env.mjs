@@ -5,17 +5,12 @@
  * existing .env file.
  */
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const target = path.join(root, 'apps', 'api', '.env');
-
-if (existsSync(target)) {
-  console.log('apps/api/.env already exists — leaving it unchanged.');
-  process.exit(0);
-}
 
 const secret = () => randomBytes(48).toString('base64url');
 const filled = {
@@ -32,7 +27,17 @@ const text = readFileSync(path.join(root, '.env.example'), 'utf8')
   })
   .join('\n');
 
-writeFileSync(target, text, { mode: 0o600 });
-console.log(
-  'Created apps/api/.env with new local secrets. Keep this file private; it is git-ignored.',
-);
+try {
+  // 'wx' creates the file only if it does not exist, in one atomic step, so an
+  // existing .env can never be overwritten (no check-then-write race).
+  writeFileSync(target, text, { mode: 0o600, flag: 'wx' });
+  console.log(
+    'Created apps/api/.env with new local secrets. Keep this file private; it is git-ignored.',
+  );
+} catch (err) {
+  if (err && typeof err === 'object' && 'code' in err && err.code === 'EEXIST') {
+    console.log('apps/api/.env already exists — leaving it unchanged.');
+  } else {
+    throw err;
+  }
+}
