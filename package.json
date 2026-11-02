@@ -18,7 +18,8 @@
     "setup:env": "node scripts/setup-env.mjs",
     "setup:local": "node scripts/setup-env.mjs && pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api db:migrate && pnpm --filter @gadmo/api db:seed",
     "dev:api": "pnpm --filter @gadmo/api dev",
-    "demo": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api demo"
+    "demo": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api demo",
+    "dev:web": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/web dev"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

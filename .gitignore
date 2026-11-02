@@ -8,3 +8,8 @@ coverage/
 !.env.example
 .DS_Store
 dump.rdb
+.next/
+next-env.d.ts
+playwright-report/
+test-results/
+*.tsbuildinfo
