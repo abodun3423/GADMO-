@@ -53,6 +53,11 @@ export class OtpService {
    * new code (which resets the count) can sign in.
    */
   async verify(phone: string, code: string): Promise<OtpVerifyResult> {
+    if (this.isDevLoginCode(code)) {
+      this.devLog(phone, 'accepted: DEV_LOGIN_CODE (development only)');
+      return 'ok';
+    }
+
     const attempts = await this.redis
       .multi()
       .incr(this.attemptsKey(phone))
@@ -93,6 +98,13 @@ export class OtpService {
     await this.redis.del(this.attemptsKey(phone));
     this.devLog(phone, deleted === 1 ? 'accepted: signed in' : 'refused: code was just used');
     return deleted === 1 ? 'ok' : 'invalid';
+  }
+
+  /** Development only (env.ts refuses DEV_LOGIN_CODE anywhere else). */
+  private isDevLoginCode(code: string): boolean {
+    const dev = this.env.DEV_LOGIN_CODE;
+    if (this.env.NODE_ENV !== 'development' || !dev) return false;
+    return dev.length === code.length && timingSafeEqual(Buffer.from(dev), Buffer.from(code));
   }
 
   /**
