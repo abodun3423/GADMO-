@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { randomPhone, readCode, signIn, watchCsp } from './helpers';
+import { clearCode, randomPhone, readCode, signIn, watchCsp } from './helpers';
 
 test('a new customer signs in, books a plumber for later, and sees it in My jobs', async ({
   page,
@@ -92,6 +92,27 @@ test('a wrong phone number or code gets a clear message', async ({ page }) => {
   await page.getByLabel('6-digit code').fill(real === '000000' ? '111111' : '000000');
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.locator('p[role="alert"]')).toContainText('wrong or has expired');
+});
+
+test('a new code can be sent, and the newest code signs in', async ({ page }) => {
+  await page.goto('/signin?next=/jobs');
+  const phone = randomPhone();
+  await page.getByLabel('Phone number').fill(phone.local);
+  await page.getByRole('button', { name: 'Send me a code' }).click();
+  const first = await readCode(phone.e164);
+  await clearCode(phone.e164);
+
+  await page.getByRole('button', { name: 'Send a new code' }).click();
+  await expect(page.getByText(`We sent a new code to ${phone.local}`)).toBeVisible();
+  const newest = await readCode(phone.e164);
+  if (first !== newest) {
+    await page.getByLabel('6-digit code').fill(first);
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page.locator('p[role="alert"]')).toContainText('wrong or has expired');
+  }
+  await page.getByLabel('6-digit code').fill(newest);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page).toHaveURL('/jobs');
 });
 
 test('signing out ends the session', async ({ page }) => {

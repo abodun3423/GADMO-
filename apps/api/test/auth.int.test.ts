@@ -119,18 +119,74 @@ describe('phone OTP login', () => {
       .send({ phone: phone.local });
     const code = ctx.sms.lastCode.get(phone.e164)!;
     const wrong = code === '000000' ? '111111' : '000000';
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 4; i++) {
       await request(ctx.server)
         .post('/v1/auth/otp/verify')
         .set(CLIENT_HEADER)
         .send({ phone: phone.local, code: wrong })
         .expect(401);
     }
+    // The 5th wrong guess uses up the code, and the person is told to ask for a new one.
+    const locked = await request(ctx.server)
+      .post('/v1/auth/otp/verify')
+      .set(CLIENT_HEADER)
+      .send({ phone: phone.local, code: wrong })
+      .expect(429);
+    expect(locked.body.message).toContain('Ask for a new code');
     await request(ctx.server)
       .post('/v1/auth/otp/verify')
       .set(CLIENT_HEADER)
       .send({ phone: phone.local, code })
-      .expect(401);
+      .expect(429);
+  });
+
+  it('a new code works again after the code was locked', async () => {
+    const phone = randomPhone();
+    const send = () =>
+      request(ctx.server)
+        .post('/v1/auth/otp/request')
+        .set(CLIENT_HEADER)
+        .send({ phone: phone.local });
+    await send();
+    const code = ctx.sms.lastCode.get(phone.e164)!;
+    const wrong = code === '000000' ? '111111' : '000000';
+    for (let i = 0; i < 5; i++) {
+      await request(ctx.server)
+        .post('/v1/auth/otp/verify')
+        .set(CLIENT_HEADER)
+        .send({ phone: phone.local, code: wrong });
+    }
+    await send();
+    await request(ctx.server)
+      .post('/v1/auth/otp/verify')
+      .set(CLIENT_HEADER)
+      .send({ phone: phone.local, code: ctx.sms.lastCode.get(phone.e164)! })
+      .expect(200);
+  });
+
+  it('only the newest code works after a code is sent again', async () => {
+    const phone = randomPhone();
+    const send = () =>
+      request(ctx.server)
+        .post('/v1/auth/otp/request')
+        .set(CLIENT_HEADER)
+        .send({ phone: phone.local });
+    await send();
+    const first = ctx.sms.lastCode.get(phone.e164)!;
+    await send();
+    const second = ctx.sms.lastCode.get(phone.e164)!;
+    if (first !== second) {
+      await request(ctx.server)
+        .post('/v1/auth/otp/verify')
+        .set(CLIENT_HEADER)
+        .send({ phone: phone.local, code: first })
+        .expect(401);
+    }
+    await request(ctx.server)
+      .post('/v1/auth/otp/verify')
+      .set(CLIENT_HEADER)
+      .send({ phone: phone.local, code: second })
+      .expect(200);
   });
 
   it('rate-limits code requests per phone (3 per 10 minutes)', async () => {

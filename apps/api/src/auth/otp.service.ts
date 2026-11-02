@@ -9,6 +9,8 @@ import { SMS_SENDER, type SmsSender } from './sms';
 export const OTP_TTL_SECONDS = 5 * 60;
 export const OTP_MAX_ATTEMPTS = 5;
 
+export type OtpVerifyResult = 'ok' | 'invalid' | 'locked';
+
 /**
  * One-time login codes. Codes are 6 random digits, stored only as an HMAC,
  * expire after 5 minutes and are destroyed after 5 wrong guesses.
@@ -41,8 +43,12 @@ export class OtpService {
     );
   }
 
-  /** True only for the current, unexpired, correct code. A code works once. */
-  async verify(phone: string, code: string): Promise<boolean> {
+  /**
+   * 'ok' only for the current, unexpired, correct code; a code works once.
+   * 'locked' once 5 wrong guesses have been made: the code is destroyed and only a
+   * new code (which resets the count) can sign in.
+   */
+  async verify(phone: string, code: string): Promise<OtpVerifyResult> {
     const attempts = await this.redis
       .multi()
       .incr(this.attemptsKey(phone))
@@ -50,21 +56,29 @@ export class OtpService {
       .exec();
     const attemptCount = Number(attempts?.[0]?.[1] ?? 0);
     if (attemptCount > OTP_MAX_ATTEMPTS) {
-      await this.redis.del(this.codeKey(phone), this.attemptsKey(phone));
-      return false;
+      await this.redis.del(this.codeKey(phone));
+      return 'locked';
     }
 
     const stored = await this.redis.get(this.codeKey(phone));
-    if (!stored) return false;
+    if (!stored) return 'invalid';
 
     const expected = Buffer.from(stored, 'hex');
     const actual = Buffer.from(this.hash(phone, code), 'hex');
-    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return false;
+    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+      if (attemptCount >= OTP_MAX_ATTEMPTS) {
+        // Last guess used up: destroy the code but keep the counter, so later
+        // guesses are told to ask for a new code.
+        await this.redis.del(this.codeKey(phone));
+        return 'locked';
+      }
+      return 'invalid';
+    }
 
     // Single use: delete atomically so two parallel requests can't both succeed.
     const deleted = await this.redis.del(this.codeKey(phone));
     await this.redis.del(this.attemptsKey(phone));
-    return deleted === 1;
+    return deleted === 1 ? 'ok' : 'invalid';
   }
 
   private hash(phone: string, code: string): string {
