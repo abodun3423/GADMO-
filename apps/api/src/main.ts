@@ -13,6 +13,21 @@ async function bootstrap(): Promise<void> {
   configureApp(app, env);
   await app.listen(env.PORT);
   console.warn(`GADMO API running on http://localhost:${env.PORT} (health: /health)`);
+  if (env.NODE_ENV === 'development') {
+    console.warn(`  Redis:    ${where(env.REDIS_URL)}`);
+    console.warn(`  Database: ${where(env.DATABASE_URL)}`);
+    console.warn(`  Login codes are printed below (SMS_PROVIDER=${env.SMS_PROVIDER}).`);
+  }
+}
+
+/** host:port/path of a connection URL, without the username or password. */
+function where(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.host}${u.pathname === '/' ? '' : u.pathname}`;
+  } catch {
+    return '(unreadable URL)';
+  }
 }
 
 void bootstrap();
