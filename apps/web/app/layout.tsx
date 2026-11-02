@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { connection } from 'next/server';
 import type { ReactNode } from 'react';
 import { AccountLink } from '@/components/AccountLink';
+import { Logo } from '@/components/Logo';
 import { ServiceWorker } from '@/components/ServiceWorker';
 import './globals.css';
 
@@ -12,7 +13,13 @@ export const metadata: Metadata = {
     'Find verified electricians, plumbers, mechanics, tutors, bakers and more near you in Ekiti.',
   applicationName: 'GADMO',
   appleWebApp: { capable: true, title: 'GADMO', statusBarStyle: 'default' },
-  icons: { icon: '/icons/icon-192.png', apple: '/icons/apple-touch-icon.png' },
+  icons: {
+    icon: [
+      { url: '/icons/icon.svg', type: 'image/svg+xml' },
+      { url: '/icons/icon-192.png', type: 'image/png', sizes: '192x192' },
+    ],
+    apple: '/icons/apple-touch-icon.png',
+  },
 };
 
 export const viewport: Viewport = {
@@ -29,7 +36,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       <body>
         <header className="topbar">
           <Link href="/" className="wordmark" aria-label="GADMO home">
-            GADMO
+            <Logo />
           </Link>
           <AccountLink />
         </header>
