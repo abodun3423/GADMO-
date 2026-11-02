@@ -2,6 +2,7 @@
  * Seeds (or updates) the service catalogue from ./categories.ts. Safe to run repeatedly:
  * existing rows are matched by slug and updated, so names and flags can be changed later.
  */
+import { loadDotEnv } from '../config/load-dotenv';
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
@@ -51,6 +52,7 @@ export async function seed(databaseUrl: string): Promise<void> {
 }
 
 if (require.main === module) {
+  loadDotEnv();
   const url = process.env.DATABASE_URL;
   if (!url) {
     console.error('DATABASE_URL is not set');

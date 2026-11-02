@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@nestjs/testing": "^12.3.2",
+    "@swc-node/register": "^1.12.1",
     "@swc/core": "^1.16.21",
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.6",
@@ -34,14 +35,15 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "dev": "tsx watch src/main.ts",
+    "dev": "node --watch -r @swc-node/register src/main.ts",
     "start": "node dist/main.js",
-    "lint": "eslint src test",
+    "lint": "eslint src test scripts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
-    "db:seed": "tsx src/db/seed.ts"
+    "db:seed": "tsx src/db/seed.ts",
+    "demo": "node -r @swc-node/register scripts/demo.ts"
   }
 }
