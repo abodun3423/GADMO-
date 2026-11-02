@@ -496,3 +496,121 @@ h1.page-title {
 .button-spaced {
   margin-top: 10px;
 }
+
+/* ---------- Laptops and desktops ----------
+ * Phones get the single column above. From 900px wide, the home page uses the full
+ * width (services in columns) and forms sit on a centred card.
+ */
+@media (min-width: 900px) {
+  :root {
+    --space: 32px;
+  }
+
+  .topbar {
+    max-width: 1120px;
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+
+  .adire-inner {
+    max-width: 1120px;
+    padding-top: 56px;
+    padding-bottom: 48px;
+  }
+
+  .adire h1 {
+    font-size: 48px;
+  }
+
+  .adire p {
+    font-size: 20px;
+    margin-bottom: 24px;
+  }
+
+  .search {
+    max-width: 640px;
+  }
+
+  .page-wide {
+    max-width: 1120px;
+  }
+
+  /* Forms and lists: a centred card rather than a stretched column. */
+  .page:not(.page-wide) {
+    margin-top: 32px;
+    margin-bottom: 48px;
+    padding: 8px 40px 40px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-panel);
+  }
+
+  .emergency {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) 2fr;
+    gap: 4px 24px;
+    align-items: center;
+    padding: 20px 24px;
+    margin-top: 32px;
+  }
+
+  .emergency h2 {
+    grid-column: 1;
+    align-self: end;
+  }
+
+  .emergency p {
+    grid-column: 1;
+    align-self: start;
+    margin: 0;
+  }
+
+  .emergency .chips {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    flex-wrap: wrap;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .section-title {
+    font-size: 24px;
+    margin-top: 40px;
+  }
+
+  /* Service groups as cards in three columns; an opened card grows in place. */
+  .groups {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px 20px;
+    align-items: start;
+    border-top: 0;
+  }
+
+  .group {
+    padding: 0 20px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-panel);
+  }
+
+  /* Search results in a grid. */
+  section[aria-live] > .services {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+
+  section[aria-live] > .services .service {
+    height: 100%;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+  }
+
+  .service:hover .service-name {
+    text-decoration: underline;
+  }
+}
