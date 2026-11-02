@@ -16,6 +16,20 @@ export function SignInForm({ next }: { next: string }) {
   const [role, setRole] = useState<'customer' | 'pro'>('customer');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resent, setResent] = useState(false);
+
+  async function sendCode(): Promise<boolean> {
+    setBusy(true);
+    try {
+      await post('/v1/auth/otp/request', { phone });
+      return true;
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not send the code. Try again.');
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function requestCode(e: FormEvent) {
     e.preventDefault();
@@ -24,15 +38,16 @@ export function SignInForm({ next }: { next: string }) {
       setError('Enter a Nigerian mobile number, for example 0803 123 4567.');
       return;
     }
-    setBusy(true);
-    try {
-      await post('/v1/auth/otp/request', { phone });
+    if (await sendCode()) {
+      setResent(false);
       setStep('code');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not send the code. Try again.');
-    } finally {
-      setBusy(false);
     }
+  }
+
+  async function resendCode() {
+    setError(null);
+    setCode('');
+    if (await sendCode()) setResent(true);
   }
 
   async function verify(e: FormEvent) {
@@ -94,8 +109,9 @@ export function SignInForm({ next }: { next: string }) {
           {error}
         </p>
       )}
-      <p className="alert alert-info">
-        We sent a code to <strong>{phone}</strong>. It expires in 5 minutes.
+      <p className="alert alert-info" role="status">
+        {resent ? 'We sent a new code to ' : 'We sent a code to '}
+        <strong>{phone}</strong>. It expires in 5 minutes. Only the newest code works.
       </p>
       <div className="field">
         <label htmlFor="code">6-digit code</label>
@@ -145,6 +161,14 @@ export function SignInForm({ next }: { next: string }) {
 
       <button className="button" type="submit" disabled={busy}>
         {busy ? 'Checking…' : 'Continue'}
+      </button>
+      <button
+        className="button button-quiet button-spaced"
+        type="button"
+        disabled={busy}
+        onClick={resendCode}
+      >
+        Send a new code
       </button>
       <button
         className="button button-quiet button-spaced"

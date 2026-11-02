@@ -1,4 +1,11 @@
-import { ForbiddenException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { OtpVerify } from '@gadmo/shared';
 import { eq } from 'drizzle-orm';
 import { proProfiles, users } from '../db/schema';
@@ -22,8 +29,14 @@ export class AuthService {
 
   /** Verify the code, create the account on first login, and start a session. */
   async verifyAndLogin(input: OtpVerify, userAgent?: string): Promise<Session> {
-    const valid = await this.otp.verify(input.phone, input.code);
-    if (!valid) throw new UnauthorizedException('The code is wrong or has expired');
+    const result = await this.otp.verify(input.phone, input.code);
+    if (result === 'locked') {
+      throw new HttpException(
+        'Too many wrong tries. Ask for a new code.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    if (result !== 'ok') throw new UnauthorizedException('The code is wrong or has expired');
 
     let isNew = false;
     let [user] = await this.db.select().from(users).where(eq(users.phone, input.phone)).limit(1);

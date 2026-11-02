@@ -22,6 +22,12 @@ export async function readCode(e164: string): Promise<string> {
   throw new Error(`No login code for ${e164}`);
 }
 
+/** Forgets the last stored code, so the next readCode waits for a newly sent one. */
+export async function clearCode(e164: string): Promise<void> {
+  if (redis.status === 'wait') await redis.connect();
+  await redis.del(`test:sms-outbox:${e164}`);
+}
+
 /** Fails the test if the browser blocks anything under the Content Security Policy. */
 export function watchCsp(page: Page): () => void {
   const violations: string[] = [];
