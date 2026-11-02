@@ -11,7 +11,7 @@ Product requirements: [GADMO PRD v1.0](https://claude.ai/artifact/N4HEkdBtJKrYrZ
 | ----------------- | ----------------------------------------------------------------------------------------------- |
 | `apps/api`        | NestJS API, Drizzle ORM, PostgreSQL, Redis                                                      |
 | `packages/shared` | Rules shared by API and web app: phone numbers, contact masking, money in kobo, request schemas |
-| `apps/web`        | Next.js PWA (next pull request)                                                                 |
+| `apps/web`        | Next.js PWA: sign-in, service catalogue, job requests, My jobs                                  |
 
 ## Run it locally
 
@@ -25,13 +25,20 @@ pnpm setup:local       # creates apps/api/.env with fresh secrets, migrates and 
 pnpm dev:api           # starts the API on http://localhost:4000 (check http://localhost:4000/health)
 ```
 
-Then, in a second terminal, run the guided walkthrough:
+Then, in a second terminal, start the app and open http://localhost:3000:
+
+```bash
+pnpm dev:web           # the PWA; it forwards /v1/* to the API
+```
+
+Or run the guided walkthrough of the API instead:
 
 ```bash
 pnpm demo              # signs up test users, posts a job, checks privacy and money rules
 ```
 
-In development, login codes are printed in the API console instead of being sent by SMS.
+In development, login codes are printed in the API console (the `pnpm dev:api` window) instead of
+being sent by SMS.
 `apps/api/.env` holds local secrets; it is git-ignored and must never be committed.
 
 ## Tests
@@ -40,7 +47,11 @@ In development, login codes are printed in the API console instead of being sent
 pnpm lint && pnpm typecheck && pnpm build
 pnpm test               # unit tests with coverage thresholds
 pnpm test:integration   # API against real Postgres + Redis (resets the *_test database)
+pnpm --filter @gadmo/web test:e2e     # browser tests on a phone-sized screen (needs a build)
+pnpm --filter @gadmo/web check:size   # first-load JavaScript must stay under 200 KB per page
 ```
+
+Locally, browser tests can use your installed Chrome: `PW_CHANNEL=chrome pnpm --filter @gadmo/web test:e2e`.
 
 Every pull request must pass CI (lint, typecheck, unit, integration and authorization tests,
 dependency audit, secret scan, CodeQL) before merging.

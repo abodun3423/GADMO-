@@ -1,5 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { redactPhone } from '@gadmo/shared';
+import type Redis from 'ioredis';
+import { REDIS } from '../infra/infra.module';
 
 export const SMS_SENDER = Symbol('SMS_SENDER');
 
@@ -17,5 +19,22 @@ export class ConsoleSmsSender implements SmsSender {
 
   async send(toE164: string, text: string): Promise<void> {
     this.logger.warn(`to ${redactPhone(toE164)}: ${text}`);
+  }
+}
+
+/** Redis key where the outbox provider keeps the last message per phone (5 minutes). */
+export const outboxKey = (toE164: string) => `test:sms-outbox:${toE164}`;
+
+/**
+ * Automated browser tests only: keeps the last message for each phone in Redis so a
+ * test can read the login code. Nothing is exposed over HTTP. Startup refuses this
+ * provider when NODE_ENV=production (see config/env.ts).
+ */
+@Injectable()
+export class OutboxSmsSender implements SmsSender {
+  constructor(@Inject(REDIS) private readonly redis: Redis) {}
+
+  async send(toE164: string, text: string): Promise<void> {
+    await this.redis.set(outboxKey(toE164), text, 'EX', 300);
   }
 }

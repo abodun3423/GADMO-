@@ -26,6 +26,9 @@ describe('loadEnv', () => {
 
   it('refuses the console SMS provider and plain http in production', () => {
     expect(() => loadEnv({ ...valid, NODE_ENV: 'production' })).toThrow(/SMS_PROVIDER/);
+    expect(() => loadEnv({ ...valid, NODE_ENV: 'production', SMS_PROVIDER: 'outbox' })).toThrow(
+      /SMS_PROVIDER/,
+    );
     expect(() =>
       loadEnv({
         ...valid,

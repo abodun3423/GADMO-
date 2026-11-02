@@ -26,15 +26,17 @@ Email the founder privately (address to be added before launch). Do not open a p
 | Logs                       | Phone numbers redacted to the last 2 digits                                                                                                                                                     | `packages/shared/src/phone.ts`                              |
 | Supply chain               | Lockfile installs, `pnpm audit` (high+), Dependabot, CodeQL `security-extended`, gitleaks on every push                                                                                         | `.github/`                                                  |
 
-## Content Security Policy for the PWA (to apply when `apps/web` is added)
+## Content Security Policy for the PWA (live, `apps/web/proxy.ts`)
+
+Every page gets a fresh random nonce; only scripts and styles carrying it can run.
 
 ```
 default-src 'self';
-script-src 'self' https://js.paystack.co https://maps.googleapis.com;
-style-src 'self' 'unsafe-inline';
-img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com;
-connect-src 'self' https://api.gadmo.ng https://*.googleapis.com;
-frame-src https://checkout.paystack.com;
+script-src 'self' 'nonce-{per request}' 'strict-dynamic';
+style-src 'self' 'nonce-{per request}';
+img-src 'self' data: blob:;
+font-src 'self';
+connect-src 'self';
 worker-src 'self';
 manifest-src 'self';
 object-src 'none';
@@ -44,7 +46,19 @@ frame-ancestors 'none';
 upgrade-insecure-requests
 ```
 
-No other third-party scripts. Any change to this list needs review.
+No `unsafe-inline` or `unsafe-eval` in production (development adds `unsafe-eval` for React's
+error overlay). Inline `style=""` attributes are blocked, so components use CSS classes only.
+The browser only talks to the web app's own origin: `/v1/*` is forwarded server-side to the API
+(`apps/web/app/v1/[...path]/route.ts`), so the API never needs to be exposed to browsers directly.
+
+When payments and maps arrive, only these will be added, after review:
+`https://js.paystack.co` and `https://checkout.paystack.com` (Paystack), and Google Maps hosts.
+The browser tests fail if any page triggers a CSP violation.
+
+## Test-only login code delivery
+
+`SMS_PROVIDER=outbox` stores the last login code per phone in Redis so browser tests can sign in.
+It has no HTTP endpoint, and the API refuses to start with `console` or `outbox` in production.
 
 ## Rules for contributors
 

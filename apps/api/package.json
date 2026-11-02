@@ -44,6 +44,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
-    "demo": "node -r @swc-node/register scripts/demo.ts"
+    "demo": "node -r @swc-node/register scripts/demo.ts",
+    "e2e:server": "node -r @swc-node/register scripts/e2e-server.ts"
   }
 }

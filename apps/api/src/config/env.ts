@@ -9,16 +9,17 @@ const envSchema = z
     JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
     OTP_PEPPER: z.string().min(32, 'OTP_PEPPER must be at least 32 characters'),
     WEB_ORIGIN: z.string().min(1),
-    SMS_PROVIDER: z.enum(['console', 'termii']).default('console'),
+    /** console = print codes (dev); outbox = store codes in Redis for browser tests; termii = real SMS. */
+    SMS_PROVIDER: z.enum(['console', 'outbox', 'termii']).default('console'),
     SMS_API_KEY: z.string().optional(),
     SMS_SENDER_ID: z.string().default('GADMO'),
   })
   .superRefine((env, ctx) => {
-    if (env.NODE_ENV === 'production' && env.SMS_PROVIDER === 'console') {
+    if (env.NODE_ENV === 'production' && env.SMS_PROVIDER !== 'termii') {
       ctx.addIssue({
         code: 'custom',
         path: ['SMS_PROVIDER'],
-        message: 'The console SMS provider prints login codes and must never run in production',
+        message: `The ${env.SMS_PROVIDER} SMS provider exposes login codes and must never run in production`,
       });
     }
     if (env.NODE_ENV === 'production' && !env.WEB_ORIGIN.startsWith('https://')) {

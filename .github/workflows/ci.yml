@@ -57,6 +57,58 @@ jobs:
       - name: Integration + authorization tests (real Postgres and Redis)
         run: pnpm test:integration
 
+  web:
+    name: PWA browser tests and size budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: gadmo
+          POSTGRES_PASSWORD: gadmo_ci_only
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U gadmo"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      E2E_DATABASE_URL: postgresql://gadmo:gadmo_ci_only@localhost:5432/gadmo_e2e
+      E2E_REDIS_URL: redis://localhost:6379/14
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Install Chromium for Playwright
+        run: pnpm --filter @gadmo/web exec playwright install --with-deps chromium
+      - name: Browser tests on a phone-sized screen (real API, Postgres, Redis)
+        run: pnpm --filter @gadmo/web test:e2e
+      - name: First-load JavaScript under 200 KB per page
+        run: pnpm --filter @gadmo/web check:size
+      - name: Keep the test report if anything failed
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          retention-days: 7
+
   dependencies:
     name: Dependency audit
     runs-on: ubuntu-latest
