@@ -111,13 +111,24 @@ export const refreshTokens = pgTable(
   ],
 );
 
+/**
+ * REQUIRED: the Pro must visit and agree an inspection fee before quoting (repairs, construction).
+ * OPTIONAL: the Pro may ask for one if they need to see the work first (cleaning, moving).
+ * NONE: no inspection fee — tech, lessons, beauty, events and businesses quote directly.
+ */
+export const inspectionPolicyEnum = pgEnum('inspection_policy', ['REQUIRED', 'OPTIONAL', 'NONE']);
+
+/** Top-level rows (parentId null) are groups shown on the home screen; their children are bookable. */
 export const categories = pgTable('categories', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
   parentId: uuid('parent_id').references((): AnyPgColumn => categories.id),
   emergencyEnabled: boolean('emergency_enabled').notNull().default(false),
-  inspectionFeeKobo: kobo('inspection_fee_kobo').notNull().default(0),
+  inspectionPolicy: inspectionPolicyEnum('inspection_policy').notNull().default('NONE'),
+  /** Regulated work (lawyers, nurses, vets…): a professional licence is checked during verification. */
+  licenceRequired: boolean('licence_required').notNull().default(false),
+  sortOrder: integer('sort_order').notNull().default(0),
   active: boolean('active').notNull().default(true),
 });
 

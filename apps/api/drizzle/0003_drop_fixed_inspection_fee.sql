@@ -1,0 +1,1 @@
+ALTER TABLE "categories" DROP COLUMN "inspection_fee_kobo";

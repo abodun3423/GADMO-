@@ -5,13 +5,19 @@ Ask the founder before deciding anything the PRD leaves open.
 
 ## Non-negotiable product rules
 
+- Launch area: Ekiti State, starting in Ado-Ekiti.
 - Customers and Pros never see each other's phone number or email. All contact happens in GADMO chat.
   Run user-written text through `maskContactInfo` from `@gadmo/shared` before storing it.
-- Payments: inspection fee in-app at booking; optional materials deposit (max 50% of quote) on quote
-  acceptance; balance after the job. In-app balances are held for 12 hours (or until the customer
-  confirms) and stay held if the customer reports poor work. Cash balances require the in-app cash
-  agreement and carry no GADMO guarantee.
+- Inspection fee: agreed in chat per job (Pro offers based on distance, urgency and job; customer
+  accepts or counters), paid in-app before the visit, and never above ₦5,000 (`MAX_INSPECTION_FEE_KOBO`).
+  Only categories with inspection policy REQUIRED or OPTIONAL use it; tech, lessons, beauty, events and
+  businesses (policy NONE) quote directly.
+- Payments: optional materials deposit (max 50% of quote) on quote acceptance; balance after the job.
+  In-app balances are held for 12 hours (or until the customer confirms) and stay held if the customer
+  reports poor work. Cash balances require the in-app cash agreement and carry no GADMO guarantee.
+- Commission: 10% (`COMMISSION_BPS`).
 - Money is integer kobo everywhere. Use `@gadmo/shared` money helpers. The ledger is append-only.
+- The service catalogue lives in `apps/api/src/db/categories.ts`; `db:seed` upserts it by slug.
 - The client is a lightweight PWA (JS budget < 200 KB gzipped on first load).
 
 ## Engineering conventions
@@ -24,3 +30,4 @@ Ask the founder before deciding anything the PRD leaves open.
 - State-changing routes require the `x-gadmo-client: web` header (CSRF guard).
 - Before finishing any change: `pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm test:integration`.
 - Small pull requests, one feature each.
+- The founder allows merging a pull request once CI is green and it has no merge conflicts.
