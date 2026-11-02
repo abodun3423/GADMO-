@@ -10,6 +10,23 @@ export type Bps = number;
 /** The PRD caps a materials deposit at 50% of the quote. */
 export const MAX_DEPOSIT_BPS: Bps = 5_000;
 
+/** GADMO's commission on each completed job: 10%. */
+export const COMMISSION_BPS: Bps = 1_000;
+
+/**
+ * Inspection fees are agreed in chat but can never exceed ₦5,000.
+ * ₦5,000 is meant for the farthest trips, where transport alone costs about ₦2,500.
+ */
+export const MAX_INSPECTION_FEE_KOBO: Kobo = 500_000;
+
+export function validateInspectionFee(fee: Kobo): void {
+  assertKobo(fee, 'inspection fee');
+  if (fee <= 0) throw new RangeError('inspection fee must be more than ₦0');
+  if (fee > MAX_INSPECTION_FEE_KOBO) {
+    throw new RangeError('inspection fee cannot be more than ₦5,000');
+  }
+}
+
 export function assertKobo(value: number, label = 'amount'): asserts value is Kobo {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new RangeError(`${label} must be a non-negative whole number of kobo`);

@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   balanceDue,
+  COMMISSION_BPS,
   formatNaira,
   nairaToKobo,
   percentOf,
   splitPayout,
   validateDeposit,
+  validateInspectionFee,
 } from './money';
 
 describe('money helpers', () => {
@@ -35,6 +37,22 @@ describe('money helpers', () => {
       balanceDue({ quoteKobo: 5_000_000, inspectionFeeKobo: 300_000, depositKobo: 2_000_000 }),
     ).toBe(2_700_000);
     expect(balanceDue({ quoteKobo: 200_000, inspectionFeeKobo: 300_000, depositKobo: 0 })).toBe(0);
+  });
+
+  it('caps the inspection fee at ₦5,000 and requires a positive amount', () => {
+    expect(() => validateInspectionFee(500_000)).not.toThrow();
+    expect(() => validateInspectionFee(250_000)).not.toThrow();
+    expect(() => validateInspectionFee(500_001)).toThrow(/₦5,000/);
+    expect(() => validateInspectionFee(0)).toThrow(RangeError);
+    expect(() => validateInspectionFee(1.5)).toThrow(RangeError);
+  });
+
+  it('takes a 10% commission', () => {
+    expect(COMMISSION_BPS).toBe(1_000);
+    expect(splitPayout(2_700_000, COMMISSION_BPS)).toEqual({
+      commissionKobo: 270_000,
+      proPayoutKobo: 2_430_000,
+    });
   });
 
   it('caps the materials deposit at 50% of the quote', () => {

@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { maskContactInfo } from '@gadmo/shared';
-import { and, desc, eq, or } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { categories, jobs } from '../db/schema';
@@ -60,7 +60,14 @@ export class JobsController {
     const [category] = await this.db
       .select({ id: categories.id, emergencyEnabled: categories.emergencyEnabled })
       .from(categories)
-      .where(and(eq(categories.id, body.categoryId), eq(categories.active, true)))
+      // Groups (no parent) are only headings; a job must name a bookable category.
+      .where(
+        and(
+          eq(categories.id, body.categoryId),
+          eq(categories.active, true),
+          isNotNull(categories.parentId),
+        ),
+      )
       .limit(1);
     if (!category) throw new UnprocessableEntityException('Unknown service category');
     if (body.type === 'EMERGENCY' && !category.emergencyEnabled) {

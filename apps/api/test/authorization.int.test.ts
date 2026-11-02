@@ -16,7 +16,7 @@ beforeAll(async () => {
   ctx = await createTestApp();
   const rows = await ctx.db.select().from(categories);
   electricianId = rows.find((c) => c.slug === 'electrician')!.id;
-  cleanerId = rows.find((c) => c.slug === 'cleaner')!.id;
+  cleanerId = rows.find((c) => c.slug === 'house-cleaner')!.id;
 });
 afterAll(async () => {
   await ctx.app.close();

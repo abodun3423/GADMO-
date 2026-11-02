@@ -15,6 +15,20 @@
       "when": 1793621764018,
       "tag": "0001_append_only_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793624621642,
+      "tag": "0002_service_catalogue",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793624622611,
+      "tag": "0003_drop_fixed_inspection_fee",
+      "breakpoints": true
     }
   ]
 }
