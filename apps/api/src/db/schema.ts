@@ -1,0 +1,358 @@
+/**
+ * GADMO database schema — PRD v1.0, section 7.
+ * Money columns are whole kobo (₦1 = 100 kobo), stored as bigint.
+ */
+import { sql } from 'drizzle-orm';
+import {
+  bigint,
+  boolean,
+  check,
+  doublePrecision,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  unique,
+  uuid,
+  type AnyPgColumn,
+} from 'drizzle-orm/pg-core';
+
+const kobo = (name: string) => bigint(name, { mode: 'number' });
+const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
+const updatedAt = () =>
+  timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date());
+
+export const roleEnum = pgEnum('role', ['CUSTOMER', 'PRO', 'ADMIN', 'SUPER_ADMIN']);
+export const userStatusEnum = pgEnum('user_status', ['ACTIVE', 'SUSPENDED', 'BANNED']);
+export const verificationStatusEnum = pgEnum('verification_status', [
+  'NOT_STARTED',
+  'PENDING',
+  'APPROVED',
+  'REJECTED',
+  'NEEDS_INFO',
+]);
+export const jobTypeEnum = pgEnum('job_type', ['EMERGENCY', 'SCHEDULED']);
+export const jobStatusEnum = pgEnum('job_status', [
+  'REQUESTED',
+  'ACCEPTED',
+  'INSPECTION_PAID',
+  'QUOTED',
+  'QUOTE_ACCEPTED',
+  'IN_PROGRESS',
+  'DONE_AWAITING_PAYMENT',
+  'BALANCE_HELD',
+  'COMPLETED',
+  'CASH_COMPLETED',
+  'DISPUTED',
+  'CANCELLED',
+]);
+export const paymentTypeEnum = pgEnum('payment_type', ['INSPECTION_FEE', 'DEPOSIT', 'BALANCE']);
+export const paymentMethodEnum = pgEnum('payment_method', ['APP', 'CASH']);
+export const paymentStatusEnum = pgEnum('payment_status', [
+  'PENDING',
+  'SUCCEEDED',
+  'FAILED',
+  'REFUNDED',
+]);
+export const payoutStatusEnum = pgEnum('payout_status', [
+  'PENDING',
+  'PROCESSING',
+  'PAID',
+  'FAILED',
+]);
+export const disputeStatusEnum = pgEnum('dispute_status', [
+  'OPEN',
+  'RESOLVED_PRO_PAID',
+  'RESOLVED_REFUNDED',
+  'RESOLVED_SPLIT',
+  'RESOLVED_REWORK',
+]);
+
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** E.164. Never returned to other users. */
+  phone: text('phone').notNull().unique(),
+  name: text('name'),
+  role: roleEnum('role').notNull().default('CUSTOMER'),
+  status: userStatusEnum('status').notNull().default('ACTIVE'),
+  /** Count of attempts to share contact details in chat. */
+  chatFlags: integer('chat_flags').notNull().default(0),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const refreshTokens = pgTable(
+  'refresh_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** All rotations of one login. Reusing an old token revokes the whole family. */
+    familyId: uuid('family_id').notNull(),
+    /** SHA-256 of the token. The raw token is never stored. */
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    replacedById: uuid('replaced_by_id'),
+    userAgent: text('user_agent'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('refresh_tokens_user_idx').on(t.userId),
+    index('refresh_tokens_family_idx').on(t.familyId),
+  ],
+);
+
+export const categories = pgTable('categories', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  parentId: uuid('parent_id').references((): AnyPgColumn => categories.id),
+  emergencyEnabled: boolean('emergency_enabled').notNull().default(false),
+  inspectionFeeKobo: kobo('inspection_fee_kobo').notNull().default(0),
+  active: boolean('active').notNull().default(true),
+});
+
+export const proProfiles = pgTable('pro_profiles', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  bio: text('bio'),
+  latitude: doublePrecision('latitude'),
+  longitude: doublePrecision('longitude'),
+  serviceRadiusKm: integer('service_radius_km').notNull().default(10),
+  isOnline: boolean('is_online').notNull().default(false),
+  ratingAvg: doublePrecision('rating_avg').notNull().default(0),
+  ratingCount: integer('rating_count').notNull().default(0),
+  verificationStatus: verificationStatusEnum('verification_status')
+    .notNull()
+    .default('NOT_STARTED'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const proCategories = pgTable(
+  'pro_categories',
+  {
+    proId: uuid('pro_id')
+      .notNull()
+      .references(() => proProfiles.userId, { onDelete: 'cascade' }),
+    categoryId: uuid('category_id')
+      .notNull()
+      .references(() => categories.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.proId, t.categoryId] })],
+);
+
+export const verifications = pgTable('verifications', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  proId: uuid('pro_id')
+    .notNull()
+    .references(() => proProfiles.userId, { onDelete: 'cascade' }),
+  provider: text('provider').notNull(),
+  /** AES-256-GCM ciphertext. */
+  ninEncrypted: text('nin_encrypted'),
+  /** Object-storage key, never a public URL. */
+  selfieRef: text('selfie_ref'),
+  result: verificationStatusEnum('result').notNull().default('PENDING'),
+  reviewedById: uuid('reviewed_by_id').references(() => users.id),
+  createdAt: createdAt(),
+});
+
+export const jobs = pgTable(
+  'jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    customerId: uuid('customer_id')
+      .notNull()
+      .references(() => users.id),
+    proId: uuid('pro_id').references(() => users.id),
+    categoryId: uuid('category_id')
+      .notNull()
+      .references(() => categories.id),
+    type: jobTypeEnum('type').notNull(),
+    status: jobStatusEnum('status').notNull().default('REQUESTED'),
+    description: text('description').notNull(),
+    latitude: doublePrecision('latitude').notNull(),
+    longitude: doublePrecision('longitude').notNull(),
+    /** Revealed to the Pro only after the inspection fee is paid. */
+    addressEncrypted: text('address_encrypted'),
+    scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
+    paymentMethod: paymentMethodEnum('payment_method'),
+    cashAgreementVersion: text('cash_agreement_version'),
+    cashAgreementAcceptedAt: timestamp('cash_agreement_accepted_at', { withTimezone: true }),
+    doneAt: timestamp('done_at', { withTimezone: true }),
+    /** doneAt + 12 hours for in-app balances. */
+    balanceReleaseAt: timestamp('balance_release_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('jobs_customer_idx').on(t.customerId),
+    index('jobs_pro_idx').on(t.proId),
+    index('jobs_status_idx').on(t.status),
+  ],
+);
+
+export const quotes = pgTable(
+  'quotes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    jobId: uuid('job_id')
+      .notNull()
+      .references(() => jobs.id, { onDelete: 'cascade' }),
+    amountKobo: kobo('amount_kobo').notNull(),
+    depositKobo: kobo('deposit_kobo').notNull().default(0),
+    description: text('description').notNull(),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check('quotes_amount_positive', sql`${t.amountKobo} > 0`),
+    check(
+      'quotes_deposit_cap',
+      sql`${t.depositKobo} >= 0 AND ${t.depositKobo} * 2 <= ${t.amountKobo}`,
+    ),
+  ],
+);
+
+export const payments = pgTable(
+  'payments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    jobId: uuid('job_id')
+      .notNull()
+      .references(() => jobs.id),
+    type: paymentTypeEnum('type').notNull(),
+    method: paymentMethodEnum('method').notNull().default('APP'),
+    /** Unique so a replayed Paystack webhook is processed only once. */
+    paystackReference: text('paystack_reference').unique(),
+    amountKobo: kobo('amount_kobo').notNull(),
+    status: paymentStatusEnum('status').notNull().default('PENDING'),
+    dueAt: timestamp('due_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('payments_job_idx').on(t.jobId),
+    check('payments_amount_nonneg', sql`${t.amountKobo} >= 0`),
+  ],
+);
+
+/** Double-entry ledger. Append-only: a trigger blocks UPDATE and DELETE. */
+export const ledgerEntries = pgTable(
+  'ledger_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Entries with the same txnId must balance (sum of debits = sum of credits). */
+    txnId: uuid('txn_id').notNull(),
+    /** e.g. "escrow:job:<id>", "pro:<id>", "gadmo:commission". */
+    account: text('account').notNull(),
+    debitKobo: kobo('debit_kobo').notNull().default(0),
+    creditKobo: kobo('credit_kobo').notNull().default(0),
+    jobId: uuid('job_id').references(() => jobs.id),
+    description: text('description').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('ledger_account_idx').on(t.account),
+    index('ledger_txn_idx').on(t.txnId),
+    check(
+      'ledger_one_side',
+      sql`${t.debitKobo} >= 0 AND ${t.creditKobo} >= 0 AND (${t.debitKobo} = 0) <> (${t.creditKobo} = 0)`,
+    ),
+  ],
+);
+
+export const payouts = pgTable('payouts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  proId: uuid('pro_id')
+    .notNull()
+    .references(() => proProfiles.userId),
+  /** Paystack transfer-recipient code, never a raw account number. */
+  bankAccountRef: text('bank_account_ref').notNull(),
+  amountKobo: kobo('amount_kobo').notNull(),
+  status: payoutStatusEnum('status').notNull().default('PENDING'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const messages = pgTable(
+  'messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    jobId: uuid('job_id')
+      .notNull()
+      .references(() => jobs.id, { onDelete: 'cascade' }),
+    senderId: uuid('sender_id')
+      .notNull()
+      .references(() => users.id),
+    /** Stored AFTER contact masking — the raw text is never saved. */
+    body: text('body').notNull(),
+    wasMasked: boolean('was_masked').notNull().default(false),
+    attachmentRef: text('attachment_ref'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('messages_job_idx').on(t.jobId, t.createdAt)],
+);
+
+export const reviews = pgTable(
+  'reviews',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    jobId: uuid('job_id')
+      .notNull()
+      .references(() => jobs.id),
+    authorId: uuid('author_id')
+      .notNull()
+      .references(() => users.id),
+    subjectId: uuid('subject_id')
+      .notNull()
+      .references(() => users.id),
+    rating: integer('rating').notNull(),
+    comment: text('comment'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique('reviews_one_per_author').on(t.jobId, t.authorId),
+    check('reviews_rating_range', sql`${t.rating} BETWEEN 1 AND 5`),
+  ],
+);
+
+export const disputes = pgTable('disputes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  jobId: uuid('job_id')
+    .notNull()
+    .references(() => jobs.id),
+  openedById: uuid('opened_by_id')
+    .notNull()
+    .references(() => users.id),
+  reason: text('reason').notNull(),
+  status: disputeStatusEnum('status').notNull().default('OPEN'),
+  resolution: text('resolution'),
+  resolvedById: uuid('resolved_by_id').references(() => users.id),
+  createdAt: createdAt(),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+});
+
+/** Every admin action. Append-only: a trigger blocks UPDATE and DELETE. */
+export const auditLogs = pgTable(
+  'audit_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    actorId: uuid('actor_id').references(() => users.id),
+    action: text('action').notNull(),
+    target: text('target').notNull(),
+    metadata: jsonb('metadata'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('audit_target_idx').on(t.target)],
+);

@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Local-only and test-only placeholders, never used in production"
+regexTarget = "line"
+regexes = [
+  '''gadmo_local_only''',
+  '''gadmo_ci_only''',
+  '''test-only-[a-z-]+''',
+]
