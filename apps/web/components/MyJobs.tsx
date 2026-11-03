@@ -135,6 +135,11 @@ export function MyJobs({
           <p className={`job-status${job.dispatch === 'NO_PRO_YET' ? ' job-status-wait' : ''}`}>
             {statusText(job)}
           </p>
+          {job.proId && job.status !== 'CANCELLED' && (
+            <Link className="button button-small" href={`/jobs/${job.id}`}>
+              Open chat
+            </Link>
+          )}
           {job.status === 'REQUESTED' &&
             me.role !== 'PRO' &&
             (confirming === job.id ? (
@@ -180,7 +185,7 @@ function statusText(job: Job): string {
     return 'No Pro available yet. We’ll offer it to Pros near you as they come online.';
   }
   if (job.status === 'ACCEPTED') {
-    return `${job.proName ?? 'A Pro'} accepted. Chat and the inspection fee are coming next.`;
+    return `${job.proName ?? 'A Pro'} accepted. Chat to agree the details.`;
   }
   return JOB_STATUS_LABEL[job.status];
 }

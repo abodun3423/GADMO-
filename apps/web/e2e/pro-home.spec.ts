@@ -57,6 +57,32 @@ test('a verified Pro goes online, gets an emergency offer with a countdown, and 
 
   await customerPage.reload();
   await expect(customerPage.getByText(/^A Pro accepted\./)).toBeVisible();
+
+  // They talk in GADMO chat; a phone number typed into it is hidden.
+  await page
+    .locator('article', { hasText: 'Sockets in the kitchen stopped working' })
+    .getByRole('link', { name: 'Open chat' })
+    .click();
+  await expect(page.getByRole('heading', { name: 'Electrician' })).toBeVisible();
+  await page
+    .getByLabel('Message', { exact: true })
+    .fill('I can come by 3pm. Call me on 0803 123 4567');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.getByRole('status')).toContainText('Contact details were hidden');
+  await expect(page.getByRole('list', { name: 'Messages' })).toContainText('I can come by 3pm');
+  await expect(page.getByRole('list', { name: 'Messages' })).not.toContainText('4567');
+
+  await customerPage.getByRole('link', { name: 'Open chat' }).click();
+  const thread = customerPage.getByRole('list', { name: 'Messages' });
+  await expect(thread).toContainText('I can come by 3pm');
+  await expect(thread).toContainText('contact details hidden');
+  await expect(thread).not.toContainText('0803');
+  await customerPage.getByLabel('Message', { exact: true }).fill('Great, see you then');
+  await customerPage.getByRole('button', { name: 'Send' }).click();
+  // The Pro's open chat picks the reply up within a few seconds.
+  await expect(page.getByRole('list', { name: 'Messages' })).toContainText('Great, see you then', {
+    timeout: 10_000,
+  });
   await customerPage.close();
   noCspViolations();
 });

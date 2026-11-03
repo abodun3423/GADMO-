@@ -140,3 +140,29 @@ export interface ReviewDetail extends ReviewItem {
   skills: string[];
   history: { id: string; result: ReviewResult; createdAt: string; reviewNote: string | null }[];
 }
+
+/** A job as one of its two parties sees it (GET /v1/jobs/:id/conversation). */
+export interface Conversation {
+  job: {
+    id: string;
+    status: JobStatus;
+    type: 'EMERGENCY' | 'SCHEDULED';
+    description: string;
+    scheduledAt: string | null;
+    createdAt: string;
+    serviceName: string;
+    inspectionPolicy: InspectionPolicy;
+  };
+  you: 'CUSTOMER' | 'PRO';
+  other: { id: string; name: string | null } | null;
+  open: boolean;
+}
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  body: string;
+  wasMasked: boolean;
+  createdAt: string;
+  mine: boolean;
+}
