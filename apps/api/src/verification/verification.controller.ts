@@ -90,11 +90,14 @@ export class VerificationController {
     @Param('purpose', purposePipe) purpose: keyof typeof PURPOSE,
     @Req() req: Request,
   ): Promise<void> {
-    const bytes: unknown = req.body;
-    const type = Buffer.isBuffer(bytes) ? sniffImageType(bytes) : null;
-    if (!Buffer.isBuffer(bytes) || !type) {
+    const body: unknown = req.body;
+    // Only the raw-image body parser produces a Buffer; JSON, text or form bodies are refused.
+    if (typeof body === 'string' || Array.isArray(body) || !Buffer.isBuffer(body)) {
       throw new UnsupportedMediaTypeException('Send a photo (JPEG, PNG or WebP).');
     }
+    const bytes: Buffer = body;
+    const type = sniffImageType(bytes);
+    if (!type) throw new UnsupportedMediaTypeException('Send a photo (JPEG, PNG or WebP).');
     await enforceLimits(this.redis, [
       { key: `kyc-upload:${pro.id}`, max: 30, windowSeconds: 60 * 60 },
     ]);

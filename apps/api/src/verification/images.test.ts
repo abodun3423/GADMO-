@@ -22,5 +22,7 @@ describe('sniffImageType', () => {
     ).toBeNull();
     expect(sniffImageType(Buffer.from('%PDF-1.7 ......'))).toBeNull();
     expect(sniffImageType(Buffer.alloc(4))).toBeNull();
+    expect(sniffImageType('\xff\xd8\xff\xe0 not bytes at all')).toBeNull();
+    expect(sniffImageType([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0])).toBeNull();
   });
 });
