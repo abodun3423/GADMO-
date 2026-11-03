@@ -3,22 +3,34 @@
 import Link from 'next/link';
 import { useSession } from '@/lib/useSession';
 
-/** Top-right links: "Sign in" when signed out; "My jobs" and "Account" when signed in. */
+/**
+ * Top-right links: "Sign in" when signed out. Signed in: customers get "My jobs",
+ * Pros get "Pro home"; everyone gets "Account".
+ */
 export function AccountLink() {
   const { me, loading } = useSession();
   if (loading) return <span className="topbar-link" aria-hidden="true" />;
-  return me ? (
-    <nav className="topbar-nav" aria-label="Your GADMO">
-      <Link href="/jobs" className="topbar-link">
-        My jobs
+  if (!me) {
+    return (
+      <Link href="/signin" className="topbar-link">
+        Sign in
       </Link>
+    );
+  }
+  return (
+    <nav className="topbar-nav" aria-label="Your GADMO">
+      {me.role === 'PRO' ? (
+        <Link href="/pro" className="topbar-link">
+          Pro home
+        </Link>
+      ) : (
+        <Link href="/jobs" className="topbar-link">
+          My jobs
+        </Link>
+      )}
       <Link href="/account" className="topbar-link">
         Account
       </Link>
     </nav>
-  ) : (
-    <Link href="/signin" className="topbar-link">
-      Sign in
-    </Link>
   );
 }

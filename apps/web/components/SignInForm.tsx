@@ -59,9 +59,14 @@ export function SignInForm({ next }: { next: string }) {
     }
     setBusy(true);
     try {
-      await post('/v1/auth/otp/verify', { phone, code, role });
+      const { user } = await post<{ user: { role: string } }>('/v1/auth/otp/verify', {
+        phone,
+        code,
+        role,
+      });
       await loadMe(true);
-      router.replace(next);
+      // Pros land on their own home unless they were on their way somewhere.
+      router.replace(user.role === 'PRO' && next === '/' ? '/pro' : next);
       router.refresh();
     } catch (err) {
       setError(

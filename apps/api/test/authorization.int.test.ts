@@ -1,7 +1,7 @@
 import { eq, isNull } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { categories, jobs } from '../src/db/schema';
+import { categories, jobs, proProfiles } from '../src/db/schema';
 import { CLIENT_HEADER, createTestApp, login, type TestContext } from './helpers';
 
 /**
@@ -280,5 +280,133 @@ describe('Pro profile', () => {
     expect(res.body.user.latitude).toBeUndefined();
     expect(res.body.user.longitude).toBeUndefined();
     expect(res.body.user.phone).toBeUndefined();
+  });
+});
+
+describe('Pro online switch and nearby requests', () => {
+  const ADO = { latitude: 7.6233, longitude: 5.2209 };
+  const LAGOS = { latitude: 6.4541, longitude: 3.3947 };
+
+  async function verifiedPro(skills: string[] = [electricianId], online = true) {
+    const pro = await login(ctx, { role: 'pro' });
+    await pro.agent
+      .put('/v1/pro/profile')
+      .set(CLIENT_HEADER)
+      .send({ categoryIds: skills, bio: '', ...ADO, serviceRadiusKm: 10 })
+      .expect(200);
+    await ctx.db
+      .update(proProfiles)
+      .set({ verificationStatus: 'APPROVED' })
+      .where(eq(proProfiles.userId, pro.userId));
+    if (online) {
+      await pro.agent.post('/v1/pro/online').set(CLIENT_HEADER).send({ online: true }).expect(200);
+    }
+    return pro;
+  }
+
+  async function postJob(customer: Awaited<ReturnType<typeof login>>, extra = {}) {
+    const res = await customer.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(newJob(electricianId, { ...ADO, latitude: ADO.latitude + 0.01, ...extra }))
+      .expect(201);
+    return res.body.job.id as string;
+  }
+
+  it('customers and signed-out users cannot use Pro routes', async () => {
+    await request(ctx.server).get('/v1/pro/jobs/nearby').expect(401);
+    const customer = await login(ctx);
+    await customer.agent.get('/v1/pro/jobs/nearby').expect(403);
+    await customer.agent
+      .post('/v1/pro/online')
+      .set(CLIENT_HEADER)
+      .send({ online: true })
+      .expect(403);
+  });
+
+  it('only a verified Pro with skills and a place can go online', async () => {
+    const pro = await login(ctx, { role: 'pro' });
+    const goOnline = () =>
+      pro.agent.post('/v1/pro/online').set(CLIENT_HEADER).send({ online: true });
+    await goOnline().expect(409);
+    await ctx.db
+      .update(proProfiles)
+      .set({ verificationStatus: 'APPROVED' })
+      .where(eq(proProfiles.userId, pro.userId));
+    await goOnline().expect(409); // no skills or place yet
+    await pro.agent
+      .put('/v1/pro/profile')
+      .set(CLIENT_HEADER)
+      .send({ categoryIds: [electricianId], bio: '', ...ADO, serviceRadiusKm: 10 })
+      .expect(200);
+    const res = await goOnline().expect(200);
+    expect(res.body.profile.isOnline).toBe(true);
+    const off = await pro.agent
+      .post('/v1/pro/online')
+      .set(CLIENT_HEADER)
+      .send({ online: false })
+      .expect(200);
+    expect(off.body.profile.isOnline).toBe(false);
+    await pro.agent.post('/v1/pro/online').send({ online: true }).expect(403); // CSRF
+    await pro.agent
+      .post('/v1/pro/online')
+      .set(CLIENT_HEADER)
+      .send({ online: true, userId: 'x' })
+      .expect(400);
+  });
+
+  it('unverified Pros see no requests; offline Pros get an empty list', async () => {
+    const unverified = await login(ctx, { role: 'pro' });
+    await unverified.agent.get('/v1/pro/jobs/nearby').expect(403);
+    const offline = await verifiedPro([electricianId], false);
+    const res = await offline.agent.get('/v1/pro/jobs/nearby').expect(200);
+    expect(res.body).toEqual({ online: false, jobs: [] });
+  });
+
+  it('shows only open requests for the Pro’s skills within their distance', async () => {
+    const customer = await login(ctx);
+    const near = await postJob(customer);
+    const far = await postJob(customer, LAGOS);
+    const otherSkill = (
+      await customer.agent
+        .post('/v1/jobs')
+        .set(CLIENT_HEADER)
+        .send(
+          newJob(cleanerId, {
+            type: 'SCHEDULED',
+            scheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
+            ...ADO,
+          }),
+        )
+        .expect(201)
+    ).body.job.id as string;
+    const taken = await postJob(customer);
+    const past = await postJob(customer, {
+      type: 'SCHEDULED',
+      scheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    const other = await login(ctx, { role: 'pro' });
+    await ctx.db
+      .update(jobs)
+      .set({ proId: other.userId, status: 'ACCEPTED' })
+      .where(eq(jobs.id, taken));
+    await ctx.db
+      .update(jobs)
+      .set({ scheduledAt: new Date(Date.now() - 3_600_000) })
+      .where(eq(jobs.id, past));
+
+    const pro = await verifiedPro();
+    const res = await pro.agent.get('/v1/pro/jobs/nearby').expect(200);
+    const ids = (res.body.jobs as { id: string }[]).map((j) => j.id);
+    expect(ids).toContain(near);
+    for (const hidden of [far, otherSkill, taken, past]) expect(ids).not.toContain(hidden);
+
+    const job = res.body.jobs.find((j: { id: string }) => j.id === near);
+    expect(job.distanceKm).toBeGreaterThanOrEqual(0.5);
+    expect(job.distanceKm).toBeLessThanOrEqual(2);
+    // No identity, coordinates or address before a Pro is assigned.
+    for (const key of ['customerId', 'latitude', 'longitude', 'addressEncrypted', 'proId']) {
+      expect(job[key]).toBeUndefined();
+    }
   });
 });

@@ -181,7 +181,8 @@ export function ProProfileForm({ groups }: { groups: CategoryGroup[] }) {
               Next: a quick identity check (NIN and a selfie). It’s coming soon. Once you’re
               verified you can go online and receive jobs near you.
             </>
-          )}
+          )}{' '}
+          <Link href="/pro">Go to Pro home</Link>
         </div>
       )}
       {error && (

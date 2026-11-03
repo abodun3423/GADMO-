@@ -1,9 +1,40 @@
 import { expect, type Page } from '@playwright/test';
 import Redis from 'ioredis';
+import pg from 'pg';
 
 const redis = new Redis(process.env.E2E_REDIS_URL ?? 'redis://localhost:6379/14', {
   lazyConnect: true,
 });
+
+const db = new pg.Pool({
+  connectionString:
+    process.env.E2E_DATABASE_URL ?? 'postgresql://gadmo:gadmo_local_only@localhost:5432/gadmo_e2e',
+  max: 1,
+});
+
+/** Stands in for the identity check (not built yet): marks this Pro as verified in the e2e database. */
+export async function approvePro(e164: string): Promise<void> {
+  const res = await db.query(
+    `UPDATE pro_profiles SET verification_status = 'APPROVED'
+     WHERE user_id = (SELECT id FROM users WHERE phone = $1)`,
+    [e164],
+  );
+  if (res.rowCount !== 1) throw new Error(`No Pro profile for ${e164}`);
+}
+
+/** Creates an open request near Ado-Ekiti directly in the e2e database. */
+export async function insertJob(
+  categorySlug: string,
+  customerE164: string,
+  description: string,
+): Promise<void> {
+  await db.query(
+    `INSERT INTO jobs (customer_id, category_id, type, description, latitude, longitude)
+     SELECT u.id, c.id, 'EMERGENCY', $3, 7.63, 5.221
+     FROM users u, categories c WHERE u.phone = $2 AND c.slug = $1`,
+    [categorySlug, customerE164, description],
+  );
+}
 
 export function randomPhone(): { local: string; e164: string } {
   const rest = String(Math.floor(Math.random() * 10_000_000)).padStart(7, '0');

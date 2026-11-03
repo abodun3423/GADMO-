@@ -1,7 +1,7 @@
 {
   "name": "gadmo",
   "private": true,
-  "description": "GADMO — The Right Skills. Within Reach.",
+  "description": "GADMO \u2014 The Right Skills. Within Reach.",
   "packageManager": "pnpm@10.28.0",
   "engines": {
     "node": ">=22"
@@ -19,7 +19,8 @@
     "setup:local": "node scripts/setup-env.mjs && pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api db:migrate && pnpm --filter @gadmo/api db:seed",
     "dev:api": "pnpm --filter @gadmo/api dev",
     "demo": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api demo",
-    "dev:web": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/web dev"
+    "dev:web": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/web dev",
+    "pro:approve": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api pro:approve"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
