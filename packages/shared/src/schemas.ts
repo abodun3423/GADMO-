@@ -95,3 +95,16 @@ export const ninSchema = z
 
 export const submitVerificationSchema = z.object({ nin: ninSchema }).strict();
 export type SubmitVerification = z.infer<typeof submitVerificationSchema>;
+
+/** A staff decision on an identity check. A note is required unless it is approved. */
+export const verificationDecisionSchema = z
+  .object({
+    decision: z.enum(['APPROVED', 'REJECTED', 'NEEDS_INFO']),
+    note: z.string().trim().max(500).optional(),
+  })
+  .strict()
+  .refine((v) => v.decision === 'APPROVED' || (v.note && v.note.length >= 5), {
+    message: 'Tell the Pro what to fix (at least a few words)',
+    path: ['note'],
+  });
+export type VerificationDecision = z.infer<typeof verificationDecisionSchema>;

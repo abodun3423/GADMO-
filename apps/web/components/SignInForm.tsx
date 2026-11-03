@@ -65,8 +65,14 @@ export function SignInForm({ next }: { next: string }) {
         role,
       });
       await loadMe(true);
-      // Pros land on their own home unless they were on their way somewhere.
-      router.replace(user.role === 'PRO' && next === '/' ? '/pro' : next);
+      // Pros and staff land on their own home unless they were on their way somewhere.
+      const home =
+        user.role === 'PRO'
+          ? '/pro'
+          : user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
+            ? '/admin'
+            : '/';
+      router.replace(next === '/' ? home : next);
       router.refresh();
     } catch (err) {
       setError(

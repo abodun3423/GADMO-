@@ -50,6 +50,12 @@ export async function storedVerification(
   return row ? { result: row.result, ninEncrypted: row.nin_encrypted, files: row.files } : null;
 }
 
+/** Makes this account GADMO staff (what `pnpm admin:grant` does on a server). */
+export async function makeStaff(e164: string): Promise<void> {
+  const res = await db.query(`UPDATE users SET role = 'ADMIN' WHERE phone = $1`, [e164]);
+  if (res.rowCount !== 1) throw new Error(`No account for ${e164}`);
+}
+
 export function randomPhone(): { local: string; e164: string } {
   const rest = String(Math.floor(Math.random() * 10_000_000)).padStart(7, '0');
   return { local: `0803${rest}`, e164: `+234803${rest}` };

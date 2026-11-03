@@ -20,7 +20,8 @@
     "dev:api": "pnpm --filter @gadmo/api dev",
     "demo": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api demo",
     "dev:web": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/web dev",
-    "pro:approve": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api pro:approve"
+    "pro:approve": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api pro:approve",
+    "admin:grant": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api admin:grant"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

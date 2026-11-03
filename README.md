@@ -42,10 +42,17 @@ being sent by SMS.
 `apps/api/.env` holds local secrets; it is git-ignored and must never be committed.
 
 **Testing as a Pro:** sign up choosing "I offer a skill or service", set up your Pro profile, then
-mark the Pro as verified (the real identity check isn't built yet) and go online in Pro home:
+either send an identity check and approve it in /admin, or skip the review on your own computer:
 
 ```bash
 pnpm pro:approve 0803 123 4567   # local development only; written to the audit log
+```
+
+**Reviewing identity checks:** make a number GADMO staff, sign in with it and open /admin
+(use a number that is not a Pro):
+
+```bash
+pnpm admin:grant 0803 765 4321   # works on any server you can reach; written to the audit log
 ```
 
 **A login code is refused?** The `pnpm dev:api` window explains every attempt with an `[OTP]`
