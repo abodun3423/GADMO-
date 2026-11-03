@@ -108,3 +108,12 @@ export interface NearbyJob {
   createdAt: string;
   distanceKm: number;
 }
+
+/** The signed-in Pro's identity check (GET /v1/pro/verification). The NIN is never returned. */
+export interface VerificationState {
+  status: VerificationStatus;
+  canSubmit: boolean;
+  submittedAt: string | null;
+  note: string | null;
+  photos: { idDocument: boolean; selfie: boolean };
+}

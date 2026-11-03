@@ -18,7 +18,9 @@ const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 async function send(path: string, init: RequestInit): Promise<Response> {
   const method = (init.method ?? 'GET').toUpperCase();
   const headers = new Headers(init.headers);
-  if (init.body !== undefined) headers.set('content-type', 'application/json');
+  if (init.body !== undefined && !headers.has('content-type')) {
+    headers.set('content-type', 'application/json');
+  }
   if (UNSAFE.has(method)) headers.set('x-gadmo-client', 'web');
   return fetch(path, { ...init, method, headers, credentials: 'same-origin' });
 }
@@ -73,3 +75,7 @@ export function fieldMessage(err: unknown): string | null {
 
 export const put = <T>(path: string, data: unknown) =>
   api<T>(path, { method: 'PUT', body: JSON.stringify(data) });
+
+/** Sends a photo as raw bytes (PUT), e.g. for the identity check. */
+export const putImage = (path: string, image: Blob) =>
+  api<void>(path, { method: 'PUT', body: image, headers: { 'content-type': image.type } });

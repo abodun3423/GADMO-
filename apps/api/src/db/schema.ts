@@ -164,20 +164,62 @@ export const proCategories = pgTable(
   (t) => [primaryKey({ columns: [t.proId, t.categoryId] })],
 );
 
-export const verifications = pgTable('verifications', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  proId: uuid('pro_id')
-    .notNull()
-    .references(() => proProfiles.userId, { onDelete: 'cascade' }),
-  provider: text('provider').notNull(),
-  /** AES-256-GCM ciphertext. */
-  ninEncrypted: text('nin_encrypted'),
-  /** Object-storage key, never a public URL. */
-  selfieRef: text('selfie_ref'),
-  result: verificationStatusEnum('result').notNull().default('PENDING'),
-  reviewedById: uuid('reviewed_by_id').references(() => users.id),
-  createdAt: createdAt(),
-});
+export const verifications = pgTable(
+  'verifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    proId: uuid('pro_id')
+      .notNull()
+      .references(() => proProfiles.userId, { onDelete: 'cascade' }),
+    /** 'manual' (GADMO staff review) until a KYC provider is connected. */
+    provider: text('provider').notNull(),
+    /** AES-256-GCM ciphertext. */
+    ninEncrypted: text('nin_encrypted'),
+    /** Keyed hash of the NIN, to spot one NIN used on several accounts without decrypting. */
+    ninHash: text('nin_hash'),
+    /** Object-storage key, never a public URL ("file:<id>" while files live in private_files). */
+    selfieRef: text('selfie_ref'),
+    /** Photo of an ID document (NIN slip, ID card, voter's card, licence or passport). */
+    idDocumentRef: text('id_document_ref'),
+    result: verificationStatusEnum('result').notNull().default('PENDING'),
+    reviewedById: uuid('reviewed_by_id').references(() => users.id),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    /** Shown to the Pro when more information is needed or the check is not approved. */
+    reviewNote: text('review_note'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('verifications_pro_idx').on(t.proId),
+    index('verifications_result_idx').on(t.result),
+    index('verifications_nin_hash_idx').on(t.ninHash),
+  ],
+);
+
+export const privateFilePurposeEnum = pgEnum('private_file_purpose', ['ID_DOCUMENT', 'SELFIE']);
+
+/**
+ * Sensitive uploads (identity photos), encrypted with FIELD_ENCRYPTION_KEY and never
+ * served publicly. A file with no verificationId is a draft the Pro is still preparing.
+ * To be moved to private object storage later; references keep the "file:<id>" form.
+ */
+export const privateFiles = pgTable(
+  'private_files',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    purpose: privateFilePurposeEnum('purpose').notNull(),
+    contentType: text('content_type').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    dataEncrypted: text('data_encrypted').notNull(),
+    verificationId: uuid('verification_id').references(() => verifications.id, {
+      onDelete: 'cascade',
+    }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('private_files_owner_idx').on(t.ownerId, t.purpose)],
+);
 
 export const jobs = pgTable(
   'jobs',

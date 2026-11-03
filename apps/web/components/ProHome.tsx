@@ -25,11 +25,11 @@ const timeFormat = new Intl.DateTimeFormat('en-NG', {
 });
 
 const VERIFICATION_TEXT: Record<ProProfile['verificationStatus'], string> = {
-  NOT_STARTED: 'Identity check not done yet. It’s coming soon (NIN and a selfie).',
-  PENDING: 'Identity check under review. We’ll let you know.',
+  NOT_STARTED: 'Not verified yet: your NIN, a photo of your ID and a selfie.',
+  PENDING: 'Under review by GADMO. We’ll let you know.',
   APPROVED: 'Verified. Customers see your verified badge.',
-  REJECTED: 'Identity check not approved. Contact GADMO support.',
-  NEEDS_INFO: 'GADMO needs more information for your identity check.',
+  REJECTED: 'Not approved. See why and try again.',
+  NEEDS_INFO: 'GADMO needs a little more information.',
 };
 
 export function ProHome({ serviceNames }: { serviceNames: Record<string, string> }) {
@@ -215,7 +215,10 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
               )}
             </li>
             <li className={verified ? 'step-done' : undefined}>
-              <strong>Identity</strong> {VERIFICATION_TEXT[profile.verificationStatus]}
+              <strong>Identity</strong> {VERIFICATION_TEXT[profile.verificationStatus]}{' '}
+              {['NOT_STARTED', 'NEEDS_INFO', 'REJECTED'].includes(profile.verificationStatus) && (
+                <Link href="/pro/verify">Verify your identity</Link>
+              )}
             </li>
           </ul>
 

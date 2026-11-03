@@ -8,6 +8,7 @@ const valid = {
   JWT_ACCESS_SECRET: 'x'.repeat(32),
   OTP_PEPPER: 'y'.repeat(32),
   WEB_ORIGIN: 'http://localhost:3000',
+  FIELD_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
 };
 
 describe('loadEnv', () => {
@@ -37,6 +38,15 @@ describe('loadEnv', () => {
         WEB_ORIGIN: 'http://gadmo.ng',
       }),
     ).toThrow(/https/);
+  });
+
+  it('needs a 32-byte encryption key', () => {
+    expect(() => loadEnv({ ...valid, FIELD_ENCRYPTION_KEY: 'c2hvcnQ=' })).toThrow(
+      /FIELD_ENCRYPTION_KEY/,
+    );
+    expect(() => loadEnv({ ...valid, FIELD_ENCRYPTION_KEY: undefined })).toThrow(
+      /FIELD_ENCRYPTION_KEY/,
+    );
   });
 
   it('allows DEV_LOGIN_CODE only in development', () => {

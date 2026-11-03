@@ -60,6 +60,18 @@ The browser tests fail if any page triggers a CSP violation.
 `SMS_PROVIDER=outbox` stores the last login code per phone in Redis so browser tests can sign in.
 It has no HTTP endpoint, and the API refuses to start with `console` or `outbox` in production.
 
+## Identity check data (NIN, ID photo, selfie)
+
+- The NIN and both photos are encrypted with AES-256-GCM (`FIELD_ENCRYPTION_KEY`, 32 bytes) before
+  they are stored. A keyed hash of the NIN (`nin_hash`) lets staff spot one NIN on several accounts
+  without decrypting it.
+- Photos are accepted only as JPEG, PNG or WebP, checked by their first bytes (not the
+  Content-Type header), up to 2 MB. Phones shrink and re-encode them first, which drops location
+  metadata.
+- No API route returns a NIN or a photo to the Pro or to customers. Staff review (next step) will
+  be the only reader, and every view is written to the audit log.
+- Photos live in the `private_files` table for now; they move to private object storage later.
+
 ## Rules for contributors
 
 - Never commit secrets. Use `.env` locally and GitHub Actions secrets / host secrets in deployment.

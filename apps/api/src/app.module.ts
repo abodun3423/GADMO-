@@ -8,6 +8,7 @@ import { HealthController } from './health/health.controller';
 import { InfraModule } from './infra/infra.module';
 import { JobsController } from './jobs/jobs.controller';
 import { ProController } from './pro/pro.controller';
+import { VerificationController } from './verification/verification.controller';
 
 @Module({
   imports: [ConfigModule, InfraModule, AuthModule, DispatchModule],
@@ -17,6 +18,7 @@ import { ProController } from './pro/pro.controller';
     CatalogController,
     JobsController,
     ProController,
+    VerificationController,
   ],
 })
 export class AppModule {}
