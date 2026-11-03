@@ -5,13 +5,14 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { CsrfGuard, JwtAuthGuard } from './guards';
 import { OtpService } from './otp.service';
+import { StaffAuthController } from './staff-auth.controller';
 import { ENV, type Env } from '../config/env';
 import { ConsoleSmsSender, OutboxSmsSender, SMS_SENDER } from './sms';
 import { TokenService } from './token.service';
 
 @Module({
   imports: [JwtModule.register({})],
-  controllers: [AuthController],
+  controllers: [AuthController, StaffAuthController],
   providers: [
     OtpService,
     TokenService,

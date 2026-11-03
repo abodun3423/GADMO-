@@ -3,7 +3,13 @@ import {
   otpRequestSchema,
   otpVerifySchema,
   proProfileSchema,
+  setOnlineSchema,
+  staffLoginSchema,
+  staffPasswordSchema,
+  staffVerifySchema,
+  submitVerificationSchema,
   updateProfileSchema,
+  verificationDecisionSchema,
 } from './schemas';
 
 describe('auth schemas', () => {
@@ -75,5 +81,53 @@ describe('Pro profile', () => {
     expect(proProfileSchema.safeParse({ ...base, verificationStatus: 'APPROVED' }).success).toBe(
       false,
     );
+  });
+});
+
+describe('identity check', () => {
+  it('takes an 11-digit NIN, ignoring spaces and dashes', () => {
+    expect(submitVerificationSchema.parse({ nin: '1234 5678-901' }).nin).toBe('12345678901');
+    expect(submitVerificationSchema.safeParse({ nin: '1234567890' }).success).toBe(false);
+    expect(submitVerificationSchema.safeParse({ nin: '1234567890a' }).success).toBe(false);
+  });
+
+  it('needs a note unless the check is approved', () => {
+    expect(verificationDecisionSchema.safeParse({ decision: 'APPROVED' }).success).toBe(true);
+    expect(verificationDecisionSchema.safeParse({ decision: 'REJECTED' }).success).toBe(false);
+    expect(
+      verificationDecisionSchema.safeParse({ decision: 'NEEDS_INFO', note: 'Retake the ID photo' })
+        .success,
+    ).toBe(true);
+  });
+
+  it('only switches online with a true or false', () => {
+    expect(setOnlineSchema.safeParse({ online: true }).success).toBe(true);
+    expect(setOnlineSchema.safeParse({ online: 'yes' }).success).toBe(false);
+  });
+});
+
+describe('staff sign-in', () => {
+  it('lower-cases the email', () => {
+    expect(staffLoginSchema.parse({ email: 'Ada@GADMO.ng', password: 'x' }).email).toBe(
+      'ada@gadmo.ng',
+    );
+    expect(staffVerifySchema.parse({ email: 'Ada@GADMO.ng', code: '123456' }).email).toBe(
+      'ada@gadmo.ng',
+    );
+    expect(staffVerifySchema.safeParse({ email: 'ada@gadmo.ng', code: '12345' }).success).toBe(
+      false,
+    );
+  });
+
+  it('wants new passwords of at least 12 characters', () => {
+    expect(
+      staffPasswordSchema.safeParse({ currentPassword: 'old', newPassword: 'short' }).success,
+    ).toBe(false);
+    expect(
+      staffPasswordSchema.safeParse({
+        currentPassword: 'old',
+        newPassword: 'green plantain market',
+      }).success,
+    ).toBe(true);
   });
 });

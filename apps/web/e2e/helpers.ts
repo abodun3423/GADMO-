@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import Redis from 'ioredis';
+import { randomBytes, scryptSync } from 'node:crypto';
 import pg from 'pg';
 
 const redis = new Redis(process.env.E2E_REDIS_URL ?? 'redis://localhost:6379/14', {
@@ -50,10 +51,48 @@ export async function storedVerification(
   return row ? { result: row.result, ninEncrypted: row.nin_encrypted, files: row.files } : null;
 }
 
-/** Makes this account GADMO staff (what `pnpm admin:grant` does on a server). */
-export async function makeStaff(e164: string): Promise<void> {
-  const res = await db.query(`UPDATE users SET role = 'ADMIN' WHERE phone = $1`, [e164]);
-  if (res.rowCount !== 1) throw new Error(`No account for ${e164}`);
+/**
+ * Creates a GADMO staff account (what `pnpm admin:grant` does on a server), with the same
+ * password format as apps/api/src/auth/password.ts.
+ */
+export async function createStaff(): Promise<{ e164: string; email: string; password: string }> {
+  const { e164 } = randomPhone();
+  const email = `staff-${e164.slice(4)}@gadmo.test`;
+  const password = 'a long staff password for tests';
+  const salt = randomBytes(16);
+  const key = scryptSync(password.normalize('NFKC'), salt, 32, {
+    N: 2 ** 15,
+    r: 8,
+    p: 1,
+    maxmem: 64 * 1024 * 1024,
+  });
+  const hash = [
+    'scrypt',
+    2 ** 15,
+    8,
+    1,
+    salt.toString('base64url'),
+    key.toString('base64url'),
+  ].join('$');
+  await db.query(
+    `INSERT INTO users (phone, role, email, password_hash) VALUES ($1, 'ADMIN', $2, $3)`,
+    [e164, email, hash],
+  );
+  return { e164, email, password };
+}
+
+/** Signs in through the staff page: email + password, then the phone code. */
+export async function staffSignIn(
+  page: Page,
+  staff: { e164: string; email: string; password: string },
+): Promise<void> {
+  await page.goto('/staff');
+  await page.getByLabel('Work email').fill(staff.email);
+  await page.getByLabel('Password').fill(staff.password);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByText('We sent a code to your phone')).toBeVisible();
+  await page.getByLabel('6-digit code').fill(await readCode(staff.e164));
+  await page.getByRole('button', { name: 'Sign in' }).click();
 }
 
 export function randomPhone(): { local: string; e164: string } {

@@ -108,3 +108,38 @@ export const verificationDecisionSchema = z
     path: ['note'],
   });
 export type VerificationDecision = z.infer<typeof verificationDecisionSchema>;
+
+/** GADMO staff sign in with email + password, then a code sent to their phone. */
+export const staffLoginSchema = z
+  .object({
+    email: z
+      .email()
+      .max(200)
+      .transform((v) => v.trim().toLowerCase()),
+    password: z.string().min(1).max(200),
+  })
+  .strict();
+export type StaffLogin = z.infer<typeof staffLoginSchema>;
+
+export const staffVerifySchema = z
+  .object({
+    email: z
+      .email()
+      .max(200)
+      .transform((v) => v.trim().toLowerCase()),
+    code: z.string().regex(/^\d{6}$/, 'The code has 6 digits'),
+  })
+  .strict();
+export type StaffVerify = z.infer<typeof staffVerifySchema>;
+
+/** Staff passwords: at least 12 characters (a few words is easier to remember than symbols). */
+export const staffPasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1).max(200),
+    newPassword: z
+      .string()
+      .min(12, 'Use at least 12 characters')
+      .max(200, 'Keep it under 200 characters'),
+  })
+  .strict();
+export type StaffPassword = z.infer<typeof staffPasswordSchema>;

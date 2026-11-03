@@ -8,6 +8,10 @@ import { DB, type Db } from '../infra/infra.module';
 
 export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 export const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
+/** Staff sessions end after 12 hours, however active they are. */
+export const STAFF_SESSION_SECONDS = 12 * 60 * 60;
+
+export type SessionKind = 'app' | 'staff';
 const ISSUER = 'gadmo-api';
 const AUDIENCE = 'gadmo-web';
 
@@ -58,19 +62,27 @@ export class TokenService {
   }
 
   /** Opaque random refresh token. Only its SHA-256 hash is stored. */
-  async createRefresh(userId: string, userAgent?: string, familyId: string = randomUUID()) {
+  async createRefresh(
+    userId: string,
+    userAgent?: string,
+    familyId: string = randomUUID(),
+    kind: SessionKind = 'app',
+  ) {
     const raw = randomBytes(32).toString('base64url');
+    const ttl = kind === 'staff' ? STAFF_SESSION_SECONDS : REFRESH_TOKEN_TTL_SECONDS;
+    const expiresAt = new Date(Date.now() + ttl * 1000);
     const [row] = await this.db
       .insert(refreshTokens)
       .values({
         userId,
         familyId,
         tokenHash: sha256(raw),
-        expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000),
+        expiresAt,
         userAgent: userAgent?.slice(0, 255),
+        kind,
       })
       .returning({ id: refreshTokens.id });
-    return { raw, id: row!.id };
+    return { raw, id: row!.id, expiresAt };
   }
 
   /**
@@ -80,7 +92,7 @@ export class TokenService {
   async rotate(
     raw: string,
     userAgent?: string,
-  ): Promise<{ userId: string; refresh: { raw: string } }> {
+  ): Promise<{ userId: string; refresh: { raw: string; expiresAt: Date }; kind: SessionKind }> {
     const [current] = await this.db
       .select()
       .from(refreshTokens)
@@ -104,21 +116,28 @@ export class TokenService {
       if (claimed.length === 0) throw new UnauthorizedException();
 
       const nextRaw = randomBytes(32).toString('base64url');
+      // App sessions slide; staff sessions keep their original end time.
+      const kind: SessionKind = current.kind === 'staff' ? 'staff' : 'app';
+      const expiresAt =
+        kind === 'staff'
+          ? current.expiresAt
+          : new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000);
       const [next] = await tx
         .insert(refreshTokens)
         .values({
           userId: current.userId,
           familyId: current.familyId,
           tokenHash: sha256(nextRaw),
-          expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000),
+          expiresAt,
           userAgent: userAgent?.slice(0, 255),
+          kind,
         })
         .returning({ id: refreshTokens.id });
       await tx
         .update(refreshTokens)
         .set({ replacedById: next!.id })
         .where(eq(refreshTokens.id, current.id));
-      return { userId: current.userId, refresh: { raw: nextRaw } };
+      return { userId: current.userId, refresh: { raw: nextRaw, expiresAt }, kind };
     });
   }
 

@@ -127,12 +127,85 @@ export function Account() {
         </div>
       </dl>
 
-      <Link className="button button-quiet button-spaced" href="/jobs">
-        My jobs
-      </Link>
+      {me.role === 'ADMIN' || me.role === 'SUPER_ADMIN' ? (
+        <ChangePassword />
+      ) : (
+        <Link className="button button-quiet button-spaced" href="/jobs">
+          My jobs
+        </Link>
+      )}
       <button className="button button-quiet button-spaced" type="button" onClick={signOut}>
         Sign out
       </button>
     </>
+  );
+}
+
+/** Staff only: replace the password given by `pnpm admin:grant` with their own. */
+function ChangePassword() {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function change(e: FormEvent) {
+    e.preventDefault();
+    setMessage(null);
+    if (next.length < 12) {
+      setMessage({ ok: false, text: 'Use at least 12 characters.' });
+      return;
+    }
+    setBusy(true);
+    try {
+      await post('/v1/auth/staff/password', { currentPassword: current, newPassword: next });
+      setCurrent('');
+      setNext('');
+      setMessage({ ok: true, text: 'Password changed.' });
+    } catch (err) {
+      setMessage({
+        ok: false,
+        text:
+          fieldMessage(err) ??
+          (err instanceof ApiError ? err.message : 'Could not change it. Try again.'),
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={change} noValidate className="password-form">
+      <h2 className="section-title">Change your password</h2>
+      {message && (
+        <p className={`alert ${message.ok ? 'alert-info' : 'alert-error'}`} role="status">
+          {message.text}
+        </p>
+      )}
+      <div className="field">
+        <label htmlFor="current-password">Current password</label>
+        <input
+          id="current-password"
+          type="password"
+          autoComplete="current-password"
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+        />
+      </div>
+      <div className="field">
+        <label htmlFor="new-password">
+          New password <span className="hint">At least 12 characters. A few words works well.</span>
+        </label>
+        <input
+          id="new-password"
+          type="password"
+          autoComplete="new-password"
+          value={next}
+          onChange={(e) => setNext(e.target.value)}
+        />
+      </div>
+      <button className="button button-quiet" type="submit" disabled={busy}>
+        {busy ? 'Saving…' : 'Change password'}
+      </button>
+    </form>
   );
 }

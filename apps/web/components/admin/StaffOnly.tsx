@@ -13,7 +13,7 @@ export function StaffOnly({ next, children }: { next: string; children: ReactNod
       <>
         <h1 className="page-title">GADMO staff</h1>
         <p className="lede">Sign in with a staff account.</p>
-        <Link className="button" href={`/signin?next=${encodeURIComponent(next)}`}>
+        <Link className="button" href={`/staff?next=${encodeURIComponent(next)}`}>
           Sign in
         </Link>
       </>

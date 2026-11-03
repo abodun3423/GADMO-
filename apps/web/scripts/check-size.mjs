@@ -24,6 +24,7 @@ const PAGES = [
   '/pro/profile',
   '/pro/verify',
   '/admin',
+  '/staff',
 ];
 const webDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const base = `http://127.0.0.1:${PORT}`;

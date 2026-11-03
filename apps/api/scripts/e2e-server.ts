@@ -38,6 +38,8 @@ async function main(): Promise<void> {
     FIELD_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
     WEB_ORIGIN: process.env.E2E_WEB_ORIGIN ?? 'http://localhost:3100',
     SMS_PROVIDER: 'outbox',
+    // Every browser test signs in from the same address.
+    OTP_IP_HOURLY_LIMIT: '100000',
   });
   await resetDatabase();
   // Fresh rate limits and codes for every run (this Redis database is used only by e2e).
