@@ -4,6 +4,7 @@ import { AdminVerificationsController } from './admin/verifications.controller';
 import { AuthModule } from './auth/auth.module';
 import { CatalogController } from './catalog/catalog.controller';
 import { ChatController } from './chat/chat.controller';
+import { InspectionController } from './chat/inspection.controller';
 import { ConfigModule } from './config/config.module';
 import { DispatchModule } from './dispatch/dispatch.module';
 import { HealthController } from './health/health.controller';
@@ -20,6 +21,7 @@ import { VerificationController } from './verification/verification.controller';
     HealthController,
     CatalogController,
     ChatController,
+    InspectionController,
     JobsController,
     ProController,
     VerificationController,

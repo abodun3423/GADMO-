@@ -483,6 +483,88 @@ input[type='password'] {
   width: auto;
 }
 
+/* ---------- Inspection fee ---------- */
+.fee-panel {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  font-size: 15px;
+}
+
+.fee-panel p {
+  margin: 0 0 8px;
+}
+
+.fee-agreed {
+  border-color: var(--ok);
+  box-shadow: inset 4px 0 0 var(--ok);
+}
+
+.fee-form .field {
+  margin-bottom: 10px;
+}
+
+.fee-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fee-actions .button-small {
+  margin-top: 0;
+}
+
+.offer-card {
+  align-self: stretch;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 2px solid var(--indigo);
+  border-radius: var(--radius-control);
+}
+
+.offer-card-mine {
+  border-style: dashed;
+}
+
+.offer-card p {
+  margin: 0 0 4px;
+}
+
+.offer-card-title strong {
+  font-size: 20px;
+}
+
+.offer-card-note {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.offer-card-status {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.offer-card-status.offer-accepted {
+  color: var(--ok);
+}
+
+.offer-card-status.offer-declined {
+  color: var(--error);
+}
+
+.chat-event {
+  align-self: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #e5f4e4;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
 /* ---------- Account details ---------- */
 .details {
   margin: 24px 0 8px;

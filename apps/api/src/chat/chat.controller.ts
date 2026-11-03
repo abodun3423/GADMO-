@@ -17,7 +17,7 @@ import { z } from 'zod';
 import { type AuthUser, CurrentUser, JwtAuthGuard } from '../auth/guards';
 import { enforceLimits } from '../common/rate-limit';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { categories, jobs, messages, users } from '../db/schema';
+import { categories, inspectionOffers, jobs, messages, users } from '../db/schema';
 import { DB, type Db, REDIS } from '../infra/infra.module';
 
 const idPipe = new ZodValidationPipe(z.uuid());
@@ -61,6 +61,7 @@ export class ChatController {
           createdAt: job.createdAt,
           serviceName: job.serviceName,
           inspectionPolicy: job.inspectionPolicy,
+          inspectionFeeKobo: job.inspectionFeeKobo,
         },
         you: job.customerId === user.id ? 'CUSTOMER' : 'PRO',
         other: other ? { id: other.id, name: other.name } : null,
@@ -82,11 +83,19 @@ export class ChatController {
       .select({
         id: messages.id,
         senderId: messages.senderId,
+        kind: messages.kind,
         body: messages.body,
         wasMasked: messages.wasMasked,
         createdAt: messages.createdAt,
+        offer: {
+          id: inspectionOffers.id,
+          amountKobo: inspectionOffers.amountKobo,
+          note: inspectionOffers.note,
+          status: inspectionOffers.status,
+        },
       })
       .from(messages)
+      .leftJoin(inspectionOffers, eq(inspectionOffers.id, messages.offerId))
       .where(
         and(
           eq(messages.jobId, jobId),
@@ -98,7 +107,21 @@ export class ChatController {
       )
       .orderBy(asc(messages.createdAt), asc(messages.id))
       .limit(200);
-    return { messages: rows.map((m) => ({ ...m, mine: m.senderId === user.id })) };
+    // Offer statuses change after the message is sent, so polling clients also get the
+    // current state of every offer in the chat.
+    const offers = await this.db
+      .select({ id: inspectionOffers.id, status: inspectionOffers.status })
+      .from(inspectionOffers)
+      .where(eq(inspectionOffers.jobId, jobId));
+    return {
+      messages: rows.map(({ offer, ...m }) => ({
+        ...m,
+        mine: m.senderId === user.id,
+        offer: offer?.id ? offer : null,
+      })),
+      offers,
+      inspectionFeeKobo: job.inspectionFeeKobo,
+    };
   }
 
   @Post('messages')
@@ -130,13 +153,14 @@ export class ChatController {
         .returning({
           id: messages.id,
           senderId: messages.senderId,
+          kind: messages.kind,
           body: messages.body,
           wasMasked: messages.wasMasked,
           createdAt: messages.createdAt,
         });
     });
     return {
-      message: { ...message!, mine: true },
+      message: { ...message!, mine: true, offer: null },
       notice: masked.masked ? HIDDEN_NOTE : null,
     };
   }
@@ -153,6 +177,7 @@ export class ChatController {
         description: jobs.description,
         scheduledAt: jobs.scheduledAt,
         createdAt: jobs.createdAt,
+        inspectionFeeKobo: jobs.inspectionFeeKobo,
         serviceName: categories.name,
         inspectionPolicy: categories.inspectionPolicy,
       })

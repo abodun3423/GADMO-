@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -906,5 +906,121 @@ describe('job chat: only the customer and the assigned Pro, contact details hidd
     await ctx.db.update(jobs).set({ status: 'CANCELLED' }).where(eq(jobs.id, id));
     await send({ body: 'hello?' }).expect(409);
     await customer.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+  });
+});
+
+describe('inspection fee agreed in chat (max ₦5,000)', () => {
+  async function acceptedJob(categoryId = electricianId) {
+    const customer = await login(ctx);
+    const pro = await login(ctx, { role: 'pro' });
+    const created = await customer.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(
+        newJob(categoryId, {
+          type: 'SCHEDULED',
+          scheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
+          latitude: 1 + Math.random(),
+          longitude: 1 + Math.random(),
+        }),
+      )
+      .expect(201);
+    const id = created.body.job.id as string;
+    await ctx.db.update(jobs).set({ proId: pro.userId, status: 'ACCEPTED' }).where(eq(jobs.id, id));
+    return { customer, pro, id };
+  }
+  const propose = (agent: Awaited<ReturnType<typeof login>>['agent'], id: string, body: object) =>
+    agent.post(`/v1/jobs/${id}/inspection-offers`).set(CLIENT_HEADER).send(body);
+  const answer = (
+    agent: Awaited<ReturnType<typeof login>>['agent'],
+    offerId: string,
+    action: 'accept' | 'decline' | 'counter',
+    body: object = {},
+  ) => agent.post(`/v1/inspection-offers/${offerId}/${action}`).set(CLIENT_HEADER).send(body);
+
+  it('the Pro offers, the customer counters, the Pro accepts; the fee is stored on the job', async () => {
+    const { customer, pro, id } = await acceptedJob();
+    await propose(customer.agent, id, { amountKobo: 100_000 }).expect(403); // the Pro proposes
+    await propose(pro.agent, id, { amountKobo: 500_100 }).expect(400); // over ₦5,000
+    await propose(pro.agent, id, { amountKobo: 150_050 }).expect(400); // whole naira only
+    await propose(pro.agent, id, { amountKobo: 0 }).expect(400);
+
+    const first = await propose(pro.agent, id, {
+      amountKobo: 250_000,
+      note: 'About 8 km away, coming within the hour',
+    }).expect(201);
+    const offerId = first.body.offer.id as string;
+    await propose(pro.agent, id, { amountKobo: 200_000 }).expect(409); // one at a time
+    await answer(pro.agent, offerId, 'accept').expect(403); // not your own
+
+    const counter = await answer(customer.agent, offerId, 'counter', {
+      amountKobo: 150_000,
+    }).expect(201);
+    await answer(customer.agent, counter.body.offer.id, 'accept').expect(403);
+    await answer(customer.agent, offerId, 'accept').expect(409); // already countered
+
+    const agreed = await answer(pro.agent, counter.body.offer.id, 'accept').expect(200);
+    expect(agreed.body.inspectionFeeKobo).toBe(150_000);
+    const [row] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(row!.inspectionFeeKobo).toBe(150_000);
+    expect(row!.inspectionAgreedAt).not.toBeNull();
+    await propose(pro.agent, id, { amountKobo: 100_000 }).expect(409); // already agreed
+
+    const chat = await customer.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+    expect(chat.body.messages.map((m: { kind: string; body: string }) => [m.kind, m.body])).toEqual(
+      [
+        ['OFFER', 'Inspection fee offer: ₦2,500. About 8 km away, coming within the hour'],
+        ['OFFER', 'Inspection fee offer: ₦1,500'],
+        ['EVENT', 'Inspection fee agreed: ₦1,500.'],
+      ],
+    );
+    expect(chat.body.inspectionFeeKobo).toBe(150_000);
+    expect(chat.body.offers.map((o: { status: string }) => o.status).sort()).toEqual([
+      'ACCEPTED',
+      'COUNTERED',
+    ]);
+  });
+
+  it('after a decline the Pro can make a new offer', async () => {
+    const { customer, pro, id } = await acceptedJob();
+    const first = await propose(pro.agent, id, { amountKobo: 500_000 }).expect(201);
+    await answer(customer.agent, first.body.offer.id, 'decline').expect(200);
+    await answer(customer.agent, first.body.offer.id, 'decline').expect(409);
+    await propose(pro.agent, id, { amountKobo: 300_000 }).expect(201);
+  });
+
+  it('nobody else can see, make or answer offers', async () => {
+    const { pro, id } = await acceptedJob();
+    const offer = await propose(pro.agent, id, { amountKobo: 200_000 }).expect(201);
+    const stranger = await login(ctx);
+    const otherPro = await login(ctx, { role: 'pro' });
+    for (const who of [stranger, otherPro]) {
+      await propose(who.agent, id, { amountKobo: 100_000 }).expect(404);
+      for (const action of ['accept', 'decline'] as const) {
+        await answer(who.agent, offer.body.offer.id, action).expect(404);
+      }
+      await answer(who.agent, offer.body.offer.id, 'counter', { amountKobo: 100_000 }).expect(404);
+    }
+    await pro.agent
+      .post(`/v1/jobs/${id}/inspection-offers`)
+      .send({ amountKobo: 100_000 })
+      .expect(403); // CSRF
+  });
+
+  it('services without an inspection fee refuse offers; contact details in a note are hidden', async () => {
+    const [none] = await ctx.db
+      .select()
+      .from(categories)
+      .where(and(eq(categories.inspectionPolicy, 'NONE'), isNotNull(categories.parentId)))
+      .limit(1);
+    const noFee = await acceptedJob(none!.id);
+    await propose(noFee.pro.agent, noFee.id, { amountKobo: 100_000 }).expect(409);
+
+    const { pro, id } = await acceptedJob();
+    const res = await propose(pro.agent, id, {
+      amountKobo: 100_000,
+      note: 'Transport is far, call 0803 123 4567',
+    }).expect(201);
+    expect(res.body.offer.note).not.toMatch(/0803|4567/);
   });
 });

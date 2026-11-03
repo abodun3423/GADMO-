@@ -67,7 +67,7 @@ test('a verified Pro goes online, gets an emergency offer with a countdown, and 
   await page
     .getByLabel('Message', { exact: true })
     .fill('I can come by 3pm. Call me on 0803 123 4567');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Contact details were hidden');
   await expect(page.getByRole('list', { name: 'Messages' })).toContainText('I can come by 3pm');
   await expect(page.getByRole('list', { name: 'Messages' })).not.toContainText('4567');
@@ -78,7 +78,7 @@ test('a verified Pro goes online, gets an emergency offer with a countdown, and 
   await expect(thread).toContainText('contact details hidden');
   await expect(thread).not.toContainText('0803');
   await customerPage.getByLabel('Message', { exact: true }).fill('Great, see you then');
-  await customerPage.getByRole('button', { name: 'Send' }).click();
+  await customerPage.getByRole('button', { name: 'Send', exact: true }).click();
   // The Pro's open chat picks the reply up within a few seconds.
   await expect(page.getByRole('list', { name: 'Messages' })).toContainText('Great, see you then', {
     timeout: 10_000,
