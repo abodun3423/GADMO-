@@ -81,6 +81,10 @@ export const users = pgTable('users', {
   /** E.164. Never returned to other users. */
   phone: text('phone').notNull().unique(),
   name: text('name'),
+  /** Staff only: they sign in with email + password + a code to their phone. Lower case. */
+  email: text('email').unique(),
+  /** Staff only: scrypt hash (see auth/password.ts). */
+  passwordHash: text('password_hash'),
   role: roleEnum('role').notNull().default('CUSTOMER'),
   status: userStatusEnum('status').notNull().default('ACTIVE'),
   /** Count of attempts to share contact details in chat. */
@@ -104,6 +108,8 @@ export const refreshTokens = pgTable(
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     replacedById: uuid('replaced_by_id'),
     userAgent: text('user_agent'),
+    /** 'staff' sessions end at a fixed time (no sliding renewal); 'app' sessions slide. */
+    kind: text('kind').notNull().default('app'),
     createdAt: createdAt(),
   },
   (t) => [

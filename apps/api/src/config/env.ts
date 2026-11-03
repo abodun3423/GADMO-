@@ -13,6 +13,8 @@ const envSchema = z
     SMS_PROVIDER: z.enum(['console', 'outbox', 'termii']).default('console'),
     SMS_API_KEY: z.string().optional(),
     SMS_SENDER_ID: z.string().default('GADMO'),
+    /** Login codes one network address may request per hour (raised only for browser tests). */
+    OTP_IP_HOURLY_LIMIT: z.coerce.number().int().positive().default(30),
     /** 32 random bytes, base64: encrypts NINs and identity photos (AES-256-GCM). */
     FIELD_ENCRYPTION_KEY: z.string().refine((v) => Buffer.from(v, 'base64').length === 32, {
       message: 'FIELD_ENCRYPTION_KEY must be 32 bytes, base64-encoded',

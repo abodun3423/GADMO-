@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { makeStaff, signIn, storedVerification, watchCsp } from './helpers';
+import { createStaff, signIn, staffSignIn, storedVerification, watchCsp } from './helpers';
 
 /** A tiny valid PNG (the app re-encodes it as JPEG before upload). */
 const photo = (name: string) => ({
@@ -75,11 +75,8 @@ test('GADMO staff ask for a better photo, then approve; the Pro can go online', 
 
   // A staff member reviews it.
   const staffPage = await browser.newPage();
-  await staffPage.goto('/signin');
-  const staff = await signIn(staffPage, 'customer');
-  await expect(staffPage).toHaveURL('/');
-  await makeStaff(staff.e164);
-  await staffPage.goto('/admin');
+  await staffSignIn(staffPage, await createStaff());
+  await expect(staffPage).toHaveURL('/admin');
   await expect(
     staffPage.getByRole('navigation', { name: 'Your GADMO' }).getByRole('link', { name: 'Review' }),
   ).toBeVisible();

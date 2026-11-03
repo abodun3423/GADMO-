@@ -30,7 +30,7 @@ export class OtpService {
     await enforceLimits(this.redis, [
       { key: `otp:phone:${phone}`, max: 3, windowSeconds: 10 * 60 },
       { key: `otp:phone-day:${phone}`, max: 10, windowSeconds: 24 * 60 * 60 },
-      { key: `otp:ip:${ip}`, max: 30, windowSeconds: 60 * 60 },
+      { key: `otp:ip:${ip}`, max: this.env.OTP_IP_HOURLY_LIMIT, windowSeconds: 60 * 60 },
     ]);
 
     const code = randomInt(0, 1_000_000).toString().padStart(6, '0');

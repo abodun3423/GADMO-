@@ -67,7 +67,13 @@ export class AuthController {
     if (!raw) throw new UnauthorizedException();
     try {
       const session = await this.auth.refresh(raw, req.headers['user-agent']);
-      setAuthCookies(res, session.accessToken, session.refreshToken, this.secureCookies);
+      setAuthCookies(
+        res,
+        session.accessToken,
+        session.refreshToken,
+        this.secureCookies,
+        session.refreshExpiresAt,
+      );
       return { ok: true };
     } catch (err) {
       clearAuthCookies(res, this.secureCookies);

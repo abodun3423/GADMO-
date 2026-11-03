@@ -15,6 +15,8 @@ export function setAuthCookies(
   access: string,
   refresh: string,
   secure: boolean,
+  /** When the session ends (staff sessions); app sessions last REFRESH_TOKEN_TTL_SECONDS. */
+  refreshExpiresAt?: Date,
 ): void {
   res.cookie(ACCESS_COOKIE, access, {
     ...base(secure),
@@ -25,7 +27,9 @@ export function setAuthCookies(
     ...base(secure),
     sameSite: 'strict',
     path: REFRESH_COOKIE_PATH,
-    maxAge: REFRESH_TOKEN_TTL_SECONDS * 1000,
+    maxAge: refreshExpiresAt
+      ? Math.max(0, refreshExpiresAt.getTime() - Date.now())
+      : REFRESH_TOKEN_TTL_SECONDS * 1000,
   });
 }
 

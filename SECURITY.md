@@ -71,8 +71,19 @@ It has no HTTP endpoint, and the API refuses to start with `console` or `outbox`
 - No API route returns a NIN or a photo to the Pro or to customers. Only staff (ADMIN or
   SUPER_ADMIN) can read them, in /admin; each view of a NIN, ID photo or selfie, and each decision,
   is written to the audit log. Photos are sent with `Cache-Control: no-store`.
-- Staff accounts can't be created in the app: `pnpm admin:grant <phone>` needs server access, never
-  converts a Pro, and is audit-logged.
+- Staff accounts can't be created in the app: `pnpm admin:grant <phone> <email>` needs server
+  access, never converts a Pro, asks for the password without showing or logging it, and is
+  audit-logged.
+
+## Staff sign-in (separate from customers and Pros)
+
+- Staff sign in at `/staff` with email + password (scrypt, N=2^15) **and** a code sent to their
+  phone. The code step only works within 5 minutes of a correct password.
+- Staff numbers are refused by the customer/Pro sign-in, and customer/Pro accounts are refused by
+  the staff sign-in. Wrong passwords and unknown emails get the same answer in the same time.
+- Staff sessions end 12 hours after sign-in; renewing the access token does not extend them.
+- Sign-ins and password changes are audit-logged; password guesses are rate limited per email
+  and per network address.
 - Photos live in the `private_files` table for now; they move to private object storage later.
 
 ## Rules for contributors
