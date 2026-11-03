@@ -17,6 +17,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
@@ -210,6 +211,45 @@ export const jobs = pgTable(
     index('jobs_customer_idx').on(t.customerId),
     index('jobs_pro_idx').on(t.proId),
     index('jobs_status_idx').on(t.status),
+  ],
+);
+
+export const offerStatusEnum = pgEnum('offer_status', [
+  'PENDING',
+  'ACCEPTED',
+  'DECLINED',
+  'EXPIRED',
+  'WITHDRAWN',
+]);
+
+/**
+ * Emergency dispatch: a request is offered to one Pro at a time, nearest first, for
+ * EMERGENCY_OFFER_SECONDS. Each Pro is offered a job at most once, and the database
+ * allows only one PENDING offer per job.
+ */
+export const jobOffers = pgTable(
+  'job_offers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    jobId: uuid('job_id')
+      .notNull()
+      .references(() => jobs.id, { onDelete: 'cascade' }),
+    proId: uuid('pro_id')
+      .notNull()
+      .references(() => users.id),
+    status: offerStatusEnum('status').notNull().default('PENDING'),
+    /** Distance from the Pro's base to the job when offered, in km. */
+    distanceKm: doublePrecision('distance_km').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    respondedAt: timestamp('responded_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique('job_offers_job_pro_uq').on(t.jobId, t.proId),
+    uniqueIndex('job_offers_one_pending_per_job')
+      .on(t.jobId)
+      .where(sql`${t.status} = 'PENDING'`),
+    index('job_offers_pro_status_idx').on(t.proId, t.status),
   ],
 );
 

@@ -217,6 +217,38 @@ a {
   vertical-align: 2px;
 }
 
+/* An emergency offer: the one loud element on Pro home. */
+.offer {
+  margin: 0 0 16px;
+  padding: 16px;
+  background: var(--surface);
+  border: 2px solid var(--warn);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 6px 20px rgb(15 22 56 / 0.08);
+}
+
+.offer h2 {
+  margin: 4px 0 2px;
+  font-size: 20px;
+}
+
+.offer p {
+  margin: 0 0 6px;
+}
+
+.offer-timer {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.offer-actions {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
 /* ---------- Account details ---------- */
 .details {
   margin: 24px 0 8px;
@@ -598,6 +630,31 @@ select {
 
 .job p {
   margin: 0;
+}
+
+.job-status.job-status-wait {
+  color: var(--muted);
+}
+
+.button-small {
+  width: auto;
+  min-height: 44px;
+  margin-top: 10px;
+  padding: 0 16px;
+  font-size: 15px;
+}
+
+.confirm {
+  margin-top: 10px;
+}
+
+.confirm p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.confirm .button-small + .button-small {
+  margin-left: 8px;
 }
 
 .job-status {

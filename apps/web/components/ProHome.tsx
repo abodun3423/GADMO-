@@ -3,10 +3,18 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, post } from '@/lib/api';
-import type { NearbyJob, ProProfile } from '@/lib/types';
+import {
+  type Job,
+  JOB_STATUS_LABEL,
+  type NearbyJob,
+  type Offer,
+  type ProProfile,
+} from '@/lib/types';
 import { useSession } from '@/lib/useSession';
 
 const REFRESH_MS = 30_000;
+/** Emergency offers last 2 minutes, so they are checked for often. */
+const OFFER_REFRESH_MS = 8_000;
 
 const timeFormat = new Intl.DateTimeFormat('en-NG', {
   weekday: 'short',
@@ -28,6 +36,10 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
   const { me, loading } = useSession();
   const [profile, setProfile] = useState<ProProfile | null>(null);
   const [jobs, setJobs] = useState<NearbyJob[] | null>(null);
+  const [offers, setOffers] = useState<(Offer & { receivedAt: number })[]>([]);
+  const [mine, setMine] = useState<Job[] | null>(null);
+  const [answering, setAnswering] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,26 +52,87 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
     }
   }, []);
 
+  const loadOffers = useCallback(async () => {
+    try {
+      const res = await api<{ offers: Offer[] }>('/v1/pro/offers');
+      // performance.now() is a steady clock, so the countdown is right even if the
+      // device's clock is wrong; the seconds left come from GADMO's server.
+      const receivedAt = performance.now();
+      setOffers(res.offers.map((o) => ({ ...o, receivedAt })));
+    } catch {
+      // Keep the last list; the next check will try again.
+    }
+  }, []);
+
+  const loadMine = useCallback(async () => {
+    try {
+      const res = await api<{ jobs: Job[] }>('/v1/jobs');
+      setMine(res.jobs.filter((j) => j.status !== 'CANCELLED'));
+    } catch {
+      setMine([]);
+    }
+  }, []);
+
   useEffect(() => {
     if (me?.role !== 'PRO') return;
+    void loadMine();
     api<{ profile: ProProfile }>('/v1/pro/profile')
       .then((r) => setProfile(r.profile))
       .catch(() =>
         setError('Your profile could not be loaded. Check your connection and refresh.'),
       );
-  }, [me]);
+  }, [me, loadMine]);
 
   const online = profile?.isOnline === true && profile.verificationStatus === 'APPROVED';
 
-  // While online, check for new requests every 30 seconds (only when the page is visible).
+  // While online, check for emergency offers often and scheduled requests every 30 seconds
+  // (only while the page is visible).
   useEffect(() => {
     if (!online) return;
     void loadJobs();
-    const timer = setInterval(() => {
+    void loadOffers();
+    const jobsTimer = setInterval(() => {
       if (document.visibilityState === 'visible') void loadJobs();
     }, REFRESH_MS);
+    const offersTimer = setInterval(() => {
+      if (document.visibilityState === 'visible') void loadOffers();
+    }, OFFER_REFRESH_MS);
+    return () => {
+      clearInterval(jobsTimer);
+      clearInterval(offersTimer);
+    };
+  }, [online, loadJobs, loadOffers]);
+
+  // Ticks the countdown on offers once a second.
+  const [, setNow] = useState(0);
+  useEffect(() => {
+    if (offers.length === 0) return;
+    const timer = setInterval(() => setNow(performance.now()), 1000);
     return () => clearInterval(timer);
-  }, [online, loadJobs]);
+  }, [offers.length]);
+
+  async function answer(offer: Offer, accept: boolean) {
+    setError(null);
+    setNotice(null);
+    setAnswering(offer.id);
+    try {
+      await post(`/v1/pro/offers/${offer.id}/${accept ? 'accept' : 'decline'}`);
+      setOffers((list) => list.filter((o) => o.id !== offer.id));
+      if (accept) {
+        setNotice('Job accepted. It’s in Your jobs below.');
+        await loadMine();
+      }
+    } catch (err) {
+      setOffers((list) => list.filter((o) => o.id !== offer.id));
+      setError(
+        err instanceof ApiError && err.status === 409
+          ? 'Too late: that request is no longer available.'
+          : 'Could not answer. Check your connection.',
+      );
+    } finally {
+      setAnswering(null);
+    }
+  }
 
   async function setOnline(next: boolean) {
     setError(null);
@@ -67,7 +140,10 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
     try {
       const res = await post<{ profile: ProProfile }>('/v1/pro/online', { online: next });
       setProfile(res.profile);
-      if (!next) setJobs(null);
+      if (!next) {
+        setJobs(null);
+        setOffers([]);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not change your status. Try again.');
     } finally {
@@ -111,6 +187,11 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
       {error && (
         <p className="alert alert-error" role="alert">
           {error}
+        </p>
+      )}
+      {notice && (
+        <p className="alert alert-info" role="status">
+          {notice}
         </p>
       )}
       {!profile && !error && <p className="meta">Loading…</p>}
@@ -160,32 +241,91 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
             </button>
           </section>
 
+          {online &&
+            offers.map((offer) => {
+              const left = Math.max(
+                0,
+                Math.round(offer.secondsLeft - (performance.now() - offer.receivedAt) / 1000),
+              );
+              return (
+                <section key={offer.id} className="offer" aria-label="Emergency request for you">
+                  <p className="offer-timer" role="timer">
+                    {left > 0
+                      ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left to accept`
+                      : 'Time is up'}
+                  </p>
+                  <h2>
+                    <span className="badge">Emergency</span>
+                    {serviceNames[offer.job.categoryId] ?? 'Service'}
+                  </h2>
+                  <p className="meta">About {offer.distanceKm} km away</p>
+                  <p>{offer.job.description}</p>
+                  <div className="offer-actions">
+                    <button
+                      className="button"
+                      type="button"
+                      disabled={answering === offer.id || left === 0}
+                      onClick={() => answer(offer, true)}
+                    >
+                      Accept
+                    </button>
+                    <button
+                      className="button button-quiet"
+                      type="button"
+                      disabled={answering === offer.id || left === 0}
+                      onClick={() => answer(offer, false)}
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </section>
+              );
+            })}
+
+          {mine && mine.length > 0 && (
+            <section aria-labelledby="mine-title">
+              <h2 id="mine-title" className="section-title">
+                Your jobs
+              </h2>
+              {mine.map((job) => (
+                <article
+                  key={job.id}
+                  className={`job${job.type === 'EMERGENCY' ? ' job-urgent' : ''}`}
+                >
+                  <h3>{serviceNames[job.categoryId] ?? 'Service'}</h3>
+                  <p>{job.description}</p>
+                  <p className="job-status">
+                    {job.status === 'ACCEPTED'
+                      ? 'You accepted. Chat and the inspection fee are coming next.'
+                      : JOB_STATUS_LABEL[job.status]}
+                  </p>
+                </article>
+              ))}
+            </section>
+          )}
+
           {online && (
             <section aria-labelledby="nearby-title">
               <h2 id="nearby-title" className="section-title">
-                Requests near you
+                Scheduled requests near you
               </h2>
               <p className="meta">
-                Updated every 30 seconds. Accepting requests comes in the next update.
+                Emergencies come to you one at a time, above, with 2 minutes to accept. Scheduled
+                requests are listed here; customers will choose a Pro for these soon.
               </p>
               {jobs === null && <p className="meta">Looking for requests…</p>}
               {jobs?.length === 0 && (
-                <p className="empty">No open requests near you right now. Stay online.</p>
+                <p className="empty">No scheduled requests near you right now.</p>
               )}
               {jobs?.map((job) => (
                 <article
                   key={job.id}
                   className={`job${job.type === 'EMERGENCY' ? ' job-urgent' : ''}`}
                 >
-                  <h3>
-                    {job.type === 'EMERGENCY' && <span className="badge">Emergency</span>}
-                    {serviceNames[job.categoryId] ?? 'Service'}
-                  </h3>
+                  <h3>{serviceNames[job.categoryId] ?? 'Service'}</h3>
                   <p className="meta">
-                    About {job.distanceKm} km away ·{' '}
-                    {job.type === 'EMERGENCY'
-                      ? `requested ${timeFormat.format(new Date(job.createdAt))}`
-                      : `for ${timeFormat.format(new Date(job.scheduledAt ?? job.createdAt))}`}
+                    About {job.distanceKm} km away · for{' '}
+                    {timeFormat.format(new Date(job.scheduledAt ?? job.createdAt))}
                   </p>
                   <p>{job.description}</p>
                 </article>

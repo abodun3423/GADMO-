@@ -1,7 +1,9 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Get,
+  HttpCode,
   Inject,
   NotFoundException,
   Param,
@@ -10,10 +12,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { maskContactInfo } from '@gadmo/shared';
-import { and, desc, eq, isNotNull, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { categories, jobs } from '../db/schema';
+import { categories, jobOffers, jobs, users } from '../db/schema';
+import { DispatchService } from '../dispatch/dispatch.service';
 import { DB, type Db } from '../infra/infra.module';
 import { type AuthUser, CurrentUser, JwtAuthGuard, Roles } from '../auth/guards';
 
@@ -49,7 +52,55 @@ const publicJobColumns = {
 @Controller('jobs')
 @UseGuards(JwtAuthGuard)
 export class JobsController {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    private readonly dispatch: DispatchService,
+  ) {}
+
+  /**
+   * Adds what the customer needs to follow a job: the assigned Pro's name, and for an open
+   * emergency whether it is with a Pro right now (OFFERED) or waiting for one (NO_PRO_YET).
+   * Which Pro holds an offer is never shown.
+   */
+  private async withStatus<
+    T extends { id: string; status: string; type: string; proId: string | null },
+  >(rows: T[]) {
+    const proIds = [...new Set(rows.map((r) => r.proId).filter((id): id is string => !!id))];
+    const names = proIds.length
+      ? await this.db
+          .select({ id: users.id, name: users.name })
+          .from(users)
+          .where(inArray(users.id, proIds))
+      : [];
+    const open = rows.filter((r) => r.status === 'REQUESTED' && r.type === 'EMERGENCY');
+    const offered = open.length
+      ? await this.db
+          .select({ jobId: jobOffers.jobId })
+          .from(jobOffers)
+          .where(
+            and(
+              inArray(
+                jobOffers.jobId,
+                open.map((r) => r.id),
+              ),
+              eq(jobOffers.status, 'PENDING'),
+              sql`${jobOffers.expiresAt} > now()`,
+            ),
+          )
+      : [];
+    const nameOf = new Map(names.map((n) => [n.id, n.name]));
+    const live = new Set(offered.map((o) => o.jobId));
+    return rows.map((r) => ({
+      ...r,
+      proName: r.proId ? (nameOf.get(r.proId) ?? null) : null,
+      dispatch:
+        r.status === 'REQUESTED' && r.type === 'EMERGENCY'
+          ? live.has(r.id)
+            ? ('OFFERED' as const)
+            : ('NO_PRO_YET' as const)
+          : null,
+    }));
+  }
 
   @Post()
   @Roles(['CUSTOMER'])
@@ -89,7 +140,10 @@ export class JobsController {
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
       })
       .returning(publicJobColumns);
-    return { job };
+    // Emergencies go straight to the nearest online Pro.
+    if (job!.type === 'EMERGENCY') await this.dispatch.advance(job!.id);
+    const [withStatus] = await this.withStatus([job!]);
+    return { job: withStatus };
   }
 
   /** Only jobs where the caller is the customer or the assigned Pro. */
@@ -101,7 +155,7 @@ export class JobsController {
       .where(or(eq(jobs.customerId, user.id), eq(jobs.proId, user.id)))
       .orderBy(desc(jobs.createdAt))
       .limit(50);
-    return { jobs: rows };
+    return { jobs: await this.withStatus(rows) };
   }
 
   /**
@@ -124,6 +178,43 @@ export class JobsController {
       )
       .limit(1);
     if (!job) throw new NotFoundException();
-    return { job };
+    const [withStatus] = await this.withStatus([job]);
+    return { job: withStatus };
+  }
+
+  /**
+   * The customer cancels a request that no Pro has taken yet. Later stages involve
+   * payments and follow the dispute rules instead.
+   */
+  @Post(':id/cancel')
+  @HttpCode(200)
+  @Roles(['CUSTOMER'])
+  async cancel(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ZodValidationPipe(z.uuid())) id: string,
+  ) {
+    return this.db.transaction(async (tx) => {
+      const [job] = await tx
+        .select({ status: jobs.status })
+        .from(jobs)
+        .where(and(eq(jobs.id, id), eq(jobs.customerId, user.id)))
+        .for('update');
+      if (!job) throw new NotFoundException();
+      if (job.status !== 'REQUESTED') {
+        throw new ConflictException(
+          'A Pro has already taken this job, so it can’t be cancelled here.',
+        );
+      }
+      await tx
+        .update(jobOffers)
+        .set({ status: 'WITHDRAWN' })
+        .where(and(eq(jobOffers.jobId, id), eq(jobOffers.status, 'PENDING')));
+      const [cancelled] = await tx
+        .update(jobs)
+        .set({ status: 'CANCELLED' })
+        .where(eq(jobs.id, id))
+        .returning(publicJobColumns);
+      return { job: { ...cancelled!, proName: null, dispatch: null } };
+    });
   }
 }
