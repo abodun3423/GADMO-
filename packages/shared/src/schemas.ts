@@ -28,3 +28,26 @@ export const otpVerifySchema = z
   })
   .strict();
 export type OtpVerify = z.infer<typeof otpVerifySchema>;
+
+/**
+ * The name other people see in GADMO (customers and Pros). Letters, spaces and
+ * . ' - only (a dot only after a word), so a phone number, email or link can never be hidden in it.
+ */
+export const displayNameSchema = z
+  .string()
+  .trim()
+  .transform((value) => value.replace(/\s+/g, ' '))
+  .pipe(
+    z
+      .string()
+      .min(2, 'Enter at least 2 letters')
+      .max(60, 'Keep it under 60 characters')
+      .regex(
+        // A dot only after a word ("Dr. Bola"), so "www.site.ng" is refused.
+        /^\p{L}(?:[\p{L}\p{M} '’-]|\.(?=\s|$))*$/u,
+        'Use letters only (no numbers, emails or links)',
+      ),
+  );
+
+export const updateProfileSchema = z.object({ name: displayNameSchema }).strict();
+export type UpdateProfile = z.infer<typeof updateProfileSchema>;

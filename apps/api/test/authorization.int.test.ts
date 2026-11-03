@@ -136,3 +136,63 @@ describe('no contact details, ever', () => {
     expect(res.body.job.description).toContain('[hidden by GADMO]');
   });
 });
+
+describe('my account', () => {
+  it('requires sign-in', async () => {
+    await request(ctx.server).get('/v1/me').expect(401);
+    await request(ctx.server).patch('/v1/me').set(CLIENT_HEADER).send({ name: 'Bola' }).expect(401);
+  });
+
+  it('returns only the caller’s own account, with their own phone', async () => {
+    const alice = await login(ctx);
+    const res = await alice.agent.get('/v1/me').expect(200);
+    expect(res.body.user).toEqual({
+      id: alice.userId,
+      phone: alice.phone.e164,
+      name: null,
+      role: 'CUSTOMER',
+    });
+  });
+
+  it('changes only the caller’s own name; role and other users stay untouched', async () => {
+    const alice = await login(ctx);
+    const bob = await login(ctx);
+    await alice.agent
+      .patch('/v1/me')
+      .set(CLIENT_HEADER)
+      .send({ name: 'Alice', role: 'ADMIN' })
+      .expect(400);
+    await alice.agent
+      .patch('/v1/me')
+      .set(CLIENT_HEADER)
+      .send({ name: 'Alice', id: bob.userId })
+      .expect(400);
+    const res = await alice.agent
+      .patch('/v1/me')
+      .set(CLIENT_HEADER)
+      .send({ name: ' Alice  Ade ' })
+      .expect(200);
+    expect(res.body.user).toMatchObject({ id: alice.userId, name: 'Alice Ade', role: 'CUSTOMER' });
+    const bobNow = await bob.agent.get('/v1/me').expect(200);
+    expect(bobNow.body.user.name).toBeNull();
+  });
+
+  it('refuses contact details in a name and requires the CSRF header', async () => {
+    const alice = await login(ctx);
+    await alice.agent
+      .patch('/v1/me')
+      .set(CLIENT_HEADER)
+      .send({ name: 'Call 08031234567' })
+      .expect(400);
+    await alice.agent.patch('/v1/me').send({ name: 'Alice' }).expect(403);
+  });
+
+  it('other users see the name but never the phone', async () => {
+    const pro = await login(ctx, { role: 'pro' });
+    await pro.agent.patch('/v1/me').set(CLIENT_HEADER).send({ name: 'Tunde' }).expect(200);
+    const customer = await login(ctx);
+    const res = await customer.agent.get(`/v1/users/${pro.userId}`).expect(200);
+    expect(res.body.user.name).toBe('Tunde');
+    expect(res.body.user.phone).toBeUndefined();
+  });
+});

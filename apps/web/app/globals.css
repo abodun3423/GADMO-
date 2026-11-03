@@ -137,6 +137,30 @@ a {
   padding: 0 4px;
 }
 
+.topbar-nav {
+  display: flex;
+  gap: 12px;
+}
+
+/* ---------- Account details ---------- */
+.details {
+  margin: 24px 0 8px;
+  padding: 0;
+}
+
+.details div {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.details dt {
+  font-weight: 600;
+}
+
+.details dd {
+  margin: 2px 0 0;
+}
+
 /* ---------- Adire band: the one bold element ---------- */
 .adire {
   background-color: var(--indigo);
