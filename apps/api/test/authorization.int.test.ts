@@ -365,8 +365,13 @@ describe('Pro online switch and nearby requests', () => {
 
   it('shows only open requests for the Pro’s skills within their distance', async () => {
     const customer = await login(ctx);
-    const near = await postJob(customer);
-    const far = await postJob(customer, LAGOS);
+    const later = {
+      type: 'SCHEDULED',
+      scheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
+    };
+    const near = await postJob(customer, later);
+    const emergencyNear = await postJob(customer);
+    const far = await postJob(customer, { ...LAGOS, ...later });
     const otherSkill = (
       await customer.agent
         .post('/v1/jobs')
@@ -380,7 +385,7 @@ describe('Pro online switch and nearby requests', () => {
         )
         .expect(201)
     ).body.job.id as string;
-    const taken = await postJob(customer);
+    const taken = await postJob(customer, later);
     const past = await postJob(customer, {
       type: 'SCHEDULED',
       scheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
@@ -399,7 +404,10 @@ describe('Pro online switch and nearby requests', () => {
     const res = await pro.agent.get('/v1/pro/jobs/nearby').expect(200);
     const ids = (res.body.jobs as { id: string }[]).map((j) => j.id);
     expect(ids).toContain(near);
-    for (const hidden of [far, otherSkill, taken, past]) expect(ids).not.toContain(hidden);
+    // Emergencies are offered one Pro at a time, never listed.
+    for (const hidden of [far, otherSkill, taken, past, emergencyNear]) {
+      expect(ids).not.toContain(hidden);
+    }
 
     const job = res.body.jobs.find((j: { id: string }) => j.id === near);
     expect(job.distanceKm).toBeGreaterThanOrEqual(0.5);
@@ -408,5 +416,57 @@ describe('Pro online switch and nearby requests', () => {
     for (const key of ['customerId', 'latitude', 'longitude', 'addressEncrypted', 'proId']) {
       expect(job[key]).toBeUndefined();
     }
+  });
+});
+
+describe('emergency offers and cancelling: object-level authorization', () => {
+  it('offers are for Pros only, and only their own', async () => {
+    await request(ctx.server).get('/v1/pro/offers').expect(401);
+    const customer = await login(ctx);
+    await customer.agent.get('/v1/pro/offers').expect(403);
+
+    const base = { latitude: 4 + Math.random(), longitude: 8 + Math.random() };
+    const owner = await login(ctx, { role: 'pro' });
+    await owner.agent
+      .put('/v1/pro/profile')
+      .set(CLIENT_HEADER)
+      .send({ categoryIds: [electricianId], bio: '', ...base, serviceRadiusKm: 10 })
+      .expect(200);
+    await ctx.db
+      .update(proProfiles)
+      .set({ verificationStatus: 'APPROVED' })
+      .where(eq(proProfiles.userId, owner.userId));
+    await owner.agent.post('/v1/pro/online').set(CLIENT_HEADER).send({ online: true }).expect(200);
+    await customer.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(newJob(electricianId, base))
+      .expect(201);
+    const [offer] = (await owner.agent.get('/v1/pro/offers').expect(200)).body.offers;
+
+    const intruder = await login(ctx, { role: 'pro' });
+    await intruder.agent.post(`/v1/pro/offers/${offer.id}/accept`).set(CLIENT_HEADER).expect(404);
+    await intruder.agent.post(`/v1/pro/offers/${offer.id}/decline`).set(CLIENT_HEADER).expect(404);
+    expect((await intruder.agent.get('/v1/pro/offers').expect(200)).body.offers).toEqual([]);
+    await customer.agent.post(`/v1/pro/offers/${offer.id}/accept`).set(CLIENT_HEADER).expect(403);
+    await owner.agent.post(`/v1/pro/offers/${offer.id}/accept`).expect(403); // CSRF
+    await owner.agent.post('/v1/pro/offers/not-a-uuid/accept').set(CLIENT_HEADER).expect(400);
+  });
+
+  it('only the job’s own customer can cancel it', async () => {
+    const alice = await login(ctx);
+    const bob = await login(ctx);
+    const pro = await login(ctx, { role: 'pro' });
+    const created = await alice.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(newJob(electricianId))
+      .expect(201);
+    const id = created.body.job.id as string;
+    await bob.agent.post(`/v1/jobs/${id}/cancel`).set(CLIENT_HEADER).expect(404);
+    await pro.agent.post(`/v1/jobs/${id}/cancel`).set(CLIENT_HEADER).expect(403);
+    await alice.agent.post(`/v1/jobs/${id}/cancel`).expect(403); // CSRF
+    const [row] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(row!.status).toBe('REQUESTED');
   });
 });

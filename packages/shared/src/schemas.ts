@@ -79,3 +79,10 @@ export type ProProfileInput = z.infer<typeof proProfileSchema>;
 
 export const setOnlineSchema = z.object({ online: z.boolean() }).strict();
 export type SetOnline = z.infer<typeof setOnlineSchema>;
+
+/**
+ * Emergency dispatch (founder decision, PRD section 5): each Pro, nearest first, gets this
+ * long to accept before the request moves to the next Pro. If nobody accepts, the request
+ * stays open and is offered to matching Pros as they come online.
+ */
+export const EMERGENCY_OFFER_SECONDS = 120;

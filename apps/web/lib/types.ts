@@ -49,6 +49,24 @@ export interface Job {
   description: string;
   scheduledAt: string | null;
   createdAt: string;
+  /** Name of the assigned Pro, once one has accepted. */
+  proName: string | null;
+  /** Open emergencies: with a Pro right now, or waiting for one to come online. */
+  dispatch: 'OFFERED' | 'NO_PRO_YET' | null;
+}
+
+/** An emergency offer to the signed-in Pro (GET /v1/pro/offers). */
+export interface Offer {
+  id: string;
+  distanceKm: number;
+  secondsLeft: number;
+  job: {
+    id: string;
+    categoryId: string;
+    type: 'EMERGENCY' | 'SCHEDULED';
+    description: string;
+    createdAt: string;
+  };
 }
 
 /** Plain-language status for customers. */

@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { api, post } from '@/lib/api';
+import { useCallback, useEffect, useState } from 'react';
+import { api, ApiError, post } from '@/lib/api';
 import { localPhone } from '@/lib/format';
 import { type Job, JOB_STATUS_LABEL } from '@/lib/types';
 import { loadMe, useSession } from '@/lib/useSession';
@@ -27,13 +27,40 @@ export function MyJobs({
   const { me, loading } = useSession();
   const [jobs, setJobs] = useState<Job[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setJobs((await api<{ jobs: Job[] }>('/v1/jobs')).jobs);
+    } catch {
+      setError('Your jobs could not be loaded. Check your connection and refresh.');
+    }
+  }, []);
 
   useEffect(() => {
-    if (!me) return;
-    api<{ jobs: Job[] }>('/v1/jobs')
-      .then((r) => setJobs(r.jobs))
-      .catch(() => setError('Your jobs could not be loaded. Check your connection and refresh.'));
-  }, [me]);
+    if (me) void load();
+  }, [me, load]);
+
+  // While a request is waiting for a Pro, check for news every 15 seconds.
+  const waiting = jobs?.some((j) => j.status === 'REQUESTED') ?? false;
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') void load();
+    }, 15_000);
+    return () => clearInterval(timer);
+  }, [waiting, load]);
+
+  async function cancel(id: string) {
+    setError(null);
+    try {
+      await post(`/v1/jobs/${id}/cancel`);
+      setConfirming(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not cancel. Try again.');
+    }
+  }
 
   async function signOut() {
     await post('/v1/auth/logout').catch(() => undefined);
@@ -105,7 +132,38 @@ export function MyJobs({
               : `For ${dateFormat.format(new Date(job.scheduledAt ?? job.createdAt))}`}
           </p>
           <p>{job.description}</p>
-          <p className="job-status">{JOB_STATUS_LABEL[job.status]}</p>
+          <p className={`job-status${job.dispatch === 'NO_PRO_YET' ? ' job-status-wait' : ''}`}>
+            {statusText(job)}
+          </p>
+          {job.status === 'REQUESTED' &&
+            me.role !== 'PRO' &&
+            (confirming === job.id ? (
+              <div className="confirm">
+                <p>Cancel this request?</p>
+                <button
+                  className="button button-small"
+                  type="button"
+                  onClick={() => cancel(job.id)}
+                >
+                  Yes, cancel it
+                </button>
+                <button
+                  className="button button-quiet button-small"
+                  type="button"
+                  onClick={() => setConfirming(null)}
+                >
+                  Keep it
+                </button>
+              </div>
+            ) : (
+              <button
+                className="button button-quiet button-small"
+                type="button"
+                onClick={() => setConfirming(job.id)}
+              >
+                Cancel request
+              </button>
+            ))}
         </article>
       ))}
 
@@ -114,4 +172,15 @@ export function MyJobs({
       </button>
     </>
   );
+}
+
+function statusText(job: Job): string {
+  if (job.dispatch === 'OFFERED') return 'Finding a Pro near you…';
+  if (job.dispatch === 'NO_PRO_YET') {
+    return 'No Pro available yet. We’ll offer it to Pros near you as they come online.';
+  }
+  if (job.status === 'ACCEPTED') {
+    return `${job.proName ?? 'A Pro'} accepted. Chat and the inspection fee are coming next.`;
+  }
+  return JOB_STATUS_LABEL[job.status];
 }

@@ -18,10 +18,12 @@ import {
   type SetOnline,
   setOnlineSchema,
 } from '@gadmo/shared';
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { type AuthUser, CurrentUser, JwtAuthGuard, Roles } from '../auth/guards';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { categories, jobs, proCategories, proProfiles } from '../db/schema';
+import { DispatchService } from '../dispatch/dispatch.service';
+import { distanceKmSql, roughKm } from '../dispatch/geo';
 import { DB, type Db } from '../infra/infra.module';
 
 /** A Pro's own profile. Routes carry no user id: a Pro only ever sees or edits their own. */
@@ -29,7 +31,10 @@ import { DB, type Db } from '../infra/infra.module';
 @UseGuards(JwtAuthGuard)
 @Roles(['PRO'])
 export class ProController {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    private readonly dispatch: DispatchService,
+  ) {}
 
   @Get('profile')
   async get(@CurrentUser() pro: AuthUser) {
@@ -99,11 +104,13 @@ export class ProController {
       .update(proProfiles)
       .set({ isOnline: body.online })
       .where(eq(proProfiles.userId, pro.id));
+    // A Pro who just came online is offered any open emergency nearby straight away.
+    if (body.online) await this.dispatch.tick();
     return { profile: await this.load(pro.id) };
   }
 
   /**
-   * Open requests near a verified, online Pro, for the services they offer. Customers'
+   * Open scheduled requests near a verified, online Pro, for the services they offer. Customers'
    * exact locations, addresses and identities are not included; only a rounded distance.
    */
   @Get('jobs/nearby')
@@ -117,12 +124,12 @@ export class ProController {
     }
     if (profile.categoryIds.length === 0) return { online: true, jobs: [] };
 
-    // Great-circle distance in km (haversine), computed in the database.
-    const distanceKm = sql<number>`(6371 * 2 * asin(sqrt(
-      power(sin(radians(${jobs.latitude} - ${profile.latitude}) / 2), 2) +
-      cos(radians(${profile.latitude})) * cos(radians(${jobs.latitude})) *
-      power(sin(radians(${jobs.longitude} - ${profile.longitude}) / 2), 2)
-    )))`;
+    const distanceKm = distanceKmSql(
+      profile.latitude,
+      profile.longitude,
+      jobs.latitude,
+      jobs.longitude,
+    );
 
     const rows = await this.db
       .select({
@@ -138,6 +145,8 @@ export class ProController {
       .where(
         and(
           eq(jobs.status, 'REQUESTED'),
+          // Emergencies are offered one Pro at a time (see DispatchService), not listed.
+          eq(jobs.type, 'SCHEDULED'),
           isNull(jobs.proId),
           inArray(jobs.categoryId, profile.categoryIds),
           // Scheduled jobs whose time has passed are no longer offered.
@@ -145,15 +154,14 @@ export class ProController {
           sql`${distanceKm} <= ${profile.serviceRadiusKm}`,
         ),
       )
-      .orderBy(desc(sql`${jobs.type} = 'EMERGENCY'`), asc(distanceKm), desc(jobs.createdAt))
+      .orderBy(asc(jobs.scheduledAt), asc(distanceKm))
       .limit(50);
 
     return {
       online: true,
       jobs: rows.map(({ distanceKm: km, ...job }) => ({
         ...job,
-        // Rounded up to the next half kilometre, so the customer's exact spot can't be worked out.
-        distanceKm: Math.max(0.5, Math.ceil(Number(km) * 2) / 2),
+        distanceKm: roughKm(km),
       })),
     };
   }

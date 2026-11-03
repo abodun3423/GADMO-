@@ -29,6 +29,13 @@
       "when": 1793624622611,
       "tag": "0003_drop_fixed_inspection_fee",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793694364310,
+      "tag": "0004_emergency_dispatch",
+      "breakpoints": true
     }
   ]
 }
