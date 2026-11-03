@@ -79,3 +79,14 @@ export interface ProProfile {
   isOnline: boolean;
   verificationStatus: VerificationStatus;
 }
+
+/** An open request near a Pro (GET /v1/pro/jobs/nearby). No customer identity or exact spot. */
+export interface NearbyJob {
+  id: string;
+  categoryId: string;
+  type: 'EMERGENCY' | 'SCHEDULED';
+  description: string;
+  scheduledAt: string | null;
+  createdAt: string;
+  distanceKm: number;
+}

@@ -41,6 +41,13 @@ In development, login codes are printed in the API console (the `pnpm dev:api` w
 being sent by SMS.
 `apps/api/.env` holds local secrets; it is git-ignored and must never be committed.
 
+**Testing as a Pro:** sign up choosing "I offer a skill or service", set up your Pro profile, then
+mark the Pro as verified (the real identity check isn't built yet) and go online in Pro home:
+
+```bash
+pnpm pro:approve 0803 123 4567   # local development only; written to the audit log
+```
+
 **A login code is refused?** The `pnpm dev:api` window explains every attempt with an `[OTP]`
 line: whether the code was accepted, did not match the newest code, had expired or was already
 used, or the number is locked after 5 wrong tries. If no `[OTP]` line appears when you press

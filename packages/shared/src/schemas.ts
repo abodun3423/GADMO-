@@ -76,3 +76,6 @@ export const proProfileSchema = z
   })
   .strict();
 export type ProProfileInput = z.infer<typeof proProfileSchema>;
+
+export const setOnlineSchema = z.object({ online: z.boolean() }).strict();
+export type SetOnline = z.infer<typeof setOnlineSchema>;

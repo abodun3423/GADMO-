@@ -72,7 +72,7 @@ test('the form explains what is missing instead of sending', async ({ page }) =>
 test('a Pro is told customer booking is not available from a Pro account', async ({ page }) => {
   await page.goto('/signin');
   await signIn(page, 'pro');
-  await expect(page).toHaveURL('/');
+  await expect(page).toHaveURL('/pro');
   await page.goto('/request?service=painter');
   await expect(page.getByText(/You’re signed in as a Pro/)).toBeVisible();
   await page.goto('/jobs');

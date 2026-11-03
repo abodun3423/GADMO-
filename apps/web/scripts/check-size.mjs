@@ -14,7 +14,15 @@ import { gzipSync } from 'node:zlib';
 
 const BUDGET_KB = 200;
 const PORT = Number(process.env.SIZE_CHECK_PORT ?? 3999);
-const PAGES = ['/', '/signin', '/request?service=plumber', '/jobs'];
+const PAGES = [
+  '/',
+  '/signin',
+  '/request?service=plumber',
+  '/jobs',
+  '/account',
+  '/pro',
+  '/pro/profile',
+];
 const webDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const base = `http://127.0.0.1:${PORT}`;
 
