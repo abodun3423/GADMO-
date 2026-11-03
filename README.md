@@ -49,11 +49,11 @@ pnpm pro:approve 0803 123 4567   # local development only; written to the audit 
 ```
 
 **Reviewing identity checks:** create a GADMO staff account (use a number that is not a Pro),
-then sign in at http://localhost:3000/staff with the email and the password it prints, plus the
+then sign in at http://localhost:3000/staff with the email and the password you typed, plus the
 code sent to that phone. Staff can't use the customer and Pro sign-in.
 
 ```bash
-pnpm admin:grant 0803 765 4321 you@example.com   # prints a one-time password; audit-logged
+pnpm admin:grant 0803 765 4321 you@example.com   # asks for a password (hidden); audit-logged
 ```
 
 **A login code is refused?** The `pnpm dev:api` window explains every attempt with an `[OTP]`

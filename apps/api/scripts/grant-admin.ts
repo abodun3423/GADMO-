@@ -4,12 +4,12 @@
  *
  *   pnpm admin:grant 0803 123 4567 ada@gadmo.ng
  *
- * Staff sign in at /staff with the email and the one-time password printed here, plus a
- * code sent to the phone, and should change the password from My account. A Pro account is
- * never converted (it would lose its Pro profile). Every use is written to the audit log.
+ * You type the staff member's password (twice, hidden; never printed or logged). They sign
+ * in at /staff with the email and that password, plus a code sent to the phone, and can
+ * change it from My account. A Pro account is never converted (it would lose its Pro
+ * profile). Every use is written to the audit log.
  */
 import { normalizeNigerianPhone } from '@gadmo/shared';
-import { randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
@@ -23,6 +23,38 @@ function usage(): never {
   process.exit(1);
 }
 
+/** Reads a line from the terminal without showing what is typed. */
+function askHidden(question: string): Promise<string> {
+  const input = process.stdin;
+  if (!input.isTTY) {
+    console.error('Run this in a terminal: it asks for the password without showing it.');
+    process.exit(1);
+  }
+  process.stderr.write(question);
+  input.setRawMode(true);
+  input.resume();
+  input.setEncoding('utf8');
+  return new Promise((resolve) => {
+    let typed = '';
+    const onData = (chunk: string) => {
+      for (const ch of chunk) {
+        if (ch === '\r' || ch === '\n') {
+          input.setRawMode(false);
+          input.pause();
+          input.off('data', onData);
+          process.stderr.write('\n');
+          resolve(typed);
+          return;
+        }
+        if (ch === '\u0003') process.exit(130); // Ctrl+C
+        if (ch === '\u007f' || ch === '\b') typed = typed.slice(0, -1);
+        else typed += ch;
+      }
+    };
+    input.on('data', onData);
+  });
+}
+
 async function main(): Promise<void> {
   loadDotEnv();
   const env = loadEnv();
@@ -34,7 +66,15 @@ async function main(): Promise<void> {
   const phone = normalizeNigerianPhone(args.filter((a) => !a.includes('@')).join(''));
   if (!phone || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) usage();
 
-  const password = randomBytes(12).toString('base64url');
+  const password = await askHidden('Password for this staff member (12+ characters): ');
+  if (password.length < 12) {
+    console.error('Use at least 12 characters. A few words works well.');
+    process.exit(1);
+  }
+  if ((await askHidden('Type it again: ')) !== password) {
+    console.error('The two passwords are different. Nothing was changed.');
+    process.exit(1);
+  }
   const passwordHash = await hashPassword(password);
 
   const pool = new Pool({ connectionString: env.DATABASE_URL, max: 1 });
@@ -82,7 +122,7 @@ async function main(): Promise<void> {
     console.log(`\nGADMO staff account ready (${id}).`);
     console.log(`  Sign in at:  /staff`);
     console.log(`  Email:       ${email}`);
-    console.log(`  Password:    ${password}   (shown once; change it in My account)`);
+    console.log(`  Password:    the one you just typed (they can change it in My account)`);
     console.log(`  Codes go to: ${args.filter((a) => !a.includes('@')).join(' ')}\n`);
   } finally {
     await pool.end();

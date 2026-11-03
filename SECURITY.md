@@ -72,7 +72,8 @@ It has no HTTP endpoint, and the API refuses to start with `console` or `outbox`
   SUPER_ADMIN) can read them, in /admin; each view of a NIN, ID photo or selfie, and each decision,
   is written to the audit log. Photos are sent with `Cache-Control: no-store`.
 - Staff accounts can't be created in the app: `pnpm admin:grant <phone> <email>` needs server
-  access, never converts a Pro, prints a one-time password and is audit-logged.
+  access, never converts a Pro, asks for the password without showing or logging it, and is
+  audit-logged.
 
 ## Staff sign-in (separate from customers and Pros)
 
