@@ -13,6 +13,10 @@ const envSchema = z
     SMS_PROVIDER: z.enum(['console', 'outbox', 'termii']).default('console'),
     SMS_API_KEY: z.string().optional(),
     SMS_SENDER_ID: z.string().default('GADMO'),
+    /** 32 random bytes, base64: encrypts NINs and identity photos (AES-256-GCM). */
+    FIELD_ENCRYPTION_KEY: z.string().refine((v) => Buffer.from(v, 'base64').length === 32, {
+      message: 'FIELD_ENCRYPTION_KEY must be 32 bytes, base64-encoded',
+    }),
     /**
      * Development only: a fixed 6-digit code that always signs in, for computers where
      * stored codes vanish (e.g. a jumping WSL/Docker clock). Refused outside development.

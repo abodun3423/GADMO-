@@ -29,7 +29,7 @@ test('a verified Pro goes online, gets an emergency offer with a countdown, and 
 
   // Still not verified: can't go online.
   await page.getByRole('link', { name: 'Go to Pro home' }).click();
-  await expect(page.getByText('Identity check not done yet')).toBeVisible();
+  await expect(page.getByText('Not verified yet')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Go online' })).toBeDisabled();
 
   await approvePro(pro.e164);

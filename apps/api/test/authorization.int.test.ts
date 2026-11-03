@@ -1,7 +1,9 @@
 import { eq, isNull } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { categories, jobs, proProfiles } from '../src/db/schema';
+import { categories, jobs, privateFiles, proProfiles, verifications } from '../src/db/schema';
+import { FIELD_CRYPTO } from '../src/infra/infra.module';
+import type { FieldCrypto } from '../src/common/field-crypto';
 import { CLIENT_HEADER, createTestApp, login, type TestContext } from './helpers';
 
 /**
@@ -468,5 +470,141 @@ describe('emergency offers and cancelling: object-level authorization', () => {
     await alice.agent.post(`/v1/jobs/${id}/cancel`).expect(403); // CSRF
     const [row] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
     expect(row!.status).toBe('REQUESTED');
+  });
+});
+
+describe('identity verification: Pros submit, nobody reads it back', () => {
+  const jpeg = (size = 2000) =>
+    Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(size, 9)]);
+  const upload = (agent: Awaited<ReturnType<typeof login>>['agent'], kind: string, body: Buffer) =>
+    agent
+      .put(`/v1/pro/verification/photos/${kind}`)
+      .set(CLIENT_HEADER)
+      .set('content-type', 'image/jpeg')
+      .send(body);
+
+  it('is for signed-in Pros only', async () => {
+    await request(ctx.server).get('/v1/pro/verification').expect(401);
+    const customer = await login(ctx);
+    await customer.agent.get('/v1/pro/verification').expect(403);
+    await upload(customer.agent, 'selfie', jpeg()).expect(403);
+    await customer.agent
+      .post('/v1/pro/verification')
+      .set(CLIENT_HEADER)
+      .send({ nin: '12345678901' })
+      .expect(403);
+  });
+
+  it('a Pro uploads two photos and a NIN; it is stored encrypted and goes to review', async () => {
+    const pro = await login(ctx, { role: 'pro' });
+    const start = await pro.agent.get('/v1/pro/verification').expect(200);
+    expect(start.body.verification).toMatchObject({
+      status: 'NOT_STARTED',
+      canSubmit: true,
+      photos: { idDocument: false, selfie: false },
+    });
+
+    // Not a photo, whatever the header says.
+    await upload(pro.agent, 'selfie', Buffer.from('<svg onload="alert(1)"></svg>')).expect(415);
+    await pro.agent
+      .put('/v1/pro/verification/photos/selfie')
+      .set(CLIENT_HEADER)
+      .send({ image: 'x' })
+      .expect(415);
+    await upload(pro.agent, 'passport', jpeg()).expect(400);
+    await upload(pro.agent, 'selfie', jpeg(2 * 1024 * 1024 + 10)).expect(413);
+    await pro.agent
+      .put('/v1/pro/verification/photos/selfie')
+      .set('content-type', 'image/jpeg')
+      .send(jpeg())
+      .expect(403); // CSRF
+
+    await upload(pro.agent, 'selfie', jpeg()).expect(204);
+    await pro.agent
+      .post('/v1/pro/verification')
+      .set(CLIENT_HEADER)
+      .send({ nin: '12345678901' })
+      .expect(422); // no ID photo yet
+    await upload(pro.agent, 'id-document', jpeg(3000)).expect(204);
+    await upload(pro.agent, 'id-document', jpeg(3100)).expect(204); // replaces the draft
+    await pro.agent
+      .post('/v1/pro/verification')
+      .set(CLIENT_HEADER)
+      .send({ nin: '1234567890' })
+      .expect(400);
+
+    const res = await pro.agent
+      .post('/v1/pro/verification')
+      .set(CLIENT_HEADER)
+      .send({ nin: '1234 5678 901' })
+      .expect(200);
+    expect(res.body.verification).toMatchObject({ status: 'PENDING', canSubmit: false });
+    expect(JSON.stringify(res.body)).not.toContain('12345678901');
+
+    const [row] = await ctx.db
+      .select()
+      .from(verifications)
+      .where(eq(verifications.proId, pro.userId));
+    expect(row!.provider).toBe('manual');
+    expect(row!.ninEncrypted).not.toContain('12345678901');
+    const crypto = ctx.app.get<FieldCrypto>(FIELD_CRYPTO);
+    expect(crypto.decrypt(row!.ninEncrypted!).toString()).toBe('12345678901');
+    const files = await ctx.db
+      .select()
+      .from(privateFiles)
+      .where(eq(privateFiles.ownerId, pro.userId));
+    expect(files).toHaveLength(2);
+    expect(files.every((f) => f.verificationId === row!.id)).toBe(true);
+    const id = files.find((f) => f.purpose === 'ID_DOCUMENT')!;
+    expect(id.byteSize).toBe(3104);
+    expect(crypto.decrypt(id.dataEncrypted).equals(jpeg(3100))).toBe(true);
+    const [profile] = await ctx.db
+      .select()
+      .from(proProfiles)
+      .where(eq(proProfiles.userId, pro.userId));
+    expect(profile!.verificationStatus).toBe('PENDING');
+
+    // While under review nothing can be changed.
+    await upload(pro.agent, 'selfie', jpeg()).expect(409);
+    await pro.agent
+      .post('/v1/pro/verification')
+      .set(CLIENT_HEADER)
+      .send({ nin: '12345678901' })
+      .expect(409);
+  });
+
+  it('each Pro only ever sees their own check', async () => {
+    const a = await login(ctx, { role: 'pro' });
+    const b = await login(ctx, { role: 'pro' });
+    await upload(a.agent, 'selfie', jpeg()).expect(204);
+    const seen = await b.agent.get('/v1/pro/verification').expect(200);
+    expect(seen.body.verification.photos.selfie).toBe(false);
+  });
+
+  it('a Pro asked for more information sees the note and can send again', async () => {
+    const pro = await login(ctx, { role: 'pro' });
+    await upload(pro.agent, 'selfie', jpeg()).expect(204);
+    await upload(pro.agent, 'id-document', jpeg()).expect(204);
+    await pro.agent
+      .post('/v1/pro/verification')
+      .set(CLIENT_HEADER)
+      .send({ nin: '12345678901' })
+      .expect(200);
+    await ctx.db
+      .update(verifications)
+      .set({ result: 'NEEDS_INFO', reviewNote: 'The ID photo is blurred.' })
+      .where(eq(verifications.proId, pro.userId));
+    await ctx.db
+      .update(proProfiles)
+      .set({ verificationStatus: 'NEEDS_INFO' })
+      .where(eq(proProfiles.userId, pro.userId));
+    const res = await pro.agent.get('/v1/pro/verification').expect(200);
+    expect(res.body.verification).toMatchObject({
+      status: 'NEEDS_INFO',
+      canSubmit: true,
+      note: 'The ID photo is blurred.',
+      photos: { idDocument: false, selfie: false },
+    });
+    await upload(pro.agent, 'id-document', jpeg()).expect(204);
   });
 });

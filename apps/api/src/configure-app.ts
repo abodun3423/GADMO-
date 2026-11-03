@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import type { Env } from './config/env';
 import { CSRF_HEADER } from './auth/guards';
+import { MAX_UPLOAD_BYTES, UPLOAD_IMAGE_TYPES } from './verification/images';
 
 /** HTTP hardening shared by the real server and the integration tests. */
 export function configureApp(app: NestExpressApplication, env: Env): void {
@@ -10,6 +11,8 @@ export function configureApp(app: NestExpressApplication, env: Env): void {
   app.use(helmet());
   app.use(cookieParser());
   app.useBodyParser('json', { limit: '100kb' });
+  // Identity photos are sent as raw image bytes (resized on the phone first).
+  app.useBodyParser('raw', { type: [...UPLOAD_IMAGE_TYPES], limit: MAX_UPLOAD_BYTES });
   app.enableCors({
     origin: env.WEB_ORIGIN,
     credentials: true,

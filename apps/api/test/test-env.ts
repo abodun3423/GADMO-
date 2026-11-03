@@ -10,4 +10,6 @@ export const TEST_ENV: Record<string, string> = {
   OTP_PEPPER: 'test-only-otp-pepper-at-least-32-characters-long-xx',
   WEB_ORIGIN: 'http://localhost:3000',
   SMS_PROVIDER: 'console',
+  // Test-only key (32 bytes of 0x07).
+  FIELD_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
 };

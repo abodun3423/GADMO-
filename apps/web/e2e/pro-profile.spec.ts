@@ -25,7 +25,7 @@ test('a new Pro sets up skills, bio and area', async ({ page }) => {
   await page.getByLabel('How far will you travel?').selectOption('20');
   await page.getByRole('button', { name: 'Save profile' }).click();
   await expect(page.getByRole('status')).toContainText('Profile saved.');
-  await expect(page.getByRole('status')).toContainText('identity check');
+  await expect(page.getByRole('status')).toContainText('verify your identity');
 
   await page.reload();
   await expect(page.getByText('2 chosen: Electrician, Plumber')).toBeVisible();

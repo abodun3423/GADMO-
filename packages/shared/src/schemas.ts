@@ -86,3 +86,12 @@ export type SetOnline = z.infer<typeof setOnlineSchema>;
  * stays open and is offered to matching Pros as they come online.
  */
 export const EMERGENCY_OFFER_SECONDS = 120;
+
+/** National Identification Number: 11 digits (spaces and dashes are ignored). */
+export const ninSchema = z
+  .string()
+  .transform((v) => v.replace(/[\s-]/g, ''))
+  .pipe(z.string().regex(/^\d{11}$/, 'Your NIN has 11 digits'));
+
+export const submitVerificationSchema = z.object({ nin: ninSchema }).strict();
+export type SubmitVerification = z.infer<typeof submitVerificationSchema>;

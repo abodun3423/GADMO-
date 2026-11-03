@@ -12,7 +12,7 @@ const db = new pg.Pool({
   max: 1,
 });
 
-/** Stands in for the identity check (not built yet): marks this Pro as verified in the e2e database. */
+/** Stands in for GADMO staff approving the identity check: marks this Pro as verified in the e2e database. */
 export async function approvePro(e164: string): Promise<void> {
   const res = await db.query(
     `UPDATE pro_profiles SET verification_status = 'APPROVED'
@@ -34,6 +34,20 @@ export async function insertJob(
      FROM users u, categories c WHERE u.phone = $2 AND c.slug = $1`,
     [categorySlug, customerE164, description],
   );
+}
+
+/** What the e2e database holds for a Pro's identity check (to prove the NIN is not stored in clear). */
+export async function storedVerification(
+  e164: string,
+): Promise<{ result: string; ninEncrypted: string; files: number } | null> {
+  const res = await db.query(
+    `SELECT v.result, v.nin_encrypted,
+            (SELECT count(*)::int FROM private_files f WHERE f.verification_id = v.id) AS files
+     FROM verifications v JOIN users u ON u.id = v.pro_id WHERE u.phone = $1`,
+    [e164],
+  );
+  const row = res.rows[0] as { result: string; nin_encrypted: string; files: number } | undefined;
+  return row ? { result: row.result, ninEncrypted: row.nin_encrypted, files: row.files } : null;
 }
 
 export function randomPhone(): { local: string; e164: string } {

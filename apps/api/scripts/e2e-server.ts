@@ -35,6 +35,7 @@ async function main(): Promise<void> {
     REDIS_URL: process.env.E2E_REDIS_URL ?? 'redis://localhost:6379/14',
     JWT_ACCESS_SECRET: randomBytes(48).toString('base64url'),
     OTP_PEPPER: randomBytes(48).toString('base64url'),
+    FIELD_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
     WEB_ORIGIN: process.env.E2E_WEB_ORIGIN ?? 'http://localhost:3100',
     SMS_PROVIDER: 'outbox',
   });
