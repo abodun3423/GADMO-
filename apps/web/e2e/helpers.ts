@@ -95,6 +95,24 @@ export async function staffSignIn(
   await page.getByRole('button', { name: 'Sign in' }).click();
 }
 
+/** A job a Pro has already accepted (skips dispatch), returning its id. */
+export async function acceptedJob(
+  categorySlug: string,
+  customerE164: string,
+  proE164: string,
+  description: string,
+): Promise<string> {
+  const res = await db.query(
+    `INSERT INTO jobs (customer_id, pro_id, status, category_id, type, description, latitude, longitude)
+     SELECT cu.id, pr.id, 'ACCEPTED', c.id, 'SCHEDULED', $4, 7.63, 5.221
+     FROM users cu, users pr, categories c
+     WHERE cu.phone = $2 AND pr.phone = $3 AND c.slug = $1
+     RETURNING id`,
+    [categorySlug, customerE164, proE164, description],
+  );
+  return (res.rows[0] as { id: string }).id;
+}
+
 export function randomPhone(): { local: string; e164: string } {
   const rest = String(Math.floor(Math.random() * 10_000_000)).padStart(7, '0');
   return { local: `0803${rest}`, e164: `+234803${rest}` };

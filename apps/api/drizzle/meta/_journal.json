@@ -50,6 +50,13 @@
       "when": 1793699819133,
       "tag": "0006_staff_sign_in",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793705477800,
+      "tag": "0007_inspection_offers",
+      "breakpoints": true
     }
   ]
 }

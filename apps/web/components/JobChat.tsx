@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, fieldMessage, post } from '@/lib/api';
-import type { ChatMessage, Conversation } from '@/lib/types';
+import type { ChatMessage, Conversation, MessagesResponse, OfferStatus } from '@/lib/types';
+import { InspectionPanel, OfferCard } from './InspectionFee';
 import { useSession } from '@/lib/useSession';
 
 /** New messages are checked for every few seconds while the chat is on screen. */
@@ -15,6 +16,7 @@ export function JobChat({ jobId }: { jobId: string }) {
   const { me, loading } = useSession();
   const [convo, setConvo] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [offerStatus, setOfferStatus] = useState<Record<string, OfferStatus>>({});
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -35,8 +37,14 @@ export function JobChat({ jobId }: { jobId: string }) {
   const poll = useCallback(async () => {
     try {
       const query = lastAt.current ? `?after=${encodeURIComponent(lastAt.current)}` : '';
-      const res = await api<{ messages: ChatMessage[] }>(`/v1/jobs/${jobId}/messages${query}`);
+      const res = await api<MessagesResponse>(`/v1/jobs/${jobId}/messages${query}`);
       addMessages(res.messages);
+      setOfferStatus(Object.fromEntries(res.offers.map((o) => [o.id, o.status])));
+      setConvo((c) =>
+        c && c.job.inspectionFeeKobo !== res.inspectionFeeKobo
+          ? { ...c, job: { ...c.job, inspectionFeeKobo: res.inspectionFeeKobo } }
+          : c,
+      );
     } catch {
       // Try again on the next tick.
     }
@@ -139,6 +147,14 @@ export function JobChat({ jobId }: { jobId: string }) {
             <p className="empty">Chat opens as soon as a Pro accepts this job.</p>
           ) : (
             <>
+              {convo.open && (
+                <InspectionPanel
+                  convo={convo}
+                  pending={Object.values(offerStatus).includes('PENDING')}
+                  onChanged={poll}
+                />
+              )}
+
               <p className="chat-rule">
                 Keep all messages and payments in GADMO. Phone numbers, emails and links are hidden
                 automatically, and GADMO can only protect payments made in the app.
@@ -152,16 +168,30 @@ export function JobChat({ jobId }: { jobId: string }) {
                       : 'Say hello and tell your Pro anything they should know.'}
                   </li>
                 )}
-                {messages.map((m) => (
-                  <li key={m.id} className={`bubble ${m.mine ? 'bubble-mine' : 'bubble-theirs'}`}>
-                    <span className="sr-only">{m.mine ? 'You' : otherLabel}: </span>
-                    <span className="bubble-text">{m.body}</span>
-                    <span className="bubble-meta">
-                      {timeFormat.format(new Date(m.createdAt))}
-                      {m.wasMasked && ' · contact details hidden'}
-                    </span>
-                  </li>
-                ))}
+                {messages.map((m) =>
+                  m.kind === 'OFFER' && m.offer ? (
+                    <OfferCard
+                      key={m.id}
+                      message={m}
+                      status={offerStatus[m.offer.id] ?? m.offer.status}
+                      canAnswer={!m.mine && convo.open && convo.job.inspectionFeeKobo === null}
+                      onChanged={poll}
+                    />
+                  ) : m.kind === 'EVENT' ? (
+                    <li key={m.id} className="chat-event">
+                      {m.body}
+                    </li>
+                  ) : (
+                    <li key={m.id} className={`bubble ${m.mine ? 'bubble-mine' : 'bubble-theirs'}`}>
+                      <span className="sr-only">{m.mine ? 'You' : otherLabel}: </span>
+                      <span className="bubble-text">{m.body}</span>
+                      <span className="bubble-meta">
+                        {timeFormat.format(new Date(m.createdAt))}
+                        {m.wasMasked && ' · contact details hidden'}
+                      </span>
+                    </li>
+                  ),
+                )}
               </ol>
               <div ref={endRef} />
 

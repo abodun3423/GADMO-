@@ -250,6 +250,9 @@ export const jobs = pgTable(
     cashAgreementVersion: text('cash_agreement_version'),
     cashAgreementAcceptedAt: timestamp('cash_agreement_accepted_at', { withTimezone: true }),
     doneAt: timestamp('done_at', { withTimezone: true }),
+    /** Agreed in chat (Pro offers, customer accepts or counters); never above ₦5,000. */
+    inspectionFeeKobo: kobo('inspection_fee_kobo'),
+    inspectionAgreedAt: timestamp('inspection_agreed_at', { withTimezone: true }),
     /** doneAt + 12 hours for in-app balances. */
     balanceReleaseAt: timestamp('balance_release_at', { withTimezone: true }),
     createdAt: createdAt(),
@@ -259,6 +262,47 @@ export const jobs = pgTable(
     index('jobs_customer_idx').on(t.customerId),
     index('jobs_pro_idx').on(t.proId),
     index('jobs_status_idx').on(t.status),
+    check(
+      'jobs_inspection_fee_range',
+      sql`${t.inspectionFeeKobo} is null or (${t.inspectionFeeKobo} > 0 and ${t.inspectionFeeKobo} <= 500000)`,
+    ),
+  ],
+);
+
+export const inspectionOfferStatusEnum = pgEnum('inspection_offer_status', [
+  'PENDING',
+  'ACCEPTED',
+  'COUNTERED',
+  'DECLINED',
+]);
+
+/**
+ * Inspection-fee offers made in chat (PRD section 5): the Pro proposes, then each side
+ * accepts, counters or declines. One PENDING offer per job at a time.
+ */
+export const inspectionOffers = pgTable(
+  'inspection_offers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    jobId: uuid('job_id')
+      .notNull()
+      .references(() => jobs.id, { onDelete: 'cascade' }),
+    proposedById: uuid('proposed_by_id')
+      .notNull()
+      .references(() => users.id),
+    amountKobo: kobo('amount_kobo').notNull(),
+    /** Why this amount (distance, urgency…). Masked for contact details. */
+    note: text('note'),
+    status: inspectionOfferStatusEnum('status').notNull().default('PENDING'),
+    respondedAt: timestamp('responded_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('inspection_offers_job_idx').on(t.jobId, t.createdAt),
+    uniqueIndex('inspection_offers_one_pending_per_job')
+      .on(t.jobId)
+      .where(sql`${t.status} = 'PENDING'`),
+    check('inspection_offers_amount_range', sql`${t.amountKobo} > 0 and ${t.amountKobo} <= 500000`),
   ],
 );
 
@@ -397,6 +441,9 @@ export const messages = pgTable(
     /** Stored AFTER contact masking — the raw text is never saved. */
     body: text('body').notNull(),
     wasMasked: boolean('was_masked').notNull().default(false),
+    /** TEXT, or OFFER for an inspection-fee offer card (see offerId). */
+    kind: text('kind').notNull().default('TEXT'),
+    offerId: uuid('offer_id').references(() => inspectionOffers.id),
     attachmentRef: text('attachment_ref'),
     createdAt: createdAt(),
   },

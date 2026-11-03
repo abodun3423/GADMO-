@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { normalizeNigerianPhone } from './phone';
+import { MAX_INSPECTION_FEE_KOBO } from './money';
 
 export const ROLES = ['customer', 'pro', 'admin', 'super_admin'] as const;
 export type Role = (typeof ROLES)[number];
@@ -156,3 +157,20 @@ export const sendMessageSchema = z
   })
   .strict();
 export type SendMessage = z.infer<typeof sendMessageSchema>;
+
+/**
+ * An inspection-fee offer or counter-offer: whole naira, more than ₦0 and never above
+ * ₦5,000 (MAX_INSPECTION_FEE_KOBO). The note says why (distance, urgency…).
+ */
+export const inspectionOfferSchema = z
+  .object({
+    amountKobo: z
+      .number()
+      .int()
+      .positive('Enter an amount')
+      .max(MAX_INSPECTION_FEE_KOBO, 'The inspection fee can’t be more than ₦5,000')
+      .refine((k) => k % 100 === 0, 'Use whole naira'),
+    note: z.string().trim().max(200, 'Keep the note under 200 characters').optional(),
+  })
+  .strict();
+export type InspectionOfferInput = z.infer<typeof inspectionOfferSchema>;

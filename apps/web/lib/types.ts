@@ -152,17 +152,30 @@ export interface Conversation {
     createdAt: string;
     serviceName: string;
     inspectionPolicy: InspectionPolicy;
+    /** Agreed in chat; null until both sides agree. */
+    inspectionFeeKobo: number | null;
   };
   you: 'CUSTOMER' | 'PRO';
   other: { id: string; name: string | null } | null;
   open: boolean;
 }
 
+export type OfferStatus = 'PENDING' | 'ACCEPTED' | 'COUNTERED' | 'DECLINED';
+
 export interface ChatMessage {
   id: string;
   senderId: string;
+  /** TEXT, OFFER (an inspection-fee offer card) or EVENT (e.g. "fee agreed"). */
+  kind: 'TEXT' | 'OFFER' | 'EVENT';
   body: string;
   wasMasked: boolean;
   createdAt: string;
   mine: boolean;
+  offer: { id: string; amountKobo: number; note: string | null; status: OfferStatus } | null;
+}
+
+export interface MessagesResponse {
+  messages: ChatMessage[];
+  offers: { id: string; status: OfferStatus }[];
+  inspectionFeeKobo: number | null;
 }
