@@ -46,6 +46,7 @@
     "db:seed": "tsx src/db/seed.ts",
     "demo": "node -r @swc-node/register scripts/demo.ts",
     "e2e:server": "node -r @swc-node/register scripts/e2e-server.ts",
-    "pro:approve": "node -r @swc-node/register scripts/approve-pro.ts"
+    "pro:approve": "node -r @swc-node/register scripts/approve-pro.ts",
+    "admin:grant": "node -r @swc-node/register scripts/grant-admin.ts"
   }
 }

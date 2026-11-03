@@ -1,7 +1,15 @@
-import { eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { categories, jobs, privateFiles, proProfiles, verifications } from '../src/db/schema';
+import {
+  auditLogs,
+  categories,
+  jobs,
+  privateFiles,
+  proProfiles,
+  users,
+  verifications,
+} from '../src/db/schema';
 import { FIELD_CRYPTO } from '../src/infra/infra.module';
 import type { FieldCrypto } from '../src/common/field-crypto';
 import { CLIENT_HEADER, createTestApp, login, type TestContext } from './helpers';
@@ -606,5 +614,177 @@ describe('identity verification: Pros submit, nobody reads it back', () => {
       photos: { idDocument: false, selfie: false },
     });
     await upload(pro.agent, 'id-document', jpeg()).expect(204);
+  });
+});
+
+describe('staff review of identity checks', () => {
+  const jpeg = (fill: number) =>
+    Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(1500, fill)]);
+
+  async function submittedPro(nin = '22233344455') {
+    const pro = await login(ctx, { role: 'pro' });
+    for (const [kind, fill] of [
+      ['id-document', 1],
+      ['selfie', 2],
+    ] as const) {
+      await pro.agent
+        .put(`/v1/pro/verification/photos/${kind}`)
+        .set(CLIENT_HEADER)
+        .set('content-type', 'image/jpeg')
+        .send(jpeg(fill))
+        .expect(204);
+    }
+    await pro.agent.post('/v1/pro/verification').set(CLIENT_HEADER).send({ nin }).expect(200);
+    const [row] = await ctx.db
+      .select({ id: verifications.id })
+      .from(verifications)
+      .where(eq(verifications.proId, pro.userId));
+    return { pro, checkId: row!.id };
+  }
+
+  async function staff() {
+    const s = await login(ctx);
+    await ctx.db.update(users).set({ role: 'ADMIN' }).where(eq(users.id, s.userId));
+    return s;
+  }
+
+  it('only staff can see the queue, a NIN, a photo or decide', async () => {
+    const { pro, checkId } = await submittedPro();
+    const customer = await login(ctx);
+    const otherPro = await login(ctx, { role: 'pro' });
+    for (const who of [customer, pro, otherPro]) {
+      await who.agent.get('/v1/admin/verifications').expect(403);
+      await who.agent.get(`/v1/admin/verifications/${checkId}`).expect(403);
+      await who.agent.get(`/v1/admin/verifications/${checkId}/photos/selfie`).expect(403);
+      await who.agent
+        .post(`/v1/admin/verifications/${checkId}/decision`)
+        .set(CLIENT_HEADER)
+        .send({ decision: 'APPROVED' })
+        .expect(403);
+    }
+    await request(ctx.server).get('/v1/admin/verifications').expect(401);
+    await request(ctx.server).get(`/v1/admin/verifications/${checkId}/photos/selfie`).expect(401);
+  });
+
+  it('staff see the queue, the NIN and the photos; every look is audit-logged', async () => {
+    const nin = String(Math.floor(1e10 + Math.random() * 8e10));
+    const { pro, checkId } = await submittedPro(nin);
+    const reviewer = await staff();
+
+    const queue = await reviewer.agent.get('/v1/admin/verifications').expect(200);
+    const item = queue.body.verifications.find((v: { id: string }) => v.id === checkId);
+    expect(item).toMatchObject({ proId: pro.userId, result: 'PENDING', ninUsedElsewhere: 0 });
+    expect(JSON.stringify(queue.body)).not.toContain(nin);
+
+    const detail = await reviewer.agent.get(`/v1/admin/verifications/${checkId}`).expect(200);
+    expect(detail.body.verification).toMatchObject({
+      nin,
+      proPhone: pro.phone.e164,
+      result: 'PENDING',
+    });
+
+    const photo = await reviewer.agent
+      .get(`/v1/admin/verifications/${checkId}/photos/selfie`)
+      .buffer(true)
+      .parse((res, done) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => done(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    expect(photo.headers['content-type']).toContain('image/jpeg');
+    expect(photo.headers['cache-control']).toContain('no-store');
+    expect((photo.body as Buffer).equals(jpeg(2))).toBe(true);
+
+    const logged = await ctx.db
+      .select({ action: auditLogs.action })
+      .from(auditLogs)
+      .where(and(eq(auditLogs.actorId, reviewer.userId)));
+    expect(logged.map((l) => l.action).sort()).toEqual(['VIEW_NIN', 'VIEW_SELFIE']);
+
+    await reviewer.agent.get('/v1/admin/verifications/not-a-uuid').expect(400);
+    await reviewer.agent
+      .get('/v1/admin/verifications/00000000-0000-4000-8000-000000000000')
+      .expect(404);
+  });
+
+  it('flags a NIN already used by another Pro account', async () => {
+    const nin = String(Math.floor(1e10 + Math.random() * 8e10));
+    await submittedPro(nin);
+    const { checkId } = await submittedPro(nin);
+    const reviewer = await staff();
+    const detail = await reviewer.agent.get(`/v1/admin/verifications/${checkId}`).expect(200);
+    expect(detail.body.verification.ninUsedElsewhere).toBe(1);
+  });
+
+  it('asking for more information sends a note back; the check can be decided once', async () => {
+    const { pro, checkId } = await submittedPro();
+    const reviewer = await staff();
+    const decide = (body: Record<string, unknown>) =>
+      reviewer.agent
+        .post(`/v1/admin/verifications/${checkId}/decision`)
+        .set(CLIENT_HEADER)
+        .send(body);
+
+    await decide({ decision: 'NEEDS_INFO' }).expect(400); // a note is required
+    await decide({ decision: 'APPROVED', proId: pro.userId }).expect(400);
+    await reviewer.agent
+      .post(`/v1/admin/verifications/${checkId}/decision`)
+      .send({ decision: 'APPROVED' })
+      .expect(403); // CSRF
+    await decide({
+      decision: 'NEEDS_INFO',
+      note: 'The ID photo is blurred, please retake it.',
+    }).expect(200);
+    await decide({ decision: 'APPROVED' }).expect(409);
+
+    const seen = await pro.agent.get('/v1/pro/verification').expect(200);
+    expect(seen.body.verification).toMatchObject({
+      status: 'NEEDS_INFO',
+      canSubmit: true,
+      note: 'The ID photo is blurred, please retake it.',
+    });
+    const [log] = await ctx.db
+      .select()
+      .from(auditLogs)
+      .where(
+        and(eq(auditLogs.actorId, reviewer.userId), eq(auditLogs.action, 'VERIFICATION_DECISION')),
+      );
+    expect(log!.metadata).toMatchObject({ decision: 'NEEDS_INFO', proId: pro.userId });
+  });
+
+  it('approving lets the Pro go online; rejecting takes them offline', async () => {
+    const { pro, checkId } = await submittedPro();
+    await pro.agent
+      .put('/v1/pro/profile')
+      .set(CLIENT_HEADER)
+      .send({
+        categoryIds: [electricianId],
+        bio: '',
+        latitude: 7.62,
+        longitude: 5.22,
+        serviceRadiusKm: 10,
+      })
+      .expect(200);
+    await pro.agent.post('/v1/pro/online').set(CLIENT_HEADER).send({ online: true }).expect(409);
+    const reviewer = await staff();
+    await reviewer.agent
+      .post(`/v1/admin/verifications/${checkId}/decision`)
+      .set(CLIENT_HEADER)
+      .send({ decision: 'APPROVED' })
+      .expect(200);
+    await pro.agent.post('/v1/pro/online').set(CLIENT_HEADER).send({ online: true }).expect(200);
+
+    const second = await submittedPro();
+    await reviewer.agent
+      .post(`/v1/admin/verifications/${second.checkId}/decision`)
+      .set(CLIENT_HEADER)
+      .send({ decision: 'REJECTED', note: 'The selfie does not match the ID photo.' })
+      .expect(200);
+    const [profile] = await ctx.db
+      .select()
+      .from(proProfiles)
+      .where(eq(proProfiles.userId, second.pro.userId));
+    expect(profile).toMatchObject({ verificationStatus: 'REJECTED', isOnline: false });
   });
 });

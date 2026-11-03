@@ -66,7 +66,9 @@ export function Account() {
       <p className="lede">
         {me.role === 'PRO'
           ? 'Pro account: you offer a skill or service on GADMO.'
-          : 'Customer account: you find and book skilled people.'}
+          : me.role === 'ADMIN' || me.role === 'SUPER_ADMIN'
+            ? 'GADMO staff account.'
+            : 'Customer account: you find and book skilled people.'}
       </p>
 
       {me.role === 'PRO' && (

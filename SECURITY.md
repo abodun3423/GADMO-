@@ -68,8 +68,11 @@ It has no HTTP endpoint, and the API refuses to start with `console` or `outbox`
 - Photos are accepted only as JPEG, PNG or WebP, checked by their first bytes (not the
   Content-Type header), up to 2 MB. Phones shrink and re-encode them first, which drops location
   metadata.
-- No API route returns a NIN or a photo to the Pro or to customers. Staff review (next step) will
-  be the only reader, and every view is written to the audit log.
+- No API route returns a NIN or a photo to the Pro or to customers. Only staff (ADMIN or
+  SUPER_ADMIN) can read them, in /admin; each view of a NIN, ID photo or selfie, and each decision,
+  is written to the audit log. Photos are sent with `Cache-Control: no-store`.
+- Staff accounts can't be created in the app: `pnpm admin:grant <phone>` needs server access, never
+  converts a Pro, and is audit-logged.
 - Photos live in the `private_files` table for now; they move to private object storage later.
 
 ## Rules for contributors

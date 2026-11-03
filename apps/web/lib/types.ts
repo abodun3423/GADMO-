@@ -117,3 +117,26 @@ export interface VerificationState {
   note: string | null;
   photos: { idDocument: boolean; selfie: boolean };
 }
+
+export type ReviewResult = 'PENDING' | 'APPROVED' | 'REJECTED' | 'NEEDS_INFO';
+
+/** A row in the staff review queue (GET /v1/admin/verifications). */
+export interface ReviewItem {
+  id: string;
+  proId: string;
+  proName: string | null;
+  result: ReviewResult;
+  createdAt: string;
+  reviewedAt: string | null;
+  ninUsedElsewhere: number;
+}
+
+/** One identity check for staff (GET /v1/admin/verifications/:id). */
+export interface ReviewDetail extends ReviewItem {
+  proPhone: string;
+  proJoinedAt: string;
+  nin: string | null;
+  reviewNote: string | null;
+  skills: string[];
+  history: { id: string; result: ReviewResult; createdAt: string; reviewNote: string | null }[];
+}
