@@ -6,9 +6,16 @@ import { ConfigModule } from './config/config.module';
 import { HealthController } from './health/health.controller';
 import { InfraModule } from './infra/infra.module';
 import { JobsController } from './jobs/jobs.controller';
+import { ProController } from './pro/pro.controller';
 
 @Module({
   imports: [ConfigModule, InfraModule, AuthModule],
-  controllers: [AccountController, HealthController, CatalogController, JobsController],
+  controllers: [
+    AccountController,
+    HealthController,
+    CatalogController,
+    JobsController,
+    ProController,
+  ],
 })
 export class AppModule {}

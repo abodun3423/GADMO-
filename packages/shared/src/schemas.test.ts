@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { otpRequestSchema, otpVerifySchema, updateProfileSchema } from './schemas';
+import {
+  otpRequestSchema,
+  otpVerifySchema,
+  proProfileSchema,
+  updateProfileSchema,
+} from './schemas';
 
 describe('auth schemas', () => {
   it('normalises the phone number', () => {
@@ -43,5 +48,32 @@ describe('profile name', () => {
 
   it('allows only the name field', () => {
     expect(updateProfileSchema.safeParse({ name: 'Bola', role: 'ADMIN' }).success).toBe(false);
+  });
+});
+
+describe('Pro profile', () => {
+  const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const base = { categoryIds: [id(1)], latitude: 7.62, longitude: 5.22, serviceRadiusKm: 10 };
+
+  it('accepts skills, an optional bio and a listed distance', () => {
+    expect(proProfileSchema.parse(base).bio).toBe('');
+    expect(proProfileSchema.safeParse({ ...base, bio: 'Electrician, 8 years' }).success).toBe(true);
+  });
+
+  it('needs 1 to 10 different skills', () => {
+    expect(proProfileSchema.safeParse({ ...base, categoryIds: [] }).success).toBe(false);
+    const eleven = Array.from({ length: 11 }, (_, i) => id(i));
+    expect(proProfileSchema.safeParse({ ...base, categoryIds: eleven }).success).toBe(false);
+    expect(proProfileSchema.safeParse({ ...base, categoryIds: [id(1), id(1)] }).success).toBe(
+      false,
+    );
+  });
+
+  it('only takes distances from the list, and no extra fields', () => {
+    expect(proProfileSchema.safeParse({ ...base, serviceRadiusKm: 7 }).success).toBe(false);
+    expect(proProfileSchema.safeParse({ ...base, isOnline: true }).success).toBe(false);
+    expect(proProfileSchema.safeParse({ ...base, verificationStatus: 'APPROVED' }).success).toBe(
+      false,
+    );
   });
 });

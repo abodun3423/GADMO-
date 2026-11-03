@@ -70,3 +70,6 @@ export function fieldMessage(err: unknown): string | null {
   const first = issues?.[0]?.message;
   return typeof first === 'string' ? first : null;
 }
+
+export const put = <T>(path: string, data: unknown) =>
+  api<T>(path, { method: 'PUT', body: JSON.stringify(data) });

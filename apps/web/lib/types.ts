@@ -66,3 +66,16 @@ export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
   DISPUTED: 'Under review by GADMO',
   CANCELLED: 'Cancelled',
 };
+
+export type VerificationStatus = 'NOT_STARTED' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'NEEDS_INFO';
+
+/** The signed-in Pro's own profile (GET /v1/pro/profile). */
+export interface ProProfile {
+  categoryIds: string[];
+  bio: string;
+  latitude: number | null;
+  longitude: number | null;
+  serviceRadiusKm: number;
+  isOnline: boolean;
+  verificationStatus: VerificationStatus;
+}

@@ -69,6 +69,12 @@ export function Account() {
           : 'Customer account: you find and book skilled people.'}
       </p>
 
+      {me.role === 'PRO' && (
+        <Link className="button button-spaced" href="/pro/profile">
+          Your Pro profile: skills and area
+        </Link>
+      )}
+
       <form onSubmit={save} noValidate>
         {error && (
           <p className="alert alert-error" role="alert">
