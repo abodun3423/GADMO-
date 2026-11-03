@@ -5,6 +5,7 @@ import {
   auditLogs,
   categories,
   jobs,
+  messages,
   privateFiles,
   proProfiles,
   users,
@@ -786,5 +787,124 @@ describe('staff review of identity checks', () => {
       .from(proProfiles)
       .where(eq(proProfiles.userId, second.pro.userId));
     expect(profile).toMatchObject({ verificationStatus: 'REJECTED', isOnline: false });
+  });
+});
+
+describe('job chat: only the customer and the assigned Pro, contact details hidden', () => {
+  async function acceptedJob() {
+    const customer = await login(ctx);
+    const pro = await login(ctx, { role: 'pro' });
+    const created = await customer.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(newJob(electricianId, { latitude: 1 + Math.random(), longitude: 1 + Math.random() }))
+      .expect(201);
+    const id = created.body.job.id as string;
+    return { customer, pro, id };
+  }
+  const assign = (id: string, proId: string) =>
+    ctx.db.update(jobs).set({ proId, status: 'ACCEPTED' }).where(eq(jobs.id, id));
+
+  it('opens only once a Pro has accepted', async () => {
+    const { customer, id } = await acceptedJob();
+    const convo = await customer.agent.get(`/v1/jobs/${id}/conversation`).expect(200);
+    expect(convo.body.conversation).toMatchObject({ you: 'CUSTOMER', other: null, open: false });
+    await customer.agent.get(`/v1/jobs/${id}/messages`).expect(409);
+    await customer.agent
+      .post(`/v1/jobs/${id}/messages`)
+      .set(CLIENT_HEADER)
+      .send({ body: 'Hello?' })
+      .expect(409);
+  });
+
+  it('the two parties talk; nobody else can read or write', async () => {
+    const { customer, pro, id } = await acceptedJob();
+    await pro.agent.patch('/v1/me').set(CLIENT_HEADER).send({ name: 'Tunde' }).expect(200);
+    await assign(id, pro.userId);
+
+    const convo = await customer.agent.get(`/v1/jobs/${id}/conversation`).expect(200);
+    expect(convo.body.conversation).toMatchObject({
+      you: 'CUSTOMER',
+      other: { id: pro.userId, name: 'Tunde' },
+      open: true,
+    });
+    expect(JSON.stringify(convo.body)).not.toContain(pro.phone.e164);
+    const proView = await pro.agent.get(`/v1/jobs/${id}/conversation`).expect(200);
+    expect(proView.body.conversation.you).toBe('PRO');
+
+    const sent = await customer.agent
+      .post(`/v1/jobs/${id}/messages`)
+      .set(CLIENT_HEADER)
+      .send({ body: '  The sockets in the kitchen are dead  ' })
+      .expect(201);
+    expect(sent.body.message).toMatchObject({
+      body: 'The sockets in the kitchen are dead',
+      mine: true,
+    });
+    await pro.agent
+      .post(`/v1/jobs/${id}/messages`)
+      .set(CLIENT_HEADER)
+      .send({ body: 'I can come at 3pm' })
+      .expect(201);
+
+    const seen = await pro.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+    expect(
+      seen.body.messages.map((m: { body: string; mine: boolean }) => [m.body, m.mine]),
+    ).toEqual([
+      ['The sockets in the kitchen are dead', false],
+      ['I can come at 3pm', true],
+    ]);
+    const after = await customer.agent
+      .get(`/v1/jobs/${id}/messages`)
+      .query({ after: sent.body.message.createdAt })
+      .expect(200);
+    expect(after.body.messages.map((m: { body: string }) => m.body)).toEqual(['I can come at 3pm']);
+
+    const stranger = await login(ctx);
+    const otherPro = await login(ctx, { role: 'pro' });
+    for (const who of [stranger, otherPro]) {
+      await who.agent.get(`/v1/jobs/${id}/conversation`).expect(404);
+      await who.agent.get(`/v1/jobs/${id}/messages`).expect(404);
+      await who.agent
+        .post(`/v1/jobs/${id}/messages`)
+        .set(CLIENT_HEADER)
+        .send({ body: 'hi' })
+        .expect(404);
+    }
+    await request(ctx.server).get(`/v1/jobs/${id}/messages`).expect(401);
+    await customer.agent.post(`/v1/jobs/${id}/messages`).send({ body: 'hi' }).expect(403); // CSRF
+    await customer.agent.get(`/v1/jobs/${id}/messages`).query({ after: 'yesterday' }).expect(400);
+  });
+
+  it('phone numbers, emails and handles are hidden before storing, and the sender is flagged', async () => {
+    const { customer, pro, id } = await acceptedJob();
+    await assign(id, pro.userId);
+    const res = await pro.agent
+      .post(`/v1/jobs/${id}/messages`)
+      .set(CLIENT_HEADER)
+      .send({ body: 'Call me on 0803 123 4567 or WhatsApp, email tunde@gmail.com' })
+      .expect(201);
+    expect(res.body.message.wasMasked).toBe(true);
+    expect(res.body.message.body).not.toMatch(/0803|4567|gmail/);
+    expect(res.body.notice).toContain('Contact details were hidden');
+    const stored = await ctx.db.select().from(messages).where(eq(messages.jobId, id));
+    expect(stored[0]!.body).not.toMatch(/0803|4567|gmail/);
+    const [sender] = await ctx.db.select().from(users).where(eq(users.id, pro.userId));
+    expect(sender!.chatFlags).toBe(1);
+    const seen = await customer.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+    expect(JSON.stringify(seen.body)).not.toMatch(/0803|4567|gmail/);
+  });
+
+  it('refuses empty or very long messages and closes when the job is cancelled', async () => {
+    const { customer, pro, id } = await acceptedJob();
+    await assign(id, pro.userId);
+    const send = (body: Record<string, unknown>) =>
+      customer.agent.post(`/v1/jobs/${id}/messages`).set(CLIENT_HEADER).send(body);
+    await send({ body: '   ' }).expect(400);
+    await send({ body: 'x'.repeat(1001) }).expect(400);
+    await send({ body: 'hi', senderId: pro.userId }).expect(400);
+    await ctx.db.update(jobs).set({ status: 'CANCELLED' }).where(eq(jobs.id, id));
+    await send({ body: 'hello?' }).expect(409);
+    await customer.agent.get(`/v1/jobs/${id}/messages`).expect(200);
   });
 });

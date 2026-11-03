@@ -299,9 +299,12 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
                   <p>{job.description}</p>
                   <p className="job-status">
                     {job.status === 'ACCEPTED'
-                      ? 'You accepted. Chat and the inspection fee are coming next.'
+                      ? 'You accepted. Chat with the customer to agree the details.'
                       : JOB_STATUS_LABEL[job.status]}
                   </p>
+                  <Link className="button button-small" href={`/jobs/${job.id}`}>
+                    Open chat
+                  </Link>
                 </article>
               ))}
             </section>

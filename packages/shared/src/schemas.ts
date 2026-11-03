@@ -143,3 +143,16 @@ export const staffPasswordSchema = z
   })
   .strict();
 export type StaffPassword = z.infer<typeof staffPasswordSchema>;
+
+/** A chat message. Contact details are masked by the server before it is stored. */
+export const MAX_MESSAGE_LENGTH = 1000;
+export const sendMessageSchema = z
+  .object({
+    body: z
+      .string()
+      .trim()
+      .min(1, 'Write a message')
+      .max(MAX_MESSAGE_LENGTH, `Keep it under ${MAX_MESSAGE_LENGTH} characters`),
+  })
+  .strict();
+export type SendMessage = z.infer<typeof sendMessageSchema>;
