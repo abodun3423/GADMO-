@@ -59,3 +59,14 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const post = <T>(path: string, data?: unknown) =>
   api<T>(path, { method: 'POST', body: data === undefined ? undefined : JSON.stringify(data) });
+
+export const patch = <T>(path: string, data: unknown) =>
+  api<T>(path, { method: 'PATCH', body: JSON.stringify(data) });
+
+/** The first field message from a 400 "Validation failed" response, if there is one. */
+export function fieldMessage(err: unknown): string | null {
+  if (!(err instanceof ApiError) || err.status !== 400) return null;
+  const issues = (err.body as { issues?: { message?: unknown }[] } | undefined)?.issues;
+  const first = issues?.[0]?.message;
+  return typeof first === 'string' ? first : null;
+}

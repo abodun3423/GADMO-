@@ -64,6 +64,13 @@ export function MyJobs({
         see this number.
       </p>
 
+      {!me.name && (
+        <p className="alert alert-info">
+          Add your name so {me.role === 'PRO' ? 'customers' : 'Pros'} know what to call you.{' '}
+          <Link href="/account">Add your name</Link>
+        </p>
+      )}
+
       {justSent && (
         <p className="alert alert-info" role="status">
           Request sent. We’ll tell you when a Pro accepts it.
