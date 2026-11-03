@@ -4,11 +4,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
 import { ApiError, post } from '@/lib/api';
+import { ADO_EKITI_CENTRE } from '@/lib/places';
 import type { Category } from '@/lib/types';
 import { useSession } from '@/lib/useSession';
-
-/** Used only when the phone cannot share its location; Pros confirm the exact spot in chat. */
-const ADO_EKITI_CENTRE = { latitude: 7.6233, longitude: 5.2209 };
 
 type Place =
   | { kind: 'none' }

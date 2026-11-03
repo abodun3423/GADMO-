@@ -3,7 +3,7 @@ import { asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { JwtAuthGuard } from '../auth/guards';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { categories, proProfiles, users } from '../db/schema';
+import { categories, proCategories, proProfiles, users } from '../db/schema';
 import { DB, type Db } from '../infra/infra.module';
 
 @Controller()
@@ -55,6 +55,7 @@ export class CatalogController {
         id: users.id,
         name: users.name,
         role: users.role,
+        bio: proProfiles.bio,
         ratingAvg: proProfiles.ratingAvg,
         ratingCount: proProfiles.ratingCount,
         verificationStatus: proProfiles.verificationStatus,
@@ -64,6 +65,15 @@ export class CatalogController {
       .where(eq(users.id, id))
       .limit(1);
     if (!row) throw new NotFoundException();
-    return { user: row };
+    if (row.role !== 'PRO') {
+      return { user: { id: row.id, name: row.name, role: row.role } };
+    }
+    const skills = await this.db
+      .select({ id: categories.id, name: categories.name, slug: categories.slug })
+      .from(proCategories)
+      .innerJoin(categories, eq(categories.id, proCategories.categoryId))
+      .where(eq(proCategories.proId, row.id))
+      .orderBy(asc(categories.name));
+    return { user: { ...row, skills } };
   }
 }

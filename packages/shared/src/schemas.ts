@@ -51,3 +51,28 @@ export const displayNameSchema = z
 
 export const updateProfileSchema = z.object({ name: displayNameSchema }).strict();
 export type UpdateProfile = z.infer<typeof updateProfileSchema>;
+
+/** Most Pros offer one trade; a few related ones (e.g. plumber + water pump) are allowed. */
+export const MAX_PRO_SKILLS = 10;
+export const SERVICE_RADIUS_KM = [5, 10, 20, 30, 50] as const;
+
+/** What a Pro offers and where. The bio is masked for contact details before it is stored. */
+export const proProfileSchema = z
+  .object({
+    categoryIds: z
+      .array(z.uuid())
+      .min(1, 'Choose at least one skill')
+      .max(MAX_PRO_SKILLS, `Choose up to ${MAX_PRO_SKILLS} skills`)
+      .refine((ids) => new Set(ids).size === ids.length, 'Each skill only once'),
+    bio: z.string().trim().max(500, 'Keep it under 500 characters').default(''),
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+    serviceRadiusKm: z
+      .number()
+      .int()
+      .refine((km) => (SERVICE_RADIUS_KM as readonly number[]).includes(km), {
+        message: 'Choose a distance from the list',
+      }),
+  })
+  .strict();
+export type ProProfileInput = z.infer<typeof proProfileSchema>;

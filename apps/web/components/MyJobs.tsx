@@ -87,7 +87,8 @@ export function MyJobs({
       {jobs?.length === 0 &&
         (me.role === 'PRO' ? (
           <p className="empty">
-            Jobs assigned to you will appear here. Pro tools are coming in the next update.
+            Jobs assigned to you will appear here.{' '}
+            <Link href="/pro/profile">Set up your Pro profile</Link> so customers can find you.
           </p>
         ) : (
           <p className="empty">

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, isNull } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { categories, jobs } from '../src/db/schema';
@@ -193,6 +193,92 @@ describe('my account', () => {
     const customer = await login(ctx);
     const res = await customer.agent.get(`/v1/users/${pro.userId}`).expect(200);
     expect(res.body.user.name).toBe('Tunde');
+    expect(res.body.user.phone).toBeUndefined();
+  });
+});
+
+describe('Pro profile', () => {
+  const profile = (extra: Record<string, unknown> = {}) => ({
+    categoryIds: [electricianId],
+    bio: 'Licensed electrician, 8 years in Ado-Ekiti',
+    latitude: 7.6233,
+    longitude: 5.2209,
+    serviceRadiusKm: 10,
+    ...extra,
+  });
+
+  it('is only for signed-in Pros', async () => {
+    await request(ctx.server).get('/v1/pro/profile').expect(401);
+    const customer = await login(ctx);
+    await customer.agent.get('/v1/pro/profile').expect(403);
+    await customer.agent.put('/v1/pro/profile').set(CLIENT_HEADER).send(profile()).expect(403);
+  });
+
+  it('a new Pro starts empty and saves skills, bio and area', async () => {
+    const pro = await login(ctx, { role: 'pro' });
+    const empty = await pro.agent.get('/v1/pro/profile').expect(200);
+    expect(empty.body.profile).toMatchObject({
+      categoryIds: [],
+      isOnline: false,
+      verificationStatus: 'NOT_STARTED',
+    });
+    const saved = await pro.agent
+      .put('/v1/pro/profile')
+      .set(CLIENT_HEADER)
+      .send(profile({ categoryIds: [electricianId, cleanerId] }))
+      .expect(200);
+    expect(saved.body.profile.categoryIds.sort()).toEqual([electricianId, cleanerId].sort());
+    expect(saved.body.profile.serviceRadiusKm).toBe(10);
+    // Saving again replaces the skills rather than adding to them.
+    const again = await pro.agent.put('/v1/pro/profile').set(CLIENT_HEADER).send(profile());
+    expect(again.body.profile.categoryIds).toEqual([electricianId]);
+  });
+
+  it('refuses group headings, unknown skills, odd distances, extra fields and no CSRF header', async () => {
+    const pro = await login(ctx, { role: 'pro' });
+    const [group] = await ctx.db.select().from(categories).where(isNull(categories.parentId));
+    const put = (body: Record<string, unknown>) =>
+      pro.agent.put('/v1/pro/profile').set(CLIENT_HEADER).send(body);
+    await put(profile({ categoryIds: [group!.id] })).expect(422);
+    await put(profile({ categoryIds: ['00000000-0000-4000-8000-000000000000'] })).expect(422);
+    await put(profile({ serviceRadiusKm: 7 })).expect(400);
+    await put(profile({ isOnline: true })).expect(400);
+    await put(profile({ verificationStatus: 'APPROVED' })).expect(400);
+    await pro.agent.put('/v1/pro/profile').send(profile()).expect(403);
+  });
+
+  it('hides contact details in the bio', async () => {
+    const pro = await login(ctx, { role: 'pro' });
+    const res = await pro.agent
+      .put('/v1/pro/profile')
+      .set(CLIENT_HEADER)
+      .send(profile({ bio: 'Call me on 0803 123 4567 or tunde@gmail.com' }))
+      .expect(200);
+    expect(res.body.profile.bio).not.toMatch(/0803|4567|gmail/);
+  });
+
+  it('one Pro’s save never touches another Pro', async () => {
+    const tunde = await login(ctx, { role: 'pro' });
+    const kemi = await login(ctx, { role: 'pro' });
+    await kemi.agent.put('/v1/pro/profile').set(CLIENT_HEADER).send(profile()).expect(200);
+    await tunde.agent
+      .put('/v1/pro/profile')
+      .set(CLIENT_HEADER)
+      .send(profile({ categoryIds: [cleanerId] }))
+      .expect(200);
+    const kemiNow = await kemi.agent.get('/v1/pro/profile').expect(200);
+    expect(kemiNow.body.profile.categoryIds).toEqual([electricianId]);
+  });
+
+  it('the public profile shows skills and bio, never the location or phone', async () => {
+    const pro = await login(ctx, { role: 'pro' });
+    await pro.agent.put('/v1/pro/profile').set(CLIENT_HEADER).send(profile()).expect(200);
+    const customer = await login(ctx);
+    const res = await customer.agent.get(`/v1/users/${pro.userId}`).expect(200);
+    expect(res.body.user.skills.map((s: { slug: string }) => s.slug)).toEqual(['electrician']);
+    expect(res.body.user.bio).toContain('electrician');
+    expect(res.body.user.latitude).toBeUndefined();
+    expect(res.body.user.longitude).toBeUndefined();
     expect(res.body.user.phone).toBeUndefined();
   });
 });
