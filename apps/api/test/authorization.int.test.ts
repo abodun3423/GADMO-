@@ -1133,3 +1133,52 @@ describe('staff: overview, users and jobs', () => {
       .expect(403);
   });
 });
+
+describe('choosing a Pro: only the job’s customer, only eligible Pros', () => {
+  it('nobody else can list Pros for a job or send it to one', async () => {
+    const alice = await login(ctx);
+    const created = await alice.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(
+        newJob(electricianId, {
+          type: 'SCHEDULED',
+          scheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
+        }),
+      )
+      .expect(201);
+    const id = created.body.job.id as string;
+    const bob = await login(ctx);
+    const pro = await login(ctx, { role: 'pro' });
+    await bob.agent.get(`/v1/jobs/${id}/pros`).expect(404);
+    await bob.agent
+      .post(`/v1/jobs/${id}/requests`)
+      .set(CLIENT_HEADER)
+      .send({ proId: pro.userId })
+      .expect(404);
+    await pro.agent.get(`/v1/jobs/${id}/pros`).expect(403);
+    await request(ctx.server).get(`/v1/jobs/${id}/pros`).expect(401);
+    // An unverified Pro can't be chosen, even by id.
+    await alice.agent
+      .post(`/v1/jobs/${id}/requests`)
+      .set(CLIENT_HEADER)
+      .send({ proId: pro.userId })
+      .expect(422);
+    await alice.agent.post(`/v1/jobs/${id}/requests`).send({ proId: pro.userId }).expect(403); // CSRF
+    await alice.agent
+      .post(`/v1/jobs/${id}/requests`)
+      .set(CLIENT_HEADER)
+      .send({ proId: 'x' })
+      .expect(400);
+  });
+
+  it('emergencies are not chosen by hand', async () => {
+    const alice = await login(ctx);
+    const created = await alice.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(newJob(electricianId, { latitude: 3 + Math.random(), longitude: 3 + Math.random() }))
+      .expect(201);
+    await alice.agent.get(`/v1/jobs/${created.body.job.id}/pros`).expect(409);
+  });
+});

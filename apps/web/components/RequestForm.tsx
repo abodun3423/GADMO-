@@ -89,7 +89,7 @@ export function RequestForm({
     }
     setBusy(true);
     try {
-      await post('/v1/jobs', {
+      const { job } = await post<{ job: { id: string } }>('/v1/jobs', {
         categoryId: category.id,
         type: urgent ? 'EMERGENCY' : 'SCHEDULED',
         description: description.trim(),
@@ -97,7 +97,8 @@ export function RequestForm({
         longitude: place.longitude,
         ...(urgent ? {} : { scheduledAt: new Date(when).toISOString() }),
       });
-      router.push('/jobs?sent=1');
+      // Emergencies go to the nearest Pro automatically; for later, the customer chooses.
+      router.push(urgent ? '/jobs?sent=1' : `/jobs/${job.id}/choose`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not send your request. Try again.');
       setBusy(false);

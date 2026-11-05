@@ -135,6 +135,11 @@ export function MyJobs({
           <p className={`job-status${job.dispatch === 'NO_PRO_YET' ? ' job-status-wait' : ''}`}>
             {statusText(job)}
           </p>
+          {job.dispatch === 'CHOOSE_PRO' && me.role !== 'PRO' && (
+            <Link className="button button-small" href={`/jobs/${job.id}/choose`}>
+              Choose a Pro
+            </Link>
+          )}
           {job.proId && job.status !== 'CANCELLED' && (
             <Link className="button button-small" href={`/jobs/${job.id}`}>
               Open chat
@@ -179,8 +184,18 @@ export function MyJobs({
   );
 }
 
+const answerBy = new Intl.DateTimeFormat('en-NG', {
+  weekday: 'short',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
 function statusText(job: Job): string {
+  if (job.dispatch === 'OFFERED' && job.requestedPro) {
+    return `Waiting for ${job.requestedPro.name ?? 'your Pro'} to answer (by ${answerBy.format(new Date(job.requestedPro.answerBy))}).`;
+  }
   if (job.dispatch === 'OFFERED') return 'Finding a Pro near you…';
+  if (job.dispatch === 'CHOOSE_PRO') return 'Choose a Pro for this job.';
   if (job.dispatch === 'NO_PRO_YET') {
     return 'No Pro available yet. We’ll offer it to Pros near you as they come online.';
   }

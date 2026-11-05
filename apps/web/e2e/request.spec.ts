@@ -27,11 +27,14 @@ test('a new customer signs in, books a plumber for later, and sees it in My jobs
   await page.getByRole('radio', { name: /Somewhere in Ado-Ekiti/ }).check();
   await page.getByRole('button', { name: 'Send request' }).click();
 
-  await expect(page).toHaveURL(/\/jobs\?sent=1/);
-  await expect(page.getByRole('status')).toContainText('Request sent');
+  // Booked for later: the customer chooses a Pro next.
+  await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+\/choose$/);
+  await expect(page.getByRole('heading', { name: 'Choose a Pro' })).toBeVisible();
+  await page.getByRole('link', { name: '← My jobs' }).click();
   const job = page.locator('article.job').first();
   await expect(job.getByRole('heading', { name: 'Plumber' })).toBeVisible();
-  await expect(job).toContainText('Finding a Pro near you');
+  await expect(job).toContainText('Choose a Pro for this job.');
+  await expect(job.getByRole('link', { name: 'Choose a Pro' })).toBeVisible();
   // The phone number typed into the description was hidden by GADMO.
   await expect(job).toContainText('[hidden by GADMO]');
   await expect(job).not.toContainText('555 1234');

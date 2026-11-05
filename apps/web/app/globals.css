@@ -236,6 +236,38 @@ a {
   margin: 0 0 6px;
 }
 
+.offer-scheduled {
+  border-color: var(--ok);
+}
+
+.pro-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pro-card {
+  margin-bottom: 12px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+}
+
+.pro-card h2 {
+  margin: 0 0 2px;
+  font-size: 19px;
+}
+
+.pro-card .badge {
+  margin: 0 0 0 6px;
+  vertical-align: 3px;
+}
+
+.pro-card p {
+  margin: 0 0 8px;
+}
+
 .offer-timer {
   font-weight: 700;
   font-variant-numeric: tabular-nums;

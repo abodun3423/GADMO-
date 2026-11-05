@@ -58,9 +58,10 @@ export class JobsController {
   ) {}
 
   /**
-   * Adds what the customer needs to follow a job: the assigned Pro's name, and for an open
-   * emergency whether it is with a Pro right now (OFFERED) or waiting for one (NO_PRO_YET).
-   * Which Pro holds an offer is never shown.
+   * Adds what the customer needs to follow a job: the assigned Pro's name; for an open
+   * emergency whether it is with a Pro right now (OFFERED) or waiting for one (NO_PRO_YET;
+   * which Pro is never shown); for an open scheduled job whether the request is with the Pro
+   * the customer chose (OFFERED, with that Pro's name) or they need to choose (CHOOSE_PRO).
    */
   private async withStatus<
     T extends { id: string; status: string; type: string; proId: string | null },
@@ -72,11 +73,12 @@ export class JobsController {
           .from(users)
           .where(inArray(users.id, proIds))
       : [];
-    const open = rows.filter((r) => r.status === 'REQUESTED' && r.type === 'EMERGENCY');
+    const open = rows.filter((r) => r.status === 'REQUESTED');
     const offered = open.length
       ? await this.db
-          .select({ jobId: jobOffers.jobId })
+          .select({ jobId: jobOffers.jobId, proName: users.name, expiresAt: jobOffers.expiresAt })
           .from(jobOffers)
+          .innerJoin(users, eq(users.id, jobOffers.proId))
           .where(
             and(
               inArray(
@@ -89,17 +91,27 @@ export class JobsController {
           )
       : [];
     const nameOf = new Map(names.map((n) => [n.id, n.name]));
-    const live = new Set(offered.map((o) => o.jobId));
-    return rows.map((r) => ({
-      ...r,
-      proName: r.proId ? (nameOf.get(r.proId) ?? null) : null,
-      dispatch:
-        r.status === 'REQUESTED' && r.type === 'EMERGENCY'
-          ? live.has(r.id)
+    const live = new Map(offered.map((o) => [o.jobId, o]));
+    return rows.map((r) => {
+      const offer = live.get(r.id);
+      const waiting = r.status === 'REQUESTED';
+      return {
+        ...r,
+        proName: r.proId ? (nameOf.get(r.proId) ?? null) : null,
+        dispatch: !waiting
+          ? null
+          : offer
             ? ('OFFERED' as const)
-            : ('NO_PRO_YET' as const)
-          : null,
-    }));
+            : r.type === 'EMERGENCY'
+              ? ('NO_PRO_YET' as const)
+              : ('CHOOSE_PRO' as const),
+        // The customer chose this Pro themselves, so they may see who it is.
+        requestedPro:
+          waiting && offer && r.type === 'SCHEDULED'
+            ? { name: offer.proName, answerBy: offer.expiresAt }
+            : null,
+      };
+    });
   }
 
   @Post()
@@ -214,7 +226,7 @@ export class JobsController {
         .set({ status: 'CANCELLED' })
         .where(eq(jobs.id, id))
         .returning(publicJobColumns);
-      return { job: { ...cancelled!, proName: null, dispatch: null } };
+      return { job: { ...cancelled!, proName: null, dispatch: null, requestedPro: null } };
     });
   }
 }

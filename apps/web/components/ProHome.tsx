@@ -85,23 +85,26 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
 
   const online = profile?.isOnline === true && profile.verificationStatus === 'APPROVED';
 
-  // While online, check for emergency offers often and scheduled requests every 30 seconds
-  // (only while the page is visible).
+  // Requests chosen for you arrive whether or not you're online; emergencies only while
+  // online. Checked often while the page is visible.
+  const verifiedPro = profile?.verificationStatus === 'APPROVED';
+  useEffect(() => {
+    if (!verifiedPro) return;
+    void loadOffers();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') void loadOffers();
+    }, OFFER_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [verifiedPro, loadOffers]);
+
   useEffect(() => {
     if (!online) return;
     void loadJobs();
-    void loadOffers();
-    const jobsTimer = setInterval(() => {
+    const timer = setInterval(() => {
       if (document.visibilityState === 'visible') void loadJobs();
     }, REFRESH_MS);
-    const offersTimer = setInterval(() => {
-      if (document.visibilityState === 'visible') void loadOffers();
-    }, OFFER_REFRESH_MS);
-    return () => {
-      clearInterval(jobsTimer);
-      clearInterval(offersTimer);
-    };
-  }, [online, loadJobs, loadOffers]);
+    return () => clearInterval(timer);
+  }, [online, loadJobs]);
 
   // Ticks the countdown on offers once a second.
   const [, setNow] = useState(0);
@@ -140,10 +143,7 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
     try {
       const res = await post<{ profile: ProProfile }>('/v1/pro/online', { online: next });
       setProfile(res.profile);
-      if (!next) {
-        setJobs(null);
-        setOffers([]);
-      }
+      if (!next) setJobs(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not change your status. Try again.');
     } finally {
@@ -244,46 +244,63 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
             </button>
           </section>
 
-          {online &&
-            offers.map((offer) => {
-              const left = Math.max(
-                0,
-                Math.round(offer.secondsLeft - (performance.now() - offer.receivedAt) / 1000),
-              );
-              return (
-                <section key={offer.id} className="offer" aria-label="Emergency request for you">
-                  <p className="offer-timer" role="timer">
-                    {left > 0
+          {offers.map((offer) => {
+            const left = Math.max(
+              0,
+              Math.round(offer.secondsLeft - (performance.now() - offer.receivedAt) / 1000),
+            );
+            const urgent = offer.job.type === 'EMERGENCY';
+            // Emergencies are only offered while online; scheduled requests wait for you.
+            if (urgent && !online) return null;
+            return (
+              <section
+                key={offer.id}
+                className={`offer${urgent ? '' : ' offer-scheduled'}`}
+                aria-label={urgent ? 'Emergency request for you' : 'Booking request for you'}
+              >
+                <p className="offer-timer" role="timer">
+                  {left === 0
+                    ? 'Time is up'
+                    : urgent
                       ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left to accept`
-                      : 'Time is up'}
-                  </p>
-                  <h2>
+                      : `Answer within ${left >= 3600 ? `${Math.floor(left / 3600)} h` : `${Math.ceil(left / 60)} min`}`}
+                </p>
+                <h2>
+                  {urgent ? (
                     <span className="badge">Emergency</span>
-                    {serviceNames[offer.job.categoryId] ?? 'Service'}
-                  </h2>
-                  <p className="meta">About {offer.distanceKm} km away</p>
-                  <p>{offer.job.description}</p>
-                  <div className="offer-actions">
-                    <button
-                      className="button"
-                      type="button"
-                      disabled={answering === offer.id || left === 0}
-                      onClick={() => answer(offer, true)}
-                    >
-                      Accept
-                    </button>
-                    <button
-                      className="button button-quiet"
-                      type="button"
-                      disabled={answering === offer.id || left === 0}
-                      onClick={() => answer(offer, false)}
-                    >
-                      Decline
-                    </button>
-                  </div>
-                </section>
-              );
-            })}
+                  ) : (
+                    <span className="badge badge-ok">Booking</span>
+                  )}
+                  {serviceNames[offer.job.categoryId] ?? 'Service'}
+                </h2>
+                <p className="meta">
+                  About {offer.distanceKm} km away
+                  {offer.job.scheduledAt &&
+                    ` · for ${timeFormat.format(new Date(offer.job.scheduledAt))}`}
+                </p>
+                {!urgent && <p className="meta">A customer chose you for this job.</p>}
+                <p>{offer.job.description}</p>
+                <div className="offer-actions">
+                  <button
+                    className="button"
+                    type="button"
+                    disabled={answering === offer.id || left === 0}
+                    onClick={() => answer(offer, true)}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    className="button button-quiet"
+                    type="button"
+                    disabled={answering === offer.id || left === 0}
+                    onClick={() => answer(offer, false)}
+                  >
+                    Decline
+                  </button>
+                </div>
+              </section>
+            );
+          })}
 
           {mine && mine.length > 0 && (
             <section aria-labelledby="mine-title">
@@ -316,8 +333,8 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
                 Scheduled requests near you
               </h2>
               <p className="meta">
-                Emergencies come to you one at a time, above, with 2 minutes to accept. Scheduled
-                requests are listed here; customers will choose a Pro for these soon.
+                Emergencies come to you one at a time, above, with 2 minutes to accept. Customers
+                booking for later choose a Pro from a list, so a complete profile helps.
               </p>
               {jobs === null && <p className="meta">Looking for requests…</p>}
               {jobs?.length === 0 && (

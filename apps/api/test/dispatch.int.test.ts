@@ -251,3 +251,141 @@ describe('emergency dispatch', () => {
     expect(row!.status).toBe('ACCEPTED');
   });
 });
+
+describe('scheduled jobs: the customer chooses a Pro', () => {
+  async function scheduled(
+    customer: Agent,
+    at: { latitude: number; longitude: number },
+    hours = 48,
+  ) {
+    const res = await customer.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send({
+        categoryId: electricianId,
+        type: 'SCHEDULED',
+        scheduledAt: new Date(Date.now() + hours * 3_600_000).toISOString(),
+        description: 'Fit three ceiling fans in the living room',
+        ...at,
+      })
+      .expect(201);
+    return res.body.job as { id: string; dispatch: string };
+  }
+
+  it('lists verified Pros in range, best rated first; offline Pros count too', async () => {
+    const base = somewhere();
+    const near = await pro(north(base, 1), { online: false });
+    const farButGood = await pro(north(base, 6));
+    await ctx.db
+      .update(proProfiles)
+      .set({ ratingAvg: 4.8, ratingCount: 12 })
+      .where(eq(proProfiles.userId, farButGood.userId));
+    const unverified = await pro(north(base, 1), { verified: false });
+    const outOfRange = await pro(north(base, 8), { radius: 5 });
+    const plumber = await pro(north(base, 1), { skills: [plumberId] });
+    const customer = await login(ctx);
+    const job = await scheduled(customer, base);
+    expect(job.dispatch).toBe('CHOOSE_PRO');
+
+    const res = await customer.agent.get(`/v1/jobs/${job.id}/pros`).expect(200);
+    const ids = res.body.pros.map((p: { id: string }) => p.id);
+    expect(ids).toEqual([farButGood.userId, near.userId]);
+    for (const hidden of [unverified, outOfRange, plumber])
+      expect(ids).not.toContain(hidden.userId);
+    expect(res.body.pros[0]).toMatchObject({ ratingAvg: 4.8, skills: ['Electrician'] });
+    expect(res.body.pros[0].phone).toBeUndefined();
+    expect(res.body.pros[0].latitude).toBeUndefined();
+  });
+
+  it('the chosen Pro accepts, and chat opens; the customer saw who they asked', async () => {
+    const base = somewhere();
+    const tunde = await pro(north(base, 2), { online: false });
+    await tunde.agent.patch('/v1/me').set(CLIENT_HEADER).send({ name: 'Tunde' }).expect(200);
+    const customer = await login(ctx);
+    const job = await scheduled(customer, base);
+    const sent = await customer.agent
+      .post(`/v1/jobs/${job.id}/requests`)
+      .set(CLIENT_HEADER)
+      .send({ proId: tunde.userId })
+      .expect(201);
+    expect(sent.body.request).toMatchObject({ proId: tunde.userId, proName: 'Tunde' });
+    const left = new Date(sent.body.request.expiresAt).getTime() - Date.now();
+    expect(left).toBeGreaterThan(23 * 3_600_000);
+    expect(left).toBeLessThanOrEqual(24 * 3_600_000 + 60_000);
+
+    const mine = await customer.agent.get(`/v1/jobs/${job.id}`).expect(200);
+    expect(mine.body.job).toMatchObject({ dispatch: 'OFFERED', requestedPro: { name: 'Tunde' } });
+    // Only one Pro at a time.
+    const other = await pro(north(base, 3));
+    await customer.agent
+      .post(`/v1/jobs/${job.id}/requests`)
+      .set(CLIENT_HEADER)
+      .send({ proId: other.userId })
+      .expect(409);
+
+    const [offer] = await offersOf(tunde);
+    expect(offer!.job).toMatchObject({ id: job.id, type: 'SCHEDULED' });
+    expect(offer!.secondsLeft).toBeGreaterThan(23 * 3600);
+    await tunde.agent.post(`/v1/pro/offers/${offer!.id}/accept`).set(CLIENT_HEADER).expect(200);
+    const convo = await customer.agent.get(`/v1/jobs/${job.id}/conversation`).expect(200);
+    expect(convo.body.conversation).toMatchObject({ open: true, other: { name: 'Tunde' } });
+  });
+
+  it('a decline or a run-out request lets the customer choose someone else, never the same Pro', async () => {
+    const base = somewhere();
+    const first = await pro(north(base, 1));
+    const second = await pro(north(base, 2));
+    const customer = await login(ctx);
+    const job = await scheduled(customer, base);
+    const ask = (proId: string) =>
+      customer.agent.post(`/v1/jobs/${job.id}/requests`).set(CLIENT_HEADER).send({ proId });
+
+    await ask(first.userId).expect(201);
+    const [offer] = await offersOf(first);
+    await first.agent.post(`/v1/pro/offers/${offer!.id}/decline`).set(CLIENT_HEADER).expect(200);
+    const back = await customer.agent.get(`/v1/jobs/${job.id}`).expect(200);
+    expect(back.body.job.dispatch).toBe('CHOOSE_PRO');
+    await ask(first.userId).expect(422);
+    const list = await customer.agent.get(`/v1/jobs/${job.id}/pros`).expect(200);
+    expect(list.body.pros.map((p: { id: string }) => p.id)).toEqual([second.userId]);
+
+    await ask(second.userId).expect(201);
+    await ctx.db
+      .update(jobOffers)
+      .set({ expiresAt: sql`now() - interval '1 second'` })
+      .where(eq(jobOffers.jobId, job.id));
+    expect(await offersOf(second)).toEqual([]);
+    const again = await customer.agent.get(`/v1/jobs/${job.id}`).expect(200);
+    expect(again.body.job.dispatch).toBe('CHOOSE_PRO');
+  });
+
+  it('a request for a job soon is answered at the latest an hour before it', async () => {
+    const base = somewhere();
+    const p = await pro(north(base, 1));
+    const customer = await login(ctx);
+    const job = await scheduled(customer, base, 5);
+    const sent = await customer.agent
+      .post(`/v1/jobs/${job.id}/requests`)
+      .set(CLIENT_HEADER)
+      .send({ proId: p.userId })
+      .expect(201);
+    const left = new Date(sent.body.request.expiresAt).getTime() - Date.now();
+    expect(left).toBeGreaterThan(3.9 * 3_600_000);
+    expect(left).toBeLessThan(4.1 * 3_600_000);
+  });
+
+  it('a scheduled request does not stop the Pro getting emergencies', async () => {
+    const base = somewhere();
+    const p = await pro(north(base, 1));
+    const customer = await login(ctx);
+    const job = await scheduled(customer, base);
+    await customer.agent
+      .post(`/v1/jobs/${job.id}/requests`)
+      .set(CLIENT_HEADER)
+      .send({ proId: p.userId })
+      .expect(201);
+    const urgent = await emergency(customer, base);
+    expect(urgent.dispatch).toBe('OFFERED');
+    expect((await offersOf(p)).map((o) => o.job.id).sort()).toEqual([job.id, urgent.id].sort());
+  });
+});

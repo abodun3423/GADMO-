@@ -183,3 +183,12 @@ export const userStatusChangeSchema = z
   })
   .strict();
 export type UserStatusChange = z.infer<typeof userStatusChangeSchema>;
+
+/**
+ * Scheduled jobs: the customer chooses a Pro, who has this long to answer (but never
+ * later than an hour before the appointment, and never less than 30 minutes).
+ */
+export const SCHEDULED_REQUEST_HOURS = 24;
+
+export const chooseProSchema = z.object({ proId: z.uuid() }).strict();
+export type ChoosePro = z.infer<typeof chooseProSchema>;
