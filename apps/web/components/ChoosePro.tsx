@@ -94,8 +94,8 @@ export function ChoosePro({ jobId }: { jobId: string }) {
       </p>
       <h1 className="page-title">Choose a Pro</h1>
       <p className="lede">
-        Verified Pros near you who offer this service. Send your request to one; if they can’t take
-        it, you can choose another.
+        Verified Pros near you who offer this service or related work. Send your request to one; if
+        they can’t take it, you can choose another.
       </p>
       {error && (
         <p className="alert alert-error" role="alert">
@@ -122,7 +122,10 @@ export function ChoosePro({ jobId }: { jobId: string }) {
               {' · '}about {p.distanceKm} km away
             </p>
             {p.bio && <p>{p.bio}</p>}
-            <p className="meta">{p.skills.join(', ')}</p>
+            <p className="meta">
+              {!p.exactSkill && 'Does related work: '}
+              {p.skills.join(', ')}
+            </p>
             <button
               className="button"
               type="button"

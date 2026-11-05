@@ -5,6 +5,7 @@ import { JwtAuthGuard, Roles } from '../auth/guards';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { categories, jobOffers, jobs, proCategories, proProfiles, users } from '../db/schema';
 import { distanceKmSql } from '../dispatch/geo';
+import { offersAnyOf, withRelated } from '../catalog/related';
 import { DB, type Db } from '../infra/infra.module';
 
 const LIMIT = 50;
@@ -13,8 +14,8 @@ const LIMIT = 50;
  * Staff: why a job does or doesn't reach Pros. For every Pro who offers the job's service,
  * shows each rule the matching applies (verified, active account, service area set,
  * within travel distance, not already asked; online for emergencies), so support can tell
- * a customer or Pro exactly what to fix. Also lists Pros who don't offer this service, in
- * case one picked a similar skill.
+ * a customer or Pro exactly what to fix. Pros with a related skill count too (see RELATED
+ * in db/categories.ts). Also lists Pros who offer neither, in case one picked a similar skill.
  */
 @Controller('admin/jobs')
 @UseGuards(JwtAuthGuard)
@@ -52,8 +53,11 @@ export class AdminJobMatchingController {
       job.latitude,
       job.longitude,
     );
+    const skills = await withRelated(this.db, [job.categoryId]);
+    const exact = offersAnyOf(this.db, proProfiles.userId, [job.categoryId]);
     const rows = await this.db
       .select({
+        exactSkill: sql<boolean>`${exact}`,
         id: users.id,
         name: users.name,
         accountStatus: users.status,
@@ -69,12 +73,16 @@ export class AdminJobMatchingController {
           where ${jobOffers.jobId} = ${job.id} and ${jobOffers.proId} = ${users.id}
           order by ${jobOffers.createdAt} desc limit 1)`,
       })
-      .from(proCategories)
-      .innerJoin(users, eq(users.id, proCategories.proId))
-      .innerJoin(proProfiles, eq(proProfiles.userId, users.id))
-      .where(and(eq(proCategories.categoryId, job.categoryId), eq(users.role, 'PRO')))
+      .from(proProfiles)
+      .innerJoin(users, eq(users.id, proProfiles.userId))
+      .where(and(offersAnyOf(this.db, proProfiles.userId, skills), eq(users.role, 'PRO')))
       // Nearest first; Pros who haven't set a service area last.
-      .orderBy(sql`${proProfiles.latitude} is null`, asc(distance), asc(users.createdAt))
+      .orderBy(
+        sql`${exact} desc`,
+        sql`${proProfiles.latitude} is null`,
+        asc(distance),
+        asc(users.createdAt),
+      )
       .limit(LIMIT);
 
     const matchIds = rows.map((r) => r.id);
@@ -131,6 +139,7 @@ export class AdminJobMatchingController {
         return {
           id: r.id,
           name: r.name,
+          exactSkill: r.exactSkill,
           verificationStatus: r.verificationStatus,
           accountStatus: r.accountStatus,
           isOnline: r.isOnline,

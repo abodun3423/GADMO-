@@ -24,6 +24,7 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { categories, jobs, proCategories, proProfiles } from '../db/schema';
 import { DispatchService } from '../dispatch/dispatch.service';
 import { distanceKmSql, roughKm } from '../dispatch/geo';
+import { withRelated } from '../catalog/related';
 import { DB, type Db } from '../infra/infra.module';
 
 /** A Pro's own profile. Routes carry no user id: a Pro only ever sees or edits their own. */
@@ -148,7 +149,8 @@ export class ProController {
           // Emergencies are offered one Pro at a time (see DispatchService), not listed.
           eq(jobs.type, 'SCHEDULED'),
           isNull(jobs.proId),
-          inArray(jobs.categoryId, profile.categoryIds),
+          // The Pro's skills and related ones (see RELATED in db/categories.ts).
+          inArray(jobs.categoryId, await withRelated(this.db, profile.categoryIds)),
           // Scheduled jobs whose time has passed are no longer offered.
           or(isNull(jobs.scheduledAt), gt(jobs.scheduledAt, sql`now()`)),
           sql`${distanceKm} <= ${profile.serviceRadiusKm}`,
