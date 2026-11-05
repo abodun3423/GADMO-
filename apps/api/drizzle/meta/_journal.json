@@ -57,6 +57,13 @@
       "when": 1793705477800,
       "tag": "0007_inspection_offers",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793872004492,
+      "tag": "0008_inspection_payment",
+      "breakpoints": true
     }
   ]
 }

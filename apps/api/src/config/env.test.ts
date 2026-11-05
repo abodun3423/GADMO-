@@ -49,6 +49,27 @@ describe('loadEnv', () => {
     );
   });
 
+  it('uses the test checkout by default, never in production, and Paystack needs a key', () => {
+    expect(loadEnv(valid).PAYMENT_PROVIDER).toBe('test');
+    const prod = {
+      ...valid,
+      NODE_ENV: 'production',
+      SMS_PROVIDER: 'termii',
+      WEB_ORIGIN: 'https://gadmo.ng',
+    };
+    expect(() => loadEnv(prod)).toThrow(/PAYMENT_PROVIDER/);
+    expect(() => loadEnv({ ...valid, PAYMENT_PROVIDER: 'paystack' })).toThrow(
+      /PAYSTACK_SECRET_KEY/,
+    );
+    expect(() =>
+      loadEnv({ ...valid, PAYMENT_PROVIDER: 'paystack', PAYSTACK_SECRET_KEY: 'pk_test_fake_only' }),
+    ).toThrow(/sk_test_/);
+    expect(
+      loadEnv({ ...prod, PAYMENT_PROVIDER: 'paystack', PAYSTACK_SECRET_KEY: 'sk_live_fake_only' })
+        .PAYMENT_PROVIDER,
+    ).toBe('paystack');
+  });
+
   it('allows DEV_LOGIN_CODE only in development', () => {
     expect(loadEnv({ ...valid, DEV_LOGIN_CODE: '123456' }).DEV_LOGIN_CODE).toBe('123456');
     expect(loadEnv({ ...valid, DEV_LOGIN_CODE: '' }).DEV_LOGIN_CODE).toBeUndefined();

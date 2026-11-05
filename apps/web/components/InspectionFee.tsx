@@ -131,14 +131,26 @@ export function InspectionPanel({
     );
   }
   if (job.inspectionFeeKobo !== null) {
-    return (
-      <p className="fee-panel fee-agreed">
-        <strong>Inspection fee agreed: {naira(job.inspectionFeeKobo)}.</strong>{' '}
-        {you === 'CUSTOMER'
-          ? 'You’ll pay it in the app before the visit (coming soon). It counts toward the final bill.'
-          : 'The customer pays it in the app before your visit (coming soon).'}
-      </p>
-    );
+    const fee = naira(job.inspectionFeeKobo);
+    if (job.status !== 'ACCEPTED') {
+      return (
+        <p className="fee-panel fee-agreed">
+          <strong>Inspection fee paid: {fee}.</strong>{' '}
+          {you === 'CUSTOMER'
+            ? 'GADMO holds it until your Pro arrives. It counts toward the final bill.'
+            : 'GADMO holds it and releases it to you when you arrive.'}
+        </p>
+      );
+    }
+    if (you === 'PRO') {
+      return (
+        <p className="fee-panel fee-agreed">
+          <strong>Inspection fee agreed: {fee}.</strong> Waiting for the customer to pay it in the
+          app. Visit once it’s paid.
+        </p>
+      );
+    }
+    return <PayInspectionFee jobId={job.id} fee={fee} />;
   }
   if (pending) {
     return <p className="fee-panel">An inspection-fee offer is waiting for an answer below.</p>;
@@ -172,6 +184,43 @@ export function InspectionPanel({
           await onChanged();
         }}
       />
+    </div>
+  );
+}
+
+/** The customer pays the agreed fee on the payment page, then comes back to the chat. */
+function PayInspectionFee({ jobId, fee }: { jobId: string; fee: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pay() {
+    setError(null);
+    setBusy(true);
+    try {
+      const { authorizationUrl } = await post<{ authorizationUrl: string }>(
+        `/v1/jobs/${jobId}/inspection-fee/pay`,
+      );
+      window.location.assign(authorizationUrl);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not start the payment. Try again.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fee-panel fee-agreed">
+      <p>
+        <strong>Inspection fee agreed: {fee}.</strong> Pay it in the app before the visit. GADMO
+        holds it until your Pro arrives, and it counts toward the final bill.
+      </p>
+      {error && (
+        <p className="alert alert-error" role="alert">
+          {error}
+        </p>
+      )}
+      <button className="button button-small" type="button" disabled={busy} onClick={pay}>
+        {busy ? 'Opening payment…' : `Pay ${fee} now`}
+      </button>
     </div>
   );
 }

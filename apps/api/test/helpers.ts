@@ -29,15 +29,19 @@ export interface TestContext {
   redis: Redis;
 }
 
-export async function createTestApp(): Promise<TestContext> {
+export async function createTestApp(
+  overrides: { provide: symbol; useValue: unknown }[] = [],
+): Promise<TestContext> {
   Object.assign(process.env, TEST_ENV);
   const sms = new CapturingSms();
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+  let builder = Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(SMS_SENDER)
-    .useValue(sms)
-    .compile();
+    .useValue(sms);
+  for (const o of overrides) builder = builder.overrideProvider(o.provide).useValue(o.useValue);
+  const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>({
     bodyParser: false,
+    rawBody: true,
     logger: false,
   });
   configureApp(app, app.get<Env>(ENV));

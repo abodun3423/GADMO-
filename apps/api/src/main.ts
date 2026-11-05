@@ -8,7 +8,11 @@ import { configureApp } from './configure-app';
 
 async function bootstrap(): Promise<void> {
   loadDotEnv();
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+    // Paystack webhooks are checked against the exact bytes received.
+    rawBody: true,
+  });
   const env = app.get<Env>(ENV);
   configureApp(app, env);
   await app.listen(env.PORT);

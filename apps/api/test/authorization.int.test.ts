@@ -5,7 +5,9 @@ import {
   auditLogs,
   categories,
   jobs,
+  ledgerEntries,
   messages,
+  payments,
   privateFiles,
   proProfiles,
   users,
@@ -1022,6 +1024,113 @@ describe('inspection fee agreed in chat (max ₦5,000)', () => {
       note: 'Transport is far, call 0803 123 4567',
     }).expect(201);
     expect(res.body.offer.note).not.toMatch(/0803|4567/);
+  });
+});
+
+describe('paying the inspection fee (test checkout)', () => {
+  async function agreedJob(feeKobo: number | null = 200_000) {
+    const customer = await login(ctx);
+    const pro = await login(ctx, { role: 'pro' });
+    const created = await customer.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(
+        newJob(electricianId, {
+          type: 'SCHEDULED',
+          scheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
+          latitude: 1 + Math.random(),
+          longitude: 1 + Math.random(),
+        }),
+      )
+      .expect(201);
+    const id = created.body.job.id as string;
+    await ctx.db
+      .update(jobs)
+      .set({ proId: pro.userId, status: 'ACCEPTED', inspectionFeeKobo: feeKobo })
+      .where(eq(jobs.id, id));
+    return { customer, pro, id };
+  }
+  const pay = (agent: Awaited<ReturnType<typeof login>>['agent'], id: string) =>
+    agent.post(`/v1/jobs/${id}/inspection-fee/pay`).set(CLIENT_HEADER).send();
+  const complete = (
+    agent: Awaited<ReturnType<typeof login>>['agent'],
+    ref: string,
+    outcome: 'success' | 'failed',
+  ) => agent.post(`/v1/payments/test/${ref}/complete`).set(CLIENT_HEADER).send({ outcome });
+
+  it('the customer pays; the fee is held by GADMO in balanced ledger entries, once', async () => {
+    const { customer, pro, id } = await agreedJob();
+    const started = await pay(customer.agent, id).expect(200);
+    const ref = started.body.reference as string;
+    expect(ref).toMatch(/^gadmo_[0-9a-f]{32}$/);
+    expect(started.body.authorizationUrl).toBe(`http://localhost:3000/pay/test?reference=${ref}`);
+    // Tapping Pay again reuses the same checkout.
+    expect((await pay(customer.agent, id).expect(200)).body.reference).toBe(ref);
+
+    const page = await customer.agent.get(`/v1/payments/test/${ref}`).expect(200);
+    expect(page.body.payment).toMatchObject({ jobId: id, amountKobo: 200_000, status: 'PENDING' });
+    // Not paid until the provider says so.
+    const before = await customer.agent
+      .post(`/v1/payments/${ref}/check`)
+      .set(CLIENT_HEADER)
+      .expect(200);
+    expect(before.body.payment.status).toBe('PENDING');
+
+    const done = await complete(customer.agent, ref, 'success').expect(200);
+    expect(done.body.payment.status).toBe('SUCCEEDED');
+    await complete(customer.agent, ref, 'success').expect(200);
+    await customer.agent.post(`/v1/payments/${ref}/check`).set(CLIENT_HEADER).expect(200);
+
+    const [job] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(job!.status).toBe('INSPECTION_PAID');
+    const entries = await ctx.db.select().from(ledgerEntries).where(eq(ledgerEntries.jobId, id));
+    expect(entries.map((e) => [e.account, e.debitKobo, e.creditKobo]).sort()).toEqual(
+      [
+        ['gateway:test:clearing', 200_000, 0],
+        [`escrow:job:${id}`, 0, 200_000],
+      ].sort(),
+    );
+    const chat = await pro.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+    expect(chat.body.messages.at(-1).body).toBe(
+      'Inspection fee paid: ₦2,000. GADMO holds it until the Pro arrives.',
+    );
+    await pay(customer.agent, id).expect(409); // already paid
+  });
+
+  it('a failed payment leaves the fee unpaid and can be tried again', async () => {
+    const { customer, id } = await agreedJob();
+    const ref = (await pay(customer.agent, id).expect(200)).body.reference as string;
+    const failed = await complete(customer.agent, ref, 'failed').expect(200);
+    expect(failed.body.payment.status).toBe('FAILED');
+    const [job] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(job!.status).toBe('ACCEPTED');
+    const again = await pay(customer.agent, id).expect(200);
+    expect(again.body.reference).not.toBe(ref);
+  });
+
+  it('only the job’s customer can pay or see a payment, and only once a fee is agreed', async () => {
+    const { customer, pro, id } = await agreedJob();
+    const ref = (await pay(customer.agent, id).expect(200)).body.reference as string;
+    const stranger = await login(ctx);
+    await pay(stranger.agent, id).expect(404);
+    await pay(pro.agent, id).expect(403);
+    for (const who of [stranger, pro]) {
+      await who.agent
+        .post(`/v1/payments/${ref}/check`)
+        .set(CLIENT_HEADER)
+        .expect(who === pro ? 403 : 404);
+      await who.agent.get(`/v1/payments/test/${ref}`).expect(who === pro ? 403 : 404);
+      await complete(who.agent, ref, 'success').expect(who === pro ? 403 : 404);
+    }
+    await customer.agent.post(`/v1/jobs/${id}/inspection-fee/pay`).send().expect(403); // CSRF
+    await customer.agent.get('/v1/payments/test/not-a-reference').expect(400);
+    const [p] = await ctx.db.select().from(payments).where(eq(payments.paystackReference, ref));
+    expect(p!.status).toBe('PENDING');
+
+    const notAgreed = await agreedJob(null);
+    await pay(notAgreed.customer.agent, notAgreed.id).expect(409);
+    // The Paystack webhook is off while the test checkout is in use.
+    await request(ctx.server).post('/v1/payments/paystack/webhook').send({}).expect(404);
   });
 });
 

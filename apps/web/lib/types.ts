@@ -196,6 +196,16 @@ export interface MessagesResponse {
   messages: ChatMessage[];
   offers: { id: string; status: OfferStatus }[];
   inspectionFeeKobo: number | null;
+  jobStatus: JobStatus;
+}
+
+/** POST /v1/payments/:reference/check, GET /v1/payments/test/:reference */
+export interface Payment {
+  reference: string;
+  jobId: string;
+  type: 'INSPECTION_FEE' | 'DEPOSIT' | 'BALANCE';
+  amountKobo: number;
+  status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
 }
 
 export type AccountStatus = 'ACTIVE' | 'SUSPENDED' | 'BANNED';

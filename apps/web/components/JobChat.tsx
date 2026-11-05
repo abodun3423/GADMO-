@@ -41,8 +41,11 @@ export function JobChat({ jobId }: { jobId: string }) {
       addMessages(res.messages);
       setOfferStatus(Object.fromEntries(res.offers.map((o) => [o.id, o.status])));
       setConvo((c) =>
-        c && c.job.inspectionFeeKobo !== res.inspectionFeeKobo
-          ? { ...c, job: { ...c.job, inspectionFeeKobo: res.inspectionFeeKobo } }
+        c && (c.job.inspectionFeeKobo !== res.inspectionFeeKobo || c.job.status !== res.jobStatus)
+          ? {
+              ...c,
+              job: { ...c.job, inspectionFeeKobo: res.inspectionFeeKobo, status: res.jobStatus },
+            }
           : c,
       );
     } catch {

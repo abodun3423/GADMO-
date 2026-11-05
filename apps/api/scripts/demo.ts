@@ -58,6 +58,7 @@ async function main(): Promise<void> {
     .compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>({
     bodyParser: false,
+    rawBody: true,
     logger: false,
   });
   configureApp(app, app.get<Env>(ENV));
