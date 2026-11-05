@@ -664,6 +664,27 @@ input[type='password'] {
   box-shadow: inset 4px 0 0 var(--ok);
 }
 
+.code-boxes {
+  display: flex;
+  gap: 10px;
+  margin: 8px 0 14px;
+}
+
+.code-boxes .code-box {
+  width: 52px;
+  height: 60px;
+  padding: 0;
+  text-align: center;
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.field-label {
+  margin: 4px 0 2px;
+  font-weight: 600;
+}
+
 .arrival-label {
   margin: 8px 0 0;
   font-weight: 600;

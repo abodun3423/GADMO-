@@ -3,6 +3,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { api, ApiError, fieldMessage, post } from '@/lib/api';
 import type { Conversation } from '@/lib/types';
+import { CodeBoxes } from './CodeBoxes';
 
 /**
  * After the inspection fee is paid: the customer sees their arrival code; the Pro taps
@@ -144,24 +145,9 @@ function ProVisit({
         </>
       ) : (
         <form onSubmit={confirm} noValidate>
-          <div className="field">
-            <label htmlFor="arrival-code">
-              Enter the customer’s arrival code
-              <span className="hint">
-                Ask the customer for the 4 digits shown in their GADMO chat.
-              </span>
-            </label>
-            <input
-              id="arrival-code"
-              type="text"
-              inputMode="numeric"
-              autoComplete="off"
-              autoFocus
-              maxLength={4}
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-            />
-          </div>
+          <p className="field-label">Enter the customer’s arrival code</p>
+          <p className="hint">Ask the customer for the 4 digits shown in their GADMO chat.</p>
+          <CodeBoxes length={4} value={code} onChange={setCode} label="Arrival code" autoFocus />
           <div className="fee-actions">
             <button className="button button-small" type="submit" disabled={busy}>
               {busy ? 'Checking…' : `Confirm arrival and get ${fee}`}
