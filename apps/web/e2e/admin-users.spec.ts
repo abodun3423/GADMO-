@@ -7,11 +7,11 @@ test('staff find a Pro, suspend them (they are signed out), then reactivate', as
 }) => {
   const noCspViolations = watchCsp(page);
   const proPage = await browser.newPage();
-  await proPage.goto('/signin?next=/account');
+  await proPage.goto('/signin?next=/account/profile');
   const pro = await signIn(proPage, 'pro');
-  await expect(proPage).toHaveURL('/account');
+  await expect(proPage).toHaveURL('/account/profile');
   const name = `Femi ${Array.from({ length: 6 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join('')}`;
-  await proPage.getByLabel('Your name').fill(name);
+  await proPage.getByLabel(/Full name/).fill(name);
   await proPage.getByRole('button', { name: 'Save' }).click();
   await expect(proPage.getByRole('status')).toHaveText('Saved.');
 

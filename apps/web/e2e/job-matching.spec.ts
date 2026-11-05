@@ -5,11 +5,11 @@ test('staff see which Pros can take a job, and why the others can’t', async ({
   const noCspViolations = watchCsp(page);
   // A Pro who offers the service and works in Ado-Ekiti, but isn't verified yet.
   const proPage = await browser.newPage();
-  await proPage.goto('/signin?next=/account');
+  await proPage.goto('/signin?next=/account/profile');
   const pro = await signIn(proPage, 'pro');
-  await expect(proPage).toHaveURL('/account');
+  await expect(proPage).toHaveURL('/account/profile');
   const name = `Tunde ${Array.from({ length: 6 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join('')}`;
-  await proPage.getByLabel('Your name').fill(name);
+  await proPage.getByLabel(/Full name/).fill(name);
   await proPage.getByRole('button', { name: 'Save' }).click();
   await expect(proPage.getByRole('status')).toHaveText('Saved.');
   await proPage.goto('/pro/profile');

@@ -90,6 +90,11 @@ export const users = pgTable('users', {
   status: userStatusEnum('status').notNull().default('ACTIVE'),
   /** Count of attempts to share contact details in chat. */
   chatFlags: integer('chat_flags').notNull().default(0),
+  /**
+   * The person asked GADMO to delete their account (Nigeria Data Protection Act). Staff
+   * finish open jobs and money first, then delete; the person can cancel until then.
+   */
+  deletionRequestedAt: timestamp('deletion_requested_at', { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });

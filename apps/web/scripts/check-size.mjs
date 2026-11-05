@@ -21,6 +21,8 @@ const PAGES = [
   '/jobs',
   '/jobs/00000000-0000-4000-8000-000000000000',
   '/account',
+  '/account/settings',
+  '/account/privacy',
   '/pro',
   '/pro/profile',
   '/pro/verify',

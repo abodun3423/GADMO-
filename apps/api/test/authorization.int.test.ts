@@ -17,7 +17,7 @@ import {
 } from '../src/db/schema';
 import { FIELD_CRYPTO } from '../src/infra/infra.module';
 import type { FieldCrypto } from '../src/common/field-crypto';
-import { CLIENT_HEADER, createTestApp, login, type TestContext } from './helpers';
+import { CLIENT_HEADER, createTestApp, login, randomPhone, type TestContext } from './helpers';
 
 /**
  * Object-level authorization (IDOR) suite: no user can read or touch another user's data.
@@ -161,12 +161,16 @@ describe('my account', () => {
   it('returns only the caller’s own account, with their own phone', async () => {
     const alice = await login(ctx);
     const res = await alice.agent.get('/v1/me').expect(200);
-    expect(res.body.user).toEqual({
+    expect(res.body.user).toMatchObject({
       id: alice.userId,
       phone: alice.phone.e164,
       name: null,
       role: 'CUSTOMER',
+      deletionRequestedAt: null,
     });
+    expect(Object.keys(res.body.user).sort()).toEqual(
+      ['createdAt', 'deletionRequestedAt', 'id', 'name', 'phone', 'role'].sort(),
+    );
   });
 
   it('changes only the caller’s own name; role and other users stay untouched', async () => {
@@ -209,6 +213,122 @@ describe('my account', () => {
     const res = await customer.agent.get(`/v1/users/${pro.userId}`).expect(200);
     expect(res.body.user.name).toBe('Tunde');
     expect(res.body.user.phone).toBeUndefined();
+  });
+});
+
+describe('account dashboard, privacy and sessions', () => {
+  it('the summary counts only the caller’s own jobs and money', async () => {
+    const customer = await login(ctx);
+    const pro = await login(ctx, { role: 'pro' });
+    const created = await customer.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(newJob(electricianId, { latitude: -40 - Math.random(), longitude: -40 }))
+      .expect(201);
+    const id = created.body.job.id as string;
+    const mine = await customer.agent.get('/v1/me/summary').expect(200);
+    expect(mine.body.summary).toMatchObject({
+      role: 'CUSTOMER',
+      jobs: { open: 1, active: 0, completed: 0 },
+      money: { balanceKobo: 0, spentKobo: 0 },
+    });
+
+    await ctx.db
+      .update(jobs)
+      .set({ proId: pro.userId, status: 'INSPECTION_PAID' })
+      .where(eq(jobs.id, id));
+    const txnId = crypto.randomUUID();
+    await ctx.db.insert(ledgerEntries).values([
+      { txnId, account: `escrow:job:${id}`, debitKobo: 150_000, jobId: id, description: 'test' },
+      { txnId, account: `pro:${pro.userId}`, creditKobo: 150_000, jobId: id, description: 'test' },
+    ]);
+    const theirs = await pro.agent.get('/v1/me/summary').expect(200);
+    expect(theirs.body.summary).toMatchObject({
+      role: 'PRO',
+      jobs: { active: 1 },
+      money: { balanceKobo: 150_000, earnedKobo: 150_000 },
+    });
+    const stranger = await login(ctx);
+    expect((await stranger.agent.get('/v1/me/summary').expect(200)).body.summary.jobs).toEqual({
+      open: 0,
+      active: 0,
+      completed: 0,
+      cancelled: 0,
+    });
+    await request(ctx.server).get('/v1/me/summary').expect(401);
+  });
+
+  it('exports only the caller’s own data, never the other side’s contact details', async () => {
+    const customer = await login(ctx);
+    const pro = await login(ctx, { role: 'pro' });
+    const created = await customer.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(newJob(electricianId, { latitude: -40 - Math.random(), longitude: -41 }))
+      .expect(201);
+    const id = created.body.job.id as string;
+    await ctx.db.update(jobs).set({ proId: pro.userId, status: 'ACCEPTED' }).where(eq(jobs.id, id));
+    await pro.agent
+      .post(`/v1/jobs/${id}/messages`)
+      .set(CLIENT_HEADER)
+      .send({ body: 'From the Pro' })
+      .expect(201);
+    await customer.agent
+      .post(`/v1/jobs/${id}/messages`)
+      .set(CLIENT_HEADER)
+      .send({ body: 'From me' })
+      .expect(201);
+
+    const res = await customer.agent.get('/v1/me/export').expect(200);
+    expect(res.headers['content-disposition']).toContain('gadmo-my-data.json');
+    const data = JSON.parse(res.text) as {
+      account: { phone: string };
+      jobs: { id: string }[];
+      messagesYouSent: { body: string }[];
+    };
+    expect(data.account.phone).toBe(customer.phone.e164);
+    expect(data.jobs.map((j) => j.id)).toEqual([id]);
+    expect(data.messagesYouSent.map((m) => m.body)).toEqual(['From me']);
+    expect(res.text).not.toContain(pro.phone.e164);
+    expect(res.text).not.toContain('From the Pro');
+    await request(ctx.server).get('/v1/me/export').expect(401);
+  });
+
+  it('a deletion request can be made and cancelled; sign out everywhere ends other sessions', async () => {
+    const phone = randomPhone();
+    const laptop = await login(ctx, { phone });
+    const phoneSession = await login(ctx, { phone });
+    await laptop.agent.post('/v1/me/deletion-request').send({}).expect(403); // CSRF
+    await laptop.agent
+      .post('/v1/me/deletion-request')
+      .set(CLIENT_HEADER)
+      .send({ reason: 'Moving abroad, call me on 08031234567', extra: 1 })
+      .expect(400);
+    const asked = await laptop.agent
+      .post('/v1/me/deletion-request')
+      .set(CLIENT_HEADER)
+      .send({ reason: 'Moving abroad, call me on 08031234567' })
+      .expect(200);
+    expect(asked.body.user.deletionRequestedAt).not.toBeNull();
+    const [log] = await ctx.db
+      .select()
+      .from(auditLogs)
+      .where(
+        and(
+          eq(auditLogs.target, `user:${laptop.userId}`),
+          eq(auditLogs.action, 'ACCOUNT_DELETION_REQUESTED'),
+        ),
+      );
+    expect(JSON.stringify(log!.metadata)).not.toContain('08031234567');
+    const cancelled = await laptop.agent
+      .delete('/v1/me/deletion-request')
+      .set(CLIENT_HEADER)
+      .expect(200);
+    expect(cancelled.body.user.deletionRequestedAt).toBeNull();
+
+    await laptop.agent.post('/v1/me/sign-out-everywhere').set(CLIENT_HEADER).expect(204);
+    await phoneSession.agent.post('/v1/auth/refresh').set(CLIENT_HEADER).expect(401);
+    await laptop.agent.post('/v1/auth/refresh').set(CLIENT_HEADER).expect(401);
   });
 });
 

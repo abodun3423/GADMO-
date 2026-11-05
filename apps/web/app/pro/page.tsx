@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { AccountShell } from '@/components/account/AccountShell';
 import { ProHome } from '@/components/ProHome';
 import { getCatalogue } from '@/lib/server-api';
 
@@ -10,8 +11,10 @@ export default async function ProHomePage() {
     (groups ?? []).flatMap((g) => g.categories).map((c) => [c.id, c.name]),
   );
   return (
-    <main className="page">
-      <ProHome serviceNames={names} />
+    <main className="page page-wide page-app">
+      <AccountShell>
+        <ProHome serviceNames={names} />
+      </AccountShell>
     </main>
   );
 }

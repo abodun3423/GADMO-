@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useSession } from '@/lib/useSession';
+import { initials } from './account/AccountShell';
 
 /**
  * Top-right links: "Sign in" when signed out. Signed in: customers get "My jobs",
@@ -32,9 +33,17 @@ export function AccountLink() {
           My jobs
         </Link>
       )}
-      <Link href="/account" className="topbar-link">
-        Account
-      </Link>
+      {me.role === 'CUSTOMER' || me.role === 'PRO' ? (
+        <Link href="/account" className="topbar-avatar" aria-label="Account">
+          <span className="avatar" aria-hidden="true">
+            {initials(me.name)}
+          </span>
+        </Link>
+      ) : (
+        <Link href="/account" className="topbar-link">
+          Account
+        </Link>
+      )}
     </nav>
   );
 }
