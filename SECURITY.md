@@ -78,7 +78,9 @@ It has no HTTP endpoint, and the API refuses to start with `console` or `outbox`
 ## Staff sign-in (separate from customers and Pros)
 
 - Staff sign in at `/staff` with email + password (scrypt, N=2^15) **and** a code sent to their
-  phone. The code step only works within 5 minutes of a correct password.
+  phone. The code step only works within 5 minutes of a correct password, in the same browser: the
+  proof is a signed httpOnly cookie (path `/v1/auth/staff`), checked against the API clock rather than
+  Redis expiry, and usable for one sign-in only.
 - Staff numbers are refused by the customer/Pro sign-in, and customer/Pro accounts are refused by
   the staff sign-in. Wrong passwords and unknown emails get the same answer in the same time.
 - Staff sessions end 12 hours after sign-in; renewing the access token does not extend them.

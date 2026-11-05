@@ -186,4 +186,59 @@ describe('staff sign-in', () => {
       .send({ currentPassword: 'x', newPassword: 'a brand new long password' })
       .expect(403);
   });
+
+  it('the password step does not rely on Redis timing, and each one signs in once', async () => {
+    const s = await staffAccount();
+    const agent = request.agent(ctx.server);
+    const login = await agent
+      .post('/v1/auth/staff/login')
+      .set(CLIENT_HEADER)
+      .send({ email: s.email, password: s.password })
+      .expect(202);
+    // The proof of the password is a signed cookie, not a Redis key that can expire early.
+    expect(await ctx.redis.keys('staff-challenge*')).toEqual([]);
+    const challenge = String(login.headers['set-cookie']).match(/gadmo_staff_challenge=[^;]+/)![0];
+    expect(String(login.headers['set-cookie'])).toMatch(/HttpOnly/i);
+
+    await agent
+      .post('/v1/auth/staff/verify')
+      .set(CLIENT_HEADER)
+      .send({ email: s.email, code: ctx.sms.lastCode.get(s.phone.e164) })
+      .expect(200);
+
+    // Replaying the same challenge with a fresh code is refused.
+    await request(ctx.server)
+      .post('/v1/auth/otp/request')
+      .set(CLIENT_HEADER)
+      .send({ phone: s.phone.local })
+      .expect(202);
+    await request(ctx.server)
+      .post('/v1/auth/staff/verify')
+      .set(CLIENT_HEADER)
+      .set('cookie', challenge)
+      .send({ email: s.email, code: ctx.sms.lastCode.get(s.phone.e164) })
+      .expect(401);
+  });
+
+  it('a challenge for one staff member cannot be used for another', async () => {
+    const a = await staffAccount();
+    const b = await staffAccount();
+    const login = await request(ctx.server)
+      .post('/v1/auth/staff/login')
+      .set(CLIENT_HEADER)
+      .send({ email: a.email, password: a.password })
+      .expect(202);
+    const challenge = String(login.headers['set-cookie']).match(/gadmo_staff_challenge=[^;]+/)![0];
+    await request(ctx.server)
+      .post('/v1/auth/otp/request')
+      .set(CLIENT_HEADER)
+      .send({ phone: b.phone.local })
+      .expect(202);
+    await request(ctx.server)
+      .post('/v1/auth/staff/verify')
+      .set(CLIENT_HEADER)
+      .set('cookie', challenge)
+      .send({ email: b.email, code: ctx.sms.lastCode.get(b.phone.e164) })
+      .expect(401);
+  });
 });
