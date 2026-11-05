@@ -21,7 +21,8 @@ import {
   shareLocationSchema,
 } from '@gadmo/shared';
 import type { Request, Response } from 'express';
-import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
+import { randomInt } from 'node:crypto';
+import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type Redis from 'ioredis';
 import { z } from 'zod';
 import { AlertsService } from '../alerts/alerts.service';
@@ -98,10 +99,7 @@ export class ChatController {
           onTheWayAt: job.onTheWayAt,
           arrivedAt: job.arrivedAt,
           // Only the customer sees the code, and only until the Pro has used it.
-          arrivalCode:
-            job.customerId === user.id && job.arrivalCodeEncrypted && !job.arrivedAt
-              ? this.crypto.decrypt(job.arrivalCodeEncrypted).toString()
-              : null,
+          arrivalCode: job.customerId === user.id ? await this.arrivalCode(job) : null,
         },
         you: job.customerId === user.id ? 'CUSTOMER' : 'PRO',
         other: other ? { id: other.id, name: other.name } : null,
@@ -278,6 +276,33 @@ export class ChatController {
         'content-disposition': 'inline',
       })
       .send(this.crypto.decrypt(file.data));
+  }
+
+  /**
+   * The customer's arrival code while the visit is due. Jobs paid before arrival codes
+   * existed get one the first time the customer opens the chat.
+   */
+  private async arrivalCode(job: {
+    id: string;
+    status: string;
+    arrivalCodeEncrypted: string | null;
+    arrivedAt: Date | null;
+  }): Promise<string | null> {
+    if (job.arrivedAt || job.status !== 'INSPECTION_PAID') return null;
+    if (job.arrivalCodeEncrypted) return this.crypto.decrypt(job.arrivalCodeEncrypted).toString();
+    const code = String(randomInt(0, 10_000)).padStart(4, '0');
+    const [saved] = await this.db
+      .update(jobs)
+      .set({ arrivalCodeEncrypted: this.crypto.encrypt(code) })
+      .where(and(eq(jobs.id, job.id), isNull(jobs.arrivalCodeEncrypted)))
+      .returning({ sealed: jobs.arrivalCodeEncrypted });
+    if (saved?.sealed) return code;
+    // Made at the same moment by another request: use that one.
+    const [row] = await this.db
+      .select({ sealed: jobs.arrivalCodeEncrypted })
+      .from(jobs)
+      .where(eq(jobs.id, job.id));
+    return row?.sealed ? this.crypto.decrypt(row.sealed).toString() : null;
   }
 
   private async liveCall(jobId: string, user: AuthUser) {

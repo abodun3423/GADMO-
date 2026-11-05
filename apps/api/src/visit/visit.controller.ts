@@ -100,7 +100,7 @@ export class VisitController {
     ]);
     const result = await this.db.transaction(async (tx) => {
       const job = await this.lockForPro(tx, jobId, user);
-      const expected = this.crypto.decrypt(job.arrivalCodeEncrypted!);
+      const expected = this.expectedCode(job);
       const given = Buffer.from(body.code);
       if (expected.length !== given.length || !timingSafeEqual(expected, given)) {
         throw new UnprocessableEntityException(
@@ -172,10 +172,20 @@ export class VisitController {
     if (!job) throw new NotFoundException();
     if (job.proId !== user.id) throw new ForbiddenException('Only the Pro updates the visit.');
     if (job.arrivedAt) throw new ConflictException('Your arrival is already confirmed.');
-    if (job.status !== 'INSPECTION_PAID' || !job.arrivalCodeEncrypted) {
+    if (job.status !== 'INSPECTION_PAID') {
       throw new ConflictException('The customer pays the inspection fee before the visit.');
     }
     return job;
+  }
+
+  /** The arrival code, which (for jobs paid before codes existed) needs the customer's chat. */
+  private expectedCode(job: { arrivalCodeEncrypted: string | null }): Buffer {
+    if (!job.arrivalCodeEncrypted) {
+      throw new ConflictException(
+        'Ask the customer to open this job’s chat in GADMO: their arrival code is shown there.',
+      );
+    }
+    return this.crypto.decrypt(job.arrivalCodeEncrypted);
   }
 }
 
