@@ -1093,9 +1093,73 @@ describe('paying the inspection fee (test checkout)', () => {
     );
     const chat = await pro.agent.get(`/v1/jobs/${id}/messages`).expect(200);
     expect(chat.body.messages.at(-1).body).toBe(
-      'Inspection fee paid: ₦2,000. GADMO holds it until the Pro arrives.',
+      'Inspection fee paid: ₦2,000. GADMO holds it until the Pro arrives and enters the customer’s arrival code.',
     );
     await pay(customer.agent, id).expect(409); // already paid
+  });
+
+  it('the Pro enters the customer’s arrival code; the fee is released to the Pro', async () => {
+    const { customer, pro, id } = await agreedJob(250_000);
+    const ref = (await pay(customer.agent, id).expect(200)).body.reference as string;
+    const visit = (who: typeof pro, path: 'on-the-way' | 'arrived', body: object = {}) =>
+      who.agent.post(`/v1/jobs/${id}/${path}`).set(CLIENT_HEADER).send(body);
+    await visit(pro, 'on-the-way').expect(409); // not paid yet
+    await complete(customer.agent, ref, 'success').expect(200);
+
+    const mine = await customer.agent.get(`/v1/jobs/${id}/conversation`).expect(200);
+    const code = mine.body.conversation.job.arrivalCode as string;
+    expect(code).toMatch(/^\d{4}$/);
+    const theirs = await pro.agent.get(`/v1/jobs/${id}/conversation`).expect(200);
+    expect(theirs.body.conversation.job.arrivalCode).toBeNull();
+    expect(JSON.stringify(theirs.body)).not.toContain(`"${code}"`);
+
+    const stranger = await login(ctx);
+    await visit(stranger, 'on-the-way').expect(404);
+    await visit(stranger, 'arrived', { code }).expect(404);
+    await visit(customer, 'arrived', { code }).expect(403);
+    await pro.agent.post(`/v1/jobs/${id}/arrived`).send({ code }).expect(403); // CSRF
+
+    const onWay = await visit(pro, 'on-the-way').expect(200);
+    expect(onWay.body.visit.onTheWayAt).not.toBeNull();
+    const wrong = code === '0000' ? '1111' : '0000';
+    await visit(pro, 'arrived', { code: wrong }).expect(422);
+    await visit(pro, 'arrived', { code: '12' }).expect(400);
+    const ok = await visit(pro, 'arrived', { code }).expect(200);
+    expect(ok.body.visit.arrivedAt).not.toBeNull();
+    await visit(pro, 'arrived', { code }).expect(409); // only once
+
+    const entries = await ctx.db.select().from(ledgerEntries).where(eq(ledgerEntries.jobId, id));
+    const balance = (account: string) =>
+      entries
+        .filter((e) => e.account === account)
+        .reduce((sum, e) => sum + e.creditKobo - e.debitKobo, 0);
+    expect(balance(`escrow:job:${id}`)).toBe(0);
+    expect(balance(`pro:${pro.userId}`)).toBe(250_000);
+    const after = await customer.agent.get(`/v1/jobs/${id}/conversation`).expect(200);
+    expect(after.body.conversation.job.arrivalCode).toBeNull();
+    const chat = await customer.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+    expect(chat.body.messages.map((m: { body: string }) => m.body).slice(-2)).toEqual([
+      'Your Pro is on the way.',
+      'Your Pro has arrived (arrival code confirmed). The inspection fee of ₦2,500 is now paid to the Pro.',
+    ]);
+    expect(chat.body.visit.arrivedAt).not.toBeNull();
+  });
+
+  it('wrong arrival codes are limited, so the code can’t be guessed', async () => {
+    const { customer, pro, id } = await agreedJob();
+    const ref = (await pay(customer.agent, id).expect(200)).body.reference as string;
+    await complete(customer.agent, ref, 'success').expect(200);
+    const code = (await customer.agent.get(`/v1/jobs/${id}/conversation`).expect(200)).body
+      .conversation.job.arrivalCode as string;
+    const wrong = code === '0000' ? '1111' : '0000';
+    for (let i = 0; i < 5; i++) {
+      await pro.agent
+        .post(`/v1/jobs/${id}/arrived`)
+        .set(CLIENT_HEADER)
+        .send({ code: wrong })
+        .expect(422);
+    }
+    await pro.agent.post(`/v1/jobs/${id}/arrived`).set(CLIENT_HEADER).send({ code }).expect(429);
   });
 
   it('a failed payment leaves the fee unpaid and can be tried again', async () => {

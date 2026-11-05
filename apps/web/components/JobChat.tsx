@@ -41,10 +41,21 @@ export function JobChat({ jobId }: { jobId: string }) {
       addMessages(res.messages);
       setOfferStatus(Object.fromEntries(res.offers.map((o) => [o.id, o.status])));
       setConvo((c) =>
-        c && (c.job.inspectionFeeKobo !== res.inspectionFeeKobo || c.job.status !== res.jobStatus)
+        c &&
+        (c.job.inspectionFeeKobo !== res.inspectionFeeKobo ||
+          c.job.status !== res.jobStatus ||
+          c.job.onTheWayAt !== res.visit.onTheWayAt ||
+          c.job.arrivedAt !== res.visit.arrivedAt)
           ? {
               ...c,
-              job: { ...c.job, inspectionFeeKobo: res.inspectionFeeKobo, status: res.jobStatus },
+              job: {
+                ...c.job,
+                inspectionFeeKobo: res.inspectionFeeKobo,
+                status: res.jobStatus,
+                ...res.visit,
+                // The code is used up once the Pro has arrived.
+                arrivalCode: res.visit.arrivedAt ? null : c.job.arrivalCode,
+              },
             }
           : c,
       );

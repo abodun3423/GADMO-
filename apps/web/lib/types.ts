@@ -174,6 +174,10 @@ export interface Conversation {
     inspectionPolicy: InspectionPolicy;
     /** Agreed in chat; null until both sides agree. */
     inspectionFeeKobo: number | null;
+    onTheWayAt: string | null;
+    arrivedAt: string | null;
+    /** Customer only, after paying the inspection fee and until the Pro arrives. */
+    arrivalCode: string | null;
   };
   you: 'CUSTOMER' | 'PRO';
   other: { id: string; name: string | null } | null;
@@ -199,6 +203,7 @@ export interface MessagesResponse {
   offers: { id: string; status: OfferStatus }[];
   inspectionFeeKobo: number | null;
   jobStatus: JobStatus;
+  visit: { onTheWayAt: string | null; arrivedAt: string | null };
 }
 
 /** POST /v1/payments/:reference/check, GET /v1/payments/test/:reference */

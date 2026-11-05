@@ -3,6 +3,7 @@
 import { type FormEvent, useState } from 'react';
 import { ApiError, fieldMessage, post } from '@/lib/api';
 import type { ChatMessage, Conversation, OfferStatus } from '@/lib/types';
+import { VisitPanel } from './Visit';
 
 /** "₦2,500": offers are in whole naira. */
 export function naira(kobo: number): string {
@@ -133,14 +134,7 @@ export function InspectionPanel({
   if (job.inspectionFeeKobo !== null) {
     const fee = naira(job.inspectionFeeKobo);
     if (job.status !== 'ACCEPTED') {
-      return (
-        <p className="fee-panel fee-agreed">
-          <strong>Inspection fee paid: {fee}.</strong>{' '}
-          {you === 'CUSTOMER'
-            ? 'GADMO holds it until your Pro arrives. It counts toward the final bill.'
-            : 'GADMO holds it and releases it to you when you arrive.'}
-        </p>
-      );
+      return <VisitPanel convo={convo} fee={fee} onChanged={onChanged} />;
     }
     if (you === 'PRO') {
       return (

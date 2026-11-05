@@ -70,12 +70,34 @@ test('the Pro offers an inspection fee, the customer counters, the Pro accepts',
   await page.getByRole('link', { name: 'Back to the job chat' }).click();
   await expect(page.getByText('Inspection fee paid: ₦1,500.', { exact: true })).toBeVisible();
   await expect(
-    page.getByText('Inspection fee paid: ₦1,500. GADMO holds it until the Pro arrives.'),
+    page.getByText(
+      'Inspection fee paid: ₦1,500. GADMO holds it until the Pro arrives and enters the customer’s arrival code.',
+    ),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Pay ₦1,500 now' })).toHaveCount(0);
-  await expect(proPage.getByText(/releases it to you when you arrive/)).toBeVisible({
+  await expect(proPage.getByText(/releases it to\s+you when you arrive/)).toBeVisible({
     timeout: 10_000,
   });
+
+  // The visit: the Pro is on the way, then enters the customer's arrival code.
+  const code = (await page.getByLabel('Your arrival code').textContent())!.trim();
+  expect(code).toMatch(/^\d{4}$/);
+  await expect(proPage.getByText(code)).toHaveCount(0);
+  await proPage.getByRole('button', { name: 'I’m on my way' }).click();
+  await expect(page.getByText('Your Pro is on the way.').first()).toBeVisible({ timeout: 10_000 });
+  await proPage
+    .getByLabel(/Enter the customer’s arrival code/)
+    .fill(code === '0000' ? '1111' : '0000');
+  await proPage.getByRole('button', { name: 'Confirm arrival' }).click();
+  await expect(proPage.locator('p[role="alert"]')).toContainText('That code isn’t right.');
+  await proPage.getByLabel(/Enter the customer’s arrival code/).fill(code);
+  await proPage.getByRole('button', { name: 'Confirm arrival' }).click();
+  await expect(proPage.getByText('Arrival confirmed.')).toBeVisible();
+  await expect(proPage.getByText(/now yours, in your GADMO earnings/)).toBeVisible();
+  await expect(page.getByText('Your Pro has arrived.', { exact: true })).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByLabel('Your arrival code')).toHaveCount(0);
   await proPage.close();
   noCspViolations();
 });

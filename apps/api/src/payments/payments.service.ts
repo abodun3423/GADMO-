@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import {
   ConflictException,
   Inject,
@@ -11,7 +11,8 @@ import { formatNaira } from '@gadmo/shared';
 import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import { ENV, type Env } from '../config/env';
 import { categories, jobs, ledgerEntries, messages, payments } from '../db/schema';
-import { DB, type Db } from '../infra/infra.module';
+import type { FieldCrypto } from '../common/field-crypto';
+import { DB, type Db, FIELD_CRYPTO } from '../infra/infra.module';
 import { PAYMENT_GATEWAY, type PaymentGateway } from './gateway';
 
 /** A checkout page is reused if the customer taps Pay again within this time. */
@@ -48,6 +49,7 @@ export class PaymentsService {
     @Inject(DB) private readonly db: Db,
     @Inject(ENV) private readonly env: Env,
     @Inject(PAYMENT_GATEWAY) readonly gateway: PaymentGateway,
+    @Inject(FIELD_CRYPTO) private readonly crypto: FieldCrypto,
   ) {}
 
   /** The customer starts paying the agreed inspection fee. Returns the checkout page. */
@@ -225,12 +227,20 @@ export class PaymentsService {
         },
       ]);
       if (counts) {
-        await tx.update(jobs).set({ status: 'INSPECTION_PAID' }).where(eq(jobs.id, job!.id));
+        // The customer gives this code to the Pro on arrival; it releases the fee.
+        const arrivalCode = String(randomInt(0, 10_000)).padStart(4, '0');
+        await tx
+          .update(jobs)
+          .set({
+            status: 'INSPECTION_PAID',
+            arrivalCodeEncrypted: this.crypto.encrypt(arrivalCode),
+          })
+          .where(eq(jobs.id, job!.id));
         await tx.insert(messages).values({
           jobId: job!.id,
           senderId: job!.customerId,
           kind: 'EVENT',
-          body: `Inspection fee paid: ${naira(amount)}. GADMO holds it until the Pro arrives.`,
+          body: `Inspection fee paid: ${naira(amount)}. GADMO holds it until the Pro arrives and enters the customer’s arrival code.`,
         });
       } else {
         this.log.warn(`Payment ${reference} no longer applies to job ${job!.id}; refund due`);
