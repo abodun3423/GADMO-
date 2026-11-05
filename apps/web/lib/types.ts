@@ -23,6 +23,23 @@ export interface Me {
   phone: string;
   name: string | null;
   role: Role;
+  createdAt?: string;
+  /** Set when the person asked GADMO to delete their account. */
+  deletionRequestedAt?: string | null;
+}
+
+/** GET /v1/me/summary: numbers for the account dashboard. */
+export interface AccountSummary {
+  role: 'CUSTOMER' | 'PRO';
+  jobs: { open: number; active: number; completed: number; cancelled: number };
+  money: { balanceKobo: number; spentKobo?: number; earnedKobo?: number; heldKobo?: number };
+  pro: {
+    ratingAvg: number;
+    ratingCount: number;
+    verificationStatus: VerificationStatus;
+    isOnline: boolean;
+    skills: number;
+  } | null;
 }
 
 export type JobStatus =

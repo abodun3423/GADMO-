@@ -5,7 +5,10 @@ test('a new Pro sets up skills, bio and area', async ({ page }) => {
   const noCspViolations = watchCsp(page);
   await page.goto('/signin?next=/account');
   await signIn(page, 'pro');
-  await page.getByRole('link', { name: /Your Pro profile/ }).click();
+  await page
+    .getByRole('navigation', { name: 'Your account' })
+    .getByRole('link', { name: 'Skills & area' })
+    .click();
   await expect(page).toHaveURL('/pro/profile');
   await expect(page.getByText('No skills chosen yet.')).toBeVisible();
 

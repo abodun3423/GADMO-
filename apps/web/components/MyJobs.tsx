@@ -101,7 +101,7 @@ export function MyJobs({
       {!me.name && (
         <p className="alert alert-info">
           Add your name so {me.role === 'PRO' ? 'customers' : 'Pros'} know what to call you.{' '}
-          <Link href="/account">Add your name</Link>
+          <Link href="/account/profile">Add your name</Link>
         </p>
       )}
 

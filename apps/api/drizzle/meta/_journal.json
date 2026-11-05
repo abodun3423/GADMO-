@@ -106,6 +106,13 @@
       "when": 1793887383735,
       "tag": "0014_message_sequence",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1793890119642,
+      "tag": "0015_account_deletion_request",
+      "breakpoints": true
     }
   ]
 }

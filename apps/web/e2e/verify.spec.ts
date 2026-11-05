@@ -52,8 +52,8 @@ test('GADMO staff ask for a better photo, then approve; the Pro can go online', 
   // A Pro with a profile sends their identity check.
   await page.goto('/signin');
   const pro = await signIn(page, 'pro');
-  await page.goto('/account');
-  await page.getByLabel('Your name').fill('Kemi Adeyemi');
+  await page.goto('/account/profile');
+  await page.getByLabel(/Full name/).fill('Kemi Adeyemi');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByRole('status')).toHaveText('Saved.');
   await page.goto('/pro/profile');

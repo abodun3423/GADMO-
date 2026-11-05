@@ -14,10 +14,10 @@ test('a customer books for later, chooses a Pro, and they can chat once the Pro 
 
   // A verified painter in Ado-Ekiti, offline (booking requests still reach them).
   const proPage = await browser.newPage();
-  await proPage.goto('/signin?next=/account');
+  await proPage.goto('/signin?next=/account/profile');
   const pro = await signIn(proPage, 'pro');
   const name = `Sade ${letters()}`;
-  await proPage.getByLabel('Your name').fill(name);
+  await proPage.getByLabel(/Full name/).fill(name);
   await proPage.getByRole('button', { name: 'Save' }).click();
   await expect(proPage.getByRole('status')).toHaveText('Saved.');
   await proPage.goto('/pro/profile');

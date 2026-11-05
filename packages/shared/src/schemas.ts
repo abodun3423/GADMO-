@@ -208,3 +208,9 @@ export const CALL_RING_SECONDS = 45;
 /** A browser's WebRTC connection details (SDP), offered or answered. */
 export const callSdpSchema = z.object({ sdp: z.string().min(10).max(20_000) }).strict();
 export type CallSdp = z.infer<typeof callSdpSchema>;
+
+/** Asking GADMO to delete your account; the reason is optional. */
+export const deletionRequestSchema = z
+  .object({ reason: z.string().trim().max(500).optional() })
+  .strict();
+export type DeletionRequest = z.infer<typeof deletionRequestSchema>;

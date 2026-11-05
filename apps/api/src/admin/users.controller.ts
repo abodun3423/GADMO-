@@ -172,6 +172,7 @@ export class AdminUsersController {
         role: users.role,
         status: users.status,
         chatFlags: users.chatFlags,
+        deletionRequestedAt: users.deletionRequestedAt,
         createdAt: users.createdAt,
         hasProfile: proProfiles.userId,
         bio: proProfiles.bio,
