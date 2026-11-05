@@ -87,12 +87,14 @@ test('the Pro offers an inspection fee, the customer counters, the Pro accepts',
   await expect(page.getByText('Your Pro is on the way.').first()).toBeVisible({ timeout: 10_000 });
   await expect(proPage.getByText('Your customer knows you’re on the way.')).toBeVisible();
   await proPage.getByRole('button', { name: 'I have arrived' }).click();
-  await proPage
-    .getByLabel(/Enter the customer’s arrival code/)
-    .fill(code === '0000' ? '1111' : '0000');
+  await proPage.getByLabel('Arrival code, digit 1 of 4').fill(code === '0000' ? '1111' : '0000'); // typed into the first box, fills all four
   await proPage.getByRole('button', { name: 'Confirm arrival and get ₦1,500' }).click();
   await expect(proPage.locator('p[role="alert"]')).toContainText('That code isn’t right.');
-  await proPage.getByLabel(/Enter the customer’s arrival code/).fill(code);
+  // Box by box this time, as a Pro would type it.
+  for (const [i, digit] of [...code].entries()) {
+    await proPage.getByLabel(`Arrival code, digit ${i + 1} of 4`).fill(digit);
+  }
+  await expect(proPage.getByLabel('Arrival code, digit 4 of 4')).toHaveValue(code[3]!);
   await proPage.getByRole('button', { name: 'Confirm arrival and get ₦1,500' }).click();
   await expect(proPage.getByText('Arrival confirmed.')).toBeVisible();
   await expect(proPage.getByText(/now yours, in your GADMO earnings/)).toBeVisible();
