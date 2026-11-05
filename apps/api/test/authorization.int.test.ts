@@ -1727,6 +1727,44 @@ describe('staff: overview, users and jobs', () => {
     await again.agent.get('/v1/auth/me').expect(200);
   });
 
+  it('staff can let a locked-out person ask for a sign-in code again; nobody else can', async () => {
+    const reviewer = await staffMember();
+    const customer = await login(ctx);
+    const ask = () =>
+      request(ctx.server)
+        .post('/v1/auth/otp/request')
+        .set(CLIENT_HEADER)
+        .send({ phone: customer.phone.local });
+    for (let i = 0; i < 3; i++) await ask();
+    const blocked = await ask().expect(429);
+    expect(blocked.body.retryAfterSeconds).toBeGreaterThan(0);
+
+    await customer.agent
+      .post(`/v1/admin/users/${customer.userId}/reset-sign-in`)
+      .set(CLIENT_HEADER)
+      .expect(403);
+    await reviewer.agent.post(`/v1/admin/users/${customer.userId}/reset-sign-in`).expect(403); // CSRF
+    await reviewer.agent
+      .post('/v1/admin/users/00000000-0000-4000-8000-000000000000/reset-sign-in')
+      .set(CLIENT_HEADER)
+      .expect(404);
+    await reviewer.agent
+      .post(`/v1/admin/users/${customer.userId}/reset-sign-in`)
+      .set(CLIENT_HEADER)
+      .expect(200);
+    await ask().expect(202);
+    const [log] = await ctx.db
+      .select()
+      .from(auditLogs)
+      .where(
+        and(
+          eq(auditLogs.target, `user:${customer.userId}`),
+          eq(auditLogs.action, 'SIGN_IN_LIMITS_RESET'),
+        ),
+      );
+    expect(log!.actorId).toBe(reviewer.userId);
+  });
+
   it('staff cannot change themselves, and only a super-admin can change staff', async () => {
     const a = await staffMember();
     const b = await staffMember();

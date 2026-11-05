@@ -38,7 +38,20 @@ function refreshSession(): Promise<boolean> {
   return refreshing;
 }
 
+/** "5 minutes", "2 hours", "1 hour 30 minutes". */
+function wait(seconds: number): string {
+  const mins = Math.max(1, Math.ceil(seconds / 60));
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'}`;
+  const hours = Math.floor(mins / 60);
+  const rest = mins % 60;
+  return `${hours} hour${hours === 1 ? '' : 's'}${rest ? ` ${rest} minutes` : ''}`;
+}
+
 function messageFrom(body: unknown, status: number): string {
+  const retry = (body as { retryAfterSeconds?: unknown } | undefined)?.retryAfterSeconds;
+  if (status === 429 && typeof retry === 'number' && retry > 0) {
+    return `Too many attempts. Please try again in ${wait(retry)}.`;
+  }
   if (body && typeof body === 'object' && 'message' in body) {
     const m = (body as { message: unknown }).message;
     if (typeof m === 'string') return m;

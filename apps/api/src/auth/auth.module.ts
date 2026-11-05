@@ -32,6 +32,6 @@ import { TokenService } from './token.service';
     },
     { provide: APP_GUARD, useClass: CsrfGuard },
   ],
-  exports: [TokenService, JwtAuthGuard, SMS_SENDER],
+  exports: [TokenService, JwtAuthGuard, SMS_SENDER, OtpService],
 })
 export class AuthModule {}

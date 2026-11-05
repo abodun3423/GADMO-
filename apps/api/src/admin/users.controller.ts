@@ -21,6 +21,7 @@ import {
 import { and, asc, count, desc, eq, ilike, isNull, or, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
+import { OtpService } from '../auth/otp.service';
 import { type AuthUser, CurrentUser, JwtAuthGuard, Roles } from '../auth/guards';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import {
@@ -81,7 +82,10 @@ const STAFF = new Set(['ADMIN', 'SUPER_ADMIN']);
 @UseGuards(JwtAuthGuard)
 @Roles(['ADMIN', 'SUPER_ADMIN'])
 export class AdminUsersController {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    private readonly otp: OtpService,
+  ) {}
 
   @Get('overview')
   async overview() {
@@ -242,6 +246,21 @@ export class AdminUsersController {
    * guard re-reads status) and signs it out everywhere. Staff can't change their own
    * account, and only a super-admin can change another staff account.
    */
+  /** Support: a person locked out by the sign-in code limits can ask for a code again now. */
+  @Post('users/:id/reset-sign-in')
+  @HttpCode(200)
+  async resetSignIn(@CurrentUser() staff: AuthUser, @Param('id', idPipe) id: string) {
+    const [user] = await this.db.select({ phone: users.phone }).from(users).where(eq(users.id, id));
+    if (!user) throw new NotFoundException();
+    await this.otp.resetLimits(user.phone);
+    await this.db.insert(auditLogs).values({
+      actorId: staff.id,
+      action: 'SIGN_IN_LIMITS_RESET',
+      target: `user:${id}`,
+    });
+    return { ok: true };
+  }
+
   @Post('users/:id/status')
   @HttpCode(200)
   async setStatus(

@@ -196,6 +196,26 @@ function Detail({ id }: { id: string }) {
                   </button>
                 </form>
               )}
+              <p className="meta button-spaced">
+                Locked out of signing in (too many codes asked for)?{' '}
+                <button
+                  type="button"
+                  className="link-button"
+                  disabled={busy}
+                  onClick={async () => {
+                    setError(null);
+                    setNotice(null);
+                    try {
+                      await post(`/v1/admin/users/${id}/reset-sign-in`);
+                      setNotice('They can ask for a sign-in code again now.');
+                    } catch {
+                      setError('Not reset. Try again.');
+                    }
+                  }}
+                >
+                  Let them ask for a code again
+                </button>
+              </p>
               {user.statusHistory.length > 0 && (
                 <ul className="history">
                   {user.statusHistory.map((h, i) => (
