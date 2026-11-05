@@ -34,10 +34,14 @@ import { setAuthCookies } from './cookies';
 import { type AuthUser, CurrentUser, JwtAuthGuard, Roles } from './guards';
 import { OtpService } from './otp.service';
 import { DECOY_HASH, hashPassword, verifyPassword } from './password';
+import {
+  CHALLENGE_COOKIE,
+  CHALLENGE_SECONDS,
+  issueChallenge,
+  readChallenge,
+} from './staff-challenge';
 
 const STAFF = new Set(['ADMIN', 'SUPER_ADMIN']);
-/** The password step must be followed by the phone code within 5 minutes. */
-const CHALLENGE_SECONDS = 5 * 60;
 const WRONG = 'Email or password is wrong.';
 
 /**
@@ -60,6 +64,7 @@ export class StaffAuthController {
   async login(
     @Body(new ZodValidationPipe(staffLoginSchema)) body: StaffLogin,
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<{ message: string }> {
     const ip = req.ip ?? 'unknown';
     await enforceLimits(this.redis, [
@@ -83,8 +88,14 @@ export class StaffAuthController {
       throw new UnauthorizedException(WRONG);
     }
 
-    await this.redis.set(this.challengeKey(user.id), '1', 'EX', CHALLENGE_SECONDS);
     await this.otp.request(user.phone, ip);
+    res.cookie(CHALLENGE_COOKIE, issueChallenge(this.env.JWT_ACCESS_SECRET, user.id), {
+      httpOnly: true,
+      secure: this.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/v1/auth/staff',
+      maxAge: CHALLENGE_SECONDS * 1000,
+    });
     return { message: `We sent a code to your phone (${redactPhone(user.phone)}).` };
   }
 
@@ -102,18 +113,30 @@ export class StaffAuthController {
       .where(eq(users.email, body.email))
       .limit(1);
     if (!user || !STAFF.has(user.role)) throw new UnauthorizedException('Sign in again.');
-    // Consume the challenge first, so one password check allows one code attempt run.
-    const challenged = await this.redis.get(this.challengeKey(user.id));
-    if (!challenged) throw new UnauthorizedException('Sign in again.');
+    // The password must have been given just before, in this browser, for this account.
+    const cookies = req.cookies as Record<string, string> | undefined;
+    const challenge = readChallenge(this.env.JWT_ACCESS_SECRET, cookies?.[CHALLENGE_COOKIE]);
+    if (!challenge || challenge.userId !== user.id) {
+      throw new UnauthorizedException('Sign in again.');
+    }
 
     const result = await this.otp.verify(user.phone, body.code);
     if (result === 'locked') {
-      await this.redis.del(this.challengeKey(user.id));
+      this.clearChallenge(res);
       throw new HttpException('Too many wrong tries. Sign in again.', HttpStatus.TOO_MANY_REQUESTS);
     }
     if (result !== 'ok') throw new UnauthorizedException('The code is wrong or has expired.');
     if (user.status !== 'ACTIVE') throw new ForbiddenException('This account is not active');
-    await this.redis.del(this.challengeKey(user.id));
+    // One sign-in per challenge.
+    const firstUse = await this.redis.set(
+      `staff-challenge-used:${challenge.nonce}`,
+      '1',
+      'EX',
+      24 * 60 * 60,
+      'NX',
+    );
+    if (firstUse !== 'OK') throw new UnauthorizedException('Sign in again.');
+    this.clearChallenge(res);
 
     const session = await this.auth.startSession(user, false, 'staff', req.headers['user-agent']);
     setAuthCookies(
@@ -157,7 +180,12 @@ export class StaffAuthController {
       .values({ actorId: staff.id, action: 'STAFF_PASSWORD_CHANGED', target: `user:${staff.id}` });
   }
 
-  private challengeKey(userId: string): string {
-    return `staff-challenge:${userId}`;
+  private clearChallenge(res: Response): void {
+    res.clearCookie(CHALLENGE_COOKIE, {
+      httpOnly: true,
+      secure: this.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/v1/auth/staff',
+    });
   }
 }
