@@ -253,6 +253,13 @@ export const jobs = pgTable(
     /** Agreed in chat (Pro offers, customer accepts or counters); never above ₦5,000. */
     inspectionFeeKobo: kobo('inspection_fee_kobo'),
     inspectionAgreedAt: timestamp('inspection_agreed_at', { withTimezone: true }),
+    /**
+     * 4-digit code shown only to the customer once the inspection fee is paid. The Pro
+     * enters it on arrival, which releases the fee to them. Encrypted at rest.
+     */
+    arrivalCodeEncrypted: text('arrival_code_encrypted'),
+    onTheWayAt: timestamp('on_the_way_at', { withTimezone: true }),
+    arrivedAt: timestamp('arrived_at', { withTimezone: true }),
     /** doneAt + 12 hours for in-app balances. */
     balanceReleaseAt: timestamp('balance_release_at', { withTimezone: true }),
     createdAt: createdAt(),

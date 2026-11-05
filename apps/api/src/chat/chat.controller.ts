@@ -18,7 +18,8 @@ import { type AuthUser, CurrentUser, JwtAuthGuard } from '../auth/guards';
 import { enforceLimits } from '../common/rate-limit';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { categories, inspectionOffers, jobs, messages, users } from '../db/schema';
-import { DB, type Db, REDIS } from '../infra/infra.module';
+import type { FieldCrypto } from '../common/field-crypto';
+import { DB, type Db, FIELD_CRYPTO, REDIS } from '../infra/infra.module';
 
 const idPipe = new ZodValidationPipe(z.uuid());
 const afterPipe = new ZodValidationPipe(z.iso.datetime({ offset: true }).optional());
@@ -37,6 +38,7 @@ export class ChatController {
   constructor(
     @Inject(DB) private readonly db: Db,
     @Inject(REDIS) private readonly redis: Redis,
+    @Inject(FIELD_CRYPTO) private readonly crypto: FieldCrypto,
   ) {}
 
   /** The job, as seen by one of its two parties, with the other party's name. */
@@ -62,6 +64,13 @@ export class ChatController {
           serviceName: job.serviceName,
           inspectionPolicy: job.inspectionPolicy,
           inspectionFeeKobo: job.inspectionFeeKobo,
+          onTheWayAt: job.onTheWayAt,
+          arrivedAt: job.arrivedAt,
+          // Only the customer sees the code, and only until the Pro has used it.
+          arrivalCode:
+            job.customerId === user.id && job.arrivalCodeEncrypted && !job.arrivedAt
+              ? this.crypto.decrypt(job.arrivalCodeEncrypted).toString()
+              : null,
         },
         you: job.customerId === user.id ? 'CUSTOMER' : 'PRO',
         other: other ? { id: other.id, name: other.name } : null,
@@ -122,6 +131,7 @@ export class ChatController {
       offers,
       inspectionFeeKobo: job.inspectionFeeKobo,
       jobStatus: job.status,
+      visit: { onTheWayAt: job.onTheWayAt, arrivedAt: job.arrivedAt },
     };
   }
 
@@ -179,6 +189,9 @@ export class ChatController {
         scheduledAt: jobs.scheduledAt,
         createdAt: jobs.createdAt,
         inspectionFeeKobo: jobs.inspectionFeeKobo,
+        arrivalCodeEncrypted: jobs.arrivalCodeEncrypted,
+        onTheWayAt: jobs.onTheWayAt,
+        arrivedAt: jobs.arrivedAt,
         serviceName: categories.name,
         inspectionPolicy: categories.inspectionPolicy,
       })

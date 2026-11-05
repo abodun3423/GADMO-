@@ -14,6 +14,7 @@ import { InfraModule } from './infra/infra.module';
 import { JobsController } from './jobs/jobs.controller';
 import { PaymentsModule } from './payments/payments.module';
 import { ProController } from './pro/pro.controller';
+import { VisitController } from './visit/visit.controller';
 import { VerificationController } from './verification/verification.controller';
 
 @Module({
@@ -30,6 +31,7 @@ import { VerificationController } from './verification/verification.controller';
     JobsController,
     ProController,
     VerificationController,
+    VisitController,
   ],
 })
 export class AppModule {}
