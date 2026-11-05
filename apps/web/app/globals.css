@@ -515,6 +515,24 @@ input[type='password'] {
   width: auto;
 }
 
+/* ---------- Alerts ---------- */
+.alerts-prompt {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  background: #fdf6e3;
+  border: 1px solid #f1d58a;
+  border-radius: var(--radius-control);
+  font-size: 15px;
+}
+
+.alerts-prompt p {
+  margin: 0 0 8px;
+}
+
+.alerts-note {
+  margin: 0 0 16px;
+}
+
 /* ---------- Inspection fee ---------- */
 .fee-panel {
   margin: 0 0 12px;

@@ -56,6 +56,8 @@ describe('loadEnv', () => {
       NODE_ENV: 'production',
       SMS_PROVIDER: 'termii',
       WEB_ORIGIN: 'https://gadmo.ng',
+      VAPID_PUBLIC_KEY: 'test-only-vapid-public',
+      VAPID_PRIVATE_KEY: 'test-only-vapid-private',
     };
     expect(() => loadEnv(prod)).toThrow(/PAYMENT_PROVIDER/);
     expect(() => loadEnv({ ...valid, PAYMENT_PROVIDER: 'paystack' })).toThrow(
@@ -68,6 +70,19 @@ describe('loadEnv', () => {
       loadEnv({ ...prod, PAYMENT_PROVIDER: 'paystack', PAYSTACK_SECRET_KEY: 'sk_live_fake_only' })
         .PAYMENT_PROVIDER,
     ).toBe('paystack');
+  });
+
+  it('needs web push keys in production', () => {
+    const prod = {
+      ...valid,
+      NODE_ENV: 'production',
+      SMS_PROVIDER: 'termii',
+      WEB_ORIGIN: 'https://gadmo.ng',
+      PAYMENT_PROVIDER: 'paystack',
+      PAYSTACK_SECRET_KEY: 'sk_live_fake_only',
+    };
+    expect(() => loadEnv(prod)).toThrow(/VAPID_PUBLIC_KEY/);
+    expect(loadEnv(valid).VAPID_PUBLIC_KEY).toBeUndefined();
   });
 
   it('allows DEV_LOGIN_CODE only in development', () => {

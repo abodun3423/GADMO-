@@ -1,5 +1,8 @@
 'use client';
 
+import { AlertsPrompt } from './AlertsPrompt';
+import { forgetAlerts } from '@/lib/alerts';
+
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -63,6 +66,7 @@ export function MyJobs({
   }
 
   async function signOut() {
+    await forgetAlerts();
     await post('/v1/auth/logout').catch(() => undefined);
     await loadMe(true);
     router.replace('/');
@@ -90,6 +94,9 @@ export function MyJobs({
         Signed in as {localPhone(me.phone)} ({me.role === 'PRO' ? 'Pro' : 'customer'}). Only you can
         see this number.
       </p>
+      {me.role === 'CUSTOMER' && (
+        <AlertsPrompt why="so you know the moment a Pro accepts your request or sends you a message." />
+      )}
 
       {!me.name && (
         <p className="alert alert-info">

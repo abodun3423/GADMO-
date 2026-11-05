@@ -1,5 +1,7 @@
 'use client';
 
+import { forgetAlerts } from '@/lib/alerts';
+
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useEffect, useState } from 'react';
@@ -40,6 +42,7 @@ export function Account() {
   }
 
   async function signOut() {
+    await forgetAlerts();
     await post('/v1/auth/logout').catch(() => undefined);
     await loadMe(true);
     router.replace('/');

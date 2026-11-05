@@ -16,6 +16,7 @@ import { formatNaira } from '@gadmo/shared';
 import { and, eq, or, sql } from 'drizzle-orm';
 import type Redis from 'ioredis';
 import { z } from 'zod';
+import { AlertsService } from '../alerts/alerts.service';
 import { type AuthUser, CurrentUser, JwtAuthGuard } from '../auth/guards';
 import type { FieldCrypto } from '../common/field-crypto';
 import { enforceLimits } from '../common/rate-limit';
@@ -46,14 +47,17 @@ export class VisitController {
     @Inject(DB) private readonly db: Db,
     @Inject(REDIS) private readonly redis: Redis,
     @Inject(FIELD_CRYPTO) private readonly crypto: FieldCrypto,
+    private readonly alerts: AlertsService,
   ) {}
 
   @Post('on-the-way')
   @HttpCode(200)
   async onTheWay(@CurrentUser() user: AuthUser, @Param('jobId', idPipe) jobId: string) {
-    return this.db.transaction(async (tx) => {
+    let customerId: string | null = null;
+    const result = await this.db.transaction(async (tx) => {
       const job = await this.lockForPro(tx, jobId, user);
       if (!job.onTheWayAt) {
+        customerId = job.customerId;
         await tx
           .update(jobs)
           .set({ onTheWayAt: sql`now()` })
@@ -67,6 +71,19 @@ export class VisitController {
       }
       return { visit: await this.visit(tx, jobId) };
     });
+    if (customerId) {
+      this.alerts.send(
+        customerId,
+        {
+          title: 'Your Pro is on the way',
+          body: 'Your Pro is on the way. Have your arrival code ready from the job chat.',
+          url: `/jobs/${jobId}`,
+          tag: `job-${jobId}`,
+        },
+        { sms: true },
+      );
+    }
+    return result;
   }
 
   @Post('arrived')
@@ -81,7 +98,7 @@ export class VisitController {
     await enforceLimits(this.redis, [
       { key: `arrival:${jobId}`, max: ARRIVAL_TRIES, windowSeconds: ARRIVAL_WINDOW_SECONDS },
     ]);
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       const job = await this.lockForPro(tx, jobId, user);
       const expected = this.crypto.decrypt(job.arrivalCodeEncrypted!);
       const given = Buffer.from(body.code);
@@ -118,8 +135,15 @@ export class VisitController {
         kind: 'EVENT',
         body: `Your Pro has arrived (arrival code confirmed). The inspection fee of ${naira(fee)} is now paid to the Pro.`,
       });
-      return { visit: await this.visit(tx, jobId) };
+      return { customerId: job.customerId, visit: await this.visit(tx, jobId) };
     });
+    this.alerts.send(result.customerId, {
+      title: 'Your Pro has arrived',
+      body: 'Your Pro has arrived and confirmed it with your code.',
+      url: `/jobs/${jobId}`,
+      tag: `job-${jobId}`,
+    });
+    return { visit: result.visit };
   }
 
   private async visit(tx: Tx, jobId: string) {
@@ -135,6 +159,7 @@ export class VisitController {
     const [job] = await tx
       .select({
         proId: jobs.proId,
+        customerId: jobs.customerId,
         status: jobs.status,
         inspectionFeeKobo: jobs.inspectionFeeKobo,
         arrivalCodeEncrypted: jobs.arrivalCodeEncrypted,

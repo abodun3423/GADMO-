@@ -19,6 +19,7 @@ import {
 import { and, eq, or, sql } from 'drizzle-orm';
 import type Redis from 'ioredis';
 import { z } from 'zod';
+import { AlertsService } from '../alerts/alerts.service';
 import { type AuthUser, CurrentUser, JwtAuthGuard } from '../auth/guards';
 import { enforceLimits } from '../common/rate-limit';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -40,7 +41,24 @@ export class InspectionController {
   constructor(
     @Inject(DB) private readonly db: Db,
     @Inject(REDIS) private readonly redis: Redis,
+    private readonly alerts: AlertsService,
   ) {}
+
+  /** Tells the other person about an offer step (after the change is saved). */
+  private tell(
+    job: { id: string; customerId: string; proId: string | null },
+    by: string,
+    body: string,
+  ) {
+    const to = by === job.customerId ? job.proId : job.customerId;
+    if (!to) return;
+    this.alerts.send(to, {
+      title: 'Inspection fee',
+      body,
+      url: `/jobs/${job.id}`,
+      tag: `fee-${job.id}`,
+    });
+  }
 
   /** The Pro's first offer (or a fresh one after a decline). */
   @Post('jobs/:jobId/inspection-offers')
@@ -50,7 +68,7 @@ export class InspectionController {
     @Body(new ZodValidationPipe(inspectionOfferSchema)) body: InspectionOfferInput,
   ) {
     await this.limit(user);
-    return this.db.transaction(async (tx) => {
+    const { job, offer } = await this.db.transaction(async (tx) => {
       const job = await this.lockJob(tx, jobId, user);
       if (job.proId !== user.id) {
         throw new ForbiddenException('The Pro proposes the inspection fee.');
@@ -61,14 +79,20 @@ export class InspectionController {
         .from(inspectionOffers)
         .where(and(eq(inspectionOffers.jobId, jobId), eq(inspectionOffers.status, 'PENDING')));
       if (pending) throw new ConflictException('There is already an offer waiting for an answer.');
-      return { offer: await this.createOffer(tx, jobId, user.id, body) };
+      return { job, offer: await this.createOffer(tx, jobId, user.id, body) };
     });
+    this.tell(
+      job,
+      user.id,
+      `Your Pro offered an inspection fee of ${naira(offer.amountKobo)}. Accept, counter or decline in GADMO.`,
+    );
+    return { offer };
   }
 
   @Post('inspection-offers/:id/accept')
   @HttpCode(200)
   async accept(@CurrentUser() user: AuthUser, @Param('id', idPipe) id: string) {
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       const { offer, job } = await this.lockOfferForAnswer(tx, id, user);
       await tx
         .update(inspectionOffers)
@@ -80,10 +104,20 @@ export class InspectionController {
         .where(eq(jobs.id, job.id));
       await this.event(tx, job.id, user.id, `Inspection fee agreed: ${naira(offer.amountKobo)}.`);
       return {
+        job,
         offer: { ...offer, status: 'ACCEPTED' as const },
         inspectionFeeKobo: offer.amountKobo,
       };
     });
+    const { job, ...response } = result;
+    this.tell(
+      job,
+      user.id,
+      user.id === job.customerId
+        ? `The customer accepted your inspection fee of ${naira(response.inspectionFeeKobo)}. They pay it in the app before your visit.`
+        : `Your Pro accepted ${naira(response.inspectionFeeKobo)} as the inspection fee. Pay it in GADMO so they can visit.`,
+    );
+    return response;
   }
 
   @Post('inspection-offers/:id/counter')
@@ -93,7 +127,7 @@ export class InspectionController {
     @Body(new ZodValidationPipe(inspectionOfferSchema)) body: InspectionOfferInput,
   ) {
     await this.limit(user);
-    return this.db.transaction(async (tx) => {
+    const countered = await this.db.transaction(async (tx) => {
       const { offer, job } = await this.lockOfferForAnswer(tx, id, user);
       if (body.amountKobo === offer.amountKobo) {
         throw new ConflictException('That is the same amount. Accept the offer instead.');
@@ -102,8 +136,14 @@ export class InspectionController {
         .update(inspectionOffers)
         .set({ status: 'COUNTERED', respondedAt: sql`now()` })
         .where(eq(inspectionOffers.id, offer.id));
-      return { offer: await this.createOffer(tx, job.id, user.id, body) };
+      return { job, offer: await this.createOffer(tx, job.id, user.id, body) };
     });
+    this.tell(
+      countered.job,
+      user.id,
+      `${user.id === countered.job.customerId ? 'The customer' : 'Your Pro'} countered with ${naira(countered.offer.amountKobo)}. Answer in GADMO.`,
+    );
+    return { offer: countered.offer };
   }
 
   @Post('inspection-offers/:id/decline')

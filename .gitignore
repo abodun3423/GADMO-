@@ -13,3 +13,4 @@ next-env.d.ts
 playwright-report/
 test-results/
 *.tsbuildinfo
+.vapid.dev.json

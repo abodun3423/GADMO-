@@ -22,8 +22,10 @@ export class ConsoleSmsSender implements SmsSender {
   }
 }
 
-/** Redis key where the outbox provider keeps the last message per phone (5 minutes). */
+/** Redis key where the outbox provider keeps the last login code message per phone (5 minutes). */
 export const outboxKey = (toE164: string) => `test:sms-outbox:${toE164}`;
+/** Redis list of alert messages (no login code) per phone, newest first, for browser tests. */
+export const alertOutboxKey = (toE164: string) => `test:sms-alerts:${toE164}`;
 
 /**
  * Automated browser tests only: keeps the last message for each phone in Redis so a
@@ -35,6 +37,15 @@ export class OutboxSmsSender implements SmsSender {
   constructor(@Inject(REDIS) private readonly redis: Redis) {}
 
   async send(toE164: string, text: string): Promise<void> {
-    await this.redis.set(outboxKey(toE164), text, 'EX', 300);
+    // Alerts are kept apart so they never hide a login code a test is waiting for.
+    if (/\b\d{6}\b/.test(text)) {
+      await this.redis.set(outboxKey(toE164), text, 'EX', 300);
+    } else {
+      await this.redis
+        .multi()
+        .lpush(alertOutboxKey(toE164), text)
+        .expire(alertOutboxKey(toE164), 300)
+        .exec();
+    }
   }
 }

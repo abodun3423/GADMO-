@@ -15,7 +15,9 @@ import { TEST_ENV } from './test-env';
 /** Captures the last code "sent" to each phone instead of sending an SMS. */
 export class CapturingSms implements SmsSender {
   readonly lastCode = new Map<string, string>();
+  readonly sent: { to: string; text: string }[] = [];
   async send(to: string, text: string): Promise<void> {
+    this.sent.push({ to, text });
     const code = /\b(\d{6})\b/.exec(text)?.[1];
     if (code) this.lastCode.set(to, code);
   }

@@ -1,5 +1,7 @@
 'use client';
 
+import { AlertsPrompt } from './AlertsPrompt';
+
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, post } from '@/lib/api';
@@ -183,6 +185,7 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
   return (
     <>
       <h1 className="page-title">{me.name ? `Hello, ${me.name.split(' ')[0]}` : 'Pro home'}</h1>
+      <AlertsPrompt why="so you hear about emergency requests near you, even when GADMO isn’t open." />
 
       {error && (
         <p className="alert alert-error" role="alert">

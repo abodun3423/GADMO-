@@ -23,6 +23,16 @@ export async function approvePro(e164: string): Promise<void> {
   if (res.rowCount !== 1) throw new Error(`No Pro profile for ${e164}`);
 }
 
+/** How many browsers get alerts for this account. */
+export async function pushSubscriptionsOf(e164: string): Promise<number> {
+  const res = await db.query(
+    `SELECT count(*)::int AS n FROM push_subscriptions s JOIN users u ON u.id = s.user_id
+     WHERE u.phone = $1`,
+    [e164],
+  );
+  return (res.rows[0] as { n: number }).n;
+}
+
 /** Creates an open request near Ado-Ekiti directly in the e2e database. */
 export async function insertJob(
   categorySlug: string,

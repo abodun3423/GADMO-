@@ -4,12 +4,18 @@
  * - Pages: network first, falling back to the last copy, then to /offline.
  * - API calls (/v1/*) are NEVER cached: they carry private, changing data.
  */
-const VERSION = 'gadmo-v1';
+const VERSION = 'gadmo-v2';
+// Registered as /sw.js?dev=1 by `next dev`: alerts only, no caching (dev files change constantly).
+const DEV = new URL(self.location.href).searchParams.has('dev');
 const STATIC_CACHE = `${VERSION}-static`;
 const PAGE_CACHE = `${VERSION}-pages`;
 const OFFLINE_URL = '/offline';
 
 self.addEventListener('install', (event) => {
+  if (DEV) {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
   event.waitUntil(
     caches
       .open(PAGE_CACHE)
@@ -30,6 +36,7 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  if (DEV) return;
   const { request } = event;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
@@ -73,4 +80,50 @@ self.addEventListener('fetch', (event) => {
         ),
     );
   }
+});
+
+/*
+ * Alerts (web push). The payload is { title, body, url, tag } from the GADMO API; it never
+ * contains phone numbers or emails. Nothing is shown if that page is already open and in
+ * front, because the page updates itself.
+ */
+self.addEventListener('push', (event) => {
+  let alert;
+  try {
+    alert = event.data ? event.data.json() : null;
+  } catch {
+    alert = null;
+  }
+  if (!alert || typeof alert.title !== 'string') return;
+  const url = typeof alert.url === 'string' && alert.url.startsWith('/') ? alert.url : '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+      const watching = windows.some(
+        (w) => w.focused && new URL(w.url).pathname === url.split('?')[0],
+      );
+      if (watching) return undefined;
+      return self.registration.showNotification(alert.title, {
+        body: typeof alert.body === 'string' ? alert.body : '',
+        icon: '/icons/icon-192.png',
+        badge: '/icons/icon-192.png',
+        tag: typeof alert.tag === 'string' ? alert.tag : undefined,
+        renotify: typeof alert.tag === 'string',
+        data: { url },
+      });
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+      const same = windows.find((w) => new URL(w.url).origin === self.location.origin);
+      if (same) {
+        return same.navigate(url).then((w) => (w || same).focus());
+      }
+      return self.clients.openWindow(url);
+    }),
+  );
 });

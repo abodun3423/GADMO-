@@ -1,5 +1,7 @@
 'use client';
 
+import { forgetAlerts } from '@/lib/alerts';
+
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
@@ -13,6 +15,7 @@ export function StaffOnly({ next, children }: { next: string; children: ReactNod
   const staffSignIn = `/staff?next=${encodeURIComponent(next)}`;
 
   async function switchAccount() {
+    await forgetAlerts();
     await post('/v1/auth/logout').catch(() => undefined);
     await loadMe(true);
     router.replace(staffSignIn);

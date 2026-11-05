@@ -8,7 +8,8 @@ import {
 import { EMERGENCY_OFFER_SECONDS } from '@gadmo/shared';
 import { and, asc, eq, isNull, lte, notExists, sql } from 'drizzle-orm';
 import { ENV, type Env } from '../config/env';
-import { jobOffers, jobs, proProfiles, users } from '../db/schema';
+import { AlertsService } from '../alerts/alerts.service';
+import { categories, jobOffers, jobs, proProfiles, users } from '../db/schema';
 import { offersAnyOf, withRelated } from '../catalog/related';
 import { DB, type Db } from '../infra/infra.module';
 import { distanceKmSql } from './geo';
@@ -43,6 +44,7 @@ export class DispatchService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(DB) private readonly db: Db,
     @Inject(ENV) private readonly env: Env,
+    private readonly alerts: AlertsService,
   ) {}
 
   onModuleInit(): void {
@@ -98,6 +100,7 @@ export class DispatchService implements OnModuleInit, OnModuleDestroy {
    * cancelled or not emergencies.
    */
   async advance(jobId: string): Promise<void> {
+    let offeredTo: string | null = null;
     try {
       await this.db.transaction(async (tx) => {
         const [job] = await tx
@@ -198,11 +201,29 @@ export class DispatchService implements OnModuleInit, OnModuleDestroy {
           distanceKm: Number(next.distanceKm),
           expiresAt: sql`now() + make_interval(secs => ${EMERGENCY_OFFER_SECONDS})`,
         });
+        offeredTo = next.proId;
       });
     } catch (err) {
       // Another instance offered the job at the same moment (one-pending index): that's fine.
       if ((err as { code?: string }).code === '23505') return;
       throw err;
+    }
+    if (offeredTo) {
+      const [job] = await this.db
+        .select({ service: categories.name })
+        .from(jobs)
+        .innerJoin(categories, eq(categories.id, jobs.categoryId))
+        .where(eq(jobs.id, jobId));
+      this.alerts.send(
+        offeredTo,
+        {
+          title: 'Emergency request near you',
+          body: `${job?.service ?? 'A customer'}: someone nearby needs help now. Accept within 2 minutes.`,
+          url: '/pro',
+          tag: `offer-${jobId}`,
+        },
+        { sms: true },
+      );
     }
   }
 }
