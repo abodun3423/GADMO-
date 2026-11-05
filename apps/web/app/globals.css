@@ -711,6 +711,13 @@ input[type='password'] {
   padding: 0;
 }
 
+.issues {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  color: var(--error);
+  font-size: 15px;
+}
+
 .pager {
   display: flex;
   gap: 8px;

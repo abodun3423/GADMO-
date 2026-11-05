@@ -236,6 +236,41 @@ export interface AdminUserRow {
 }
 
 /** Staff: a row in GET /v1/admin/jobs */
+/** Staff: GET /v1/admin/jobs/:id/matching */
+export interface JobMatching {
+  job: {
+    id: string;
+    type: 'EMERGENCY' | 'SCHEDULED';
+    status: JobStatus;
+    description: string;
+    serviceName: string;
+    scheduledAt: string | null;
+    createdAt: string;
+    customerId: string;
+    customerName: string | null;
+  };
+  pros: {
+    id: string;
+    name: string | null;
+    verificationStatus: VerificationStatus;
+    accountStatus: AccountStatus;
+    isOnline: boolean;
+    serviceRadiusKm: number;
+    distanceKm: number | null;
+    askedStatus: string | null;
+    checks: {
+      verified: boolean;
+      accountActive: boolean;
+      serviceAreaSet: boolean;
+      withinDistance: boolean;
+      notAskedYet: boolean;
+      onlineIfEmergency: boolean;
+    };
+    matches: boolean;
+  }[];
+  otherPros: { id: string; name: string | null; skills: string[] }[];
+}
+
 export interface AdminJobRow {
   id: string;
   type: 'EMERGENCY' | 'SCHEDULED';

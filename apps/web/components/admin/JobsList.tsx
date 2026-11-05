@@ -40,6 +40,9 @@ export function JobRow({ job }: { job: AdminJobRow }) {
           'none yet'
         )}
       </p>
+      <p className="meta">
+        <Link href={`/admin/jobs/${job.id}`}>Which Pros can take it?</Link>
+      </p>
     </li>
   );
 }
