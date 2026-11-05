@@ -1082,6 +1082,17 @@ input[type='password'] {
   color: #fff;
 }
 
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--indigo);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* ---------- Alerts ---------- */
 .alerts-prompt {
   margin: 0 0 16px;

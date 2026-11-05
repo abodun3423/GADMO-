@@ -28,8 +28,14 @@ export class OtpService {
 
   async request(phone: string, ip: string): Promise<void> {
     await enforceLimits(this.redis, [
-      { key: `otp:phone:${phone}`, max: 3, windowSeconds: 10 * 60 },
-      { key: `otp:phone-day:${phone}`, max: 10, windowSeconds: 24 * 60 * 60 },
+      // Per-number limits stop SMS abuse. On a developer's own computer (no real SMS) they
+      // only get in the way of testing, so they apply everywhere except development.
+      ...(this.env.NODE_ENV === 'development'
+        ? []
+        : [
+            { key: `otp:phone:${phone}`, max: 3, windowSeconds: 10 * 60 },
+            { key: `otp:phone-day:${phone}`, max: 10, windowSeconds: 24 * 60 * 60 },
+          ]),
       { key: `otp:ip:${ip}`, max: this.env.OTP_IP_HOURLY_LIMIT, windowSeconds: 60 * 60 },
     ]);
 
@@ -117,6 +123,15 @@ export class OtpService {
 
   private hash(phone: string, code: string): string {
     return createHmac('sha256', this.env.OTP_PEPPER).update(`${phone}:${code}`).digest('hex');
+  }
+
+  /** Staff support: lets a number ask for codes again now (e.g. a locked-out customer). */
+  async resetLimits(phone: string): Promise<void> {
+    await this.redis.del(
+      `rl:otp:phone:${phone}`,
+      `rl:otp:phone-day:${phone}`,
+      this.attemptsKey(phone),
+    );
   }
 
   private codeKey(phone: string): string {
