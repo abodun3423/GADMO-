@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import webpush from 'web-push';
@@ -65,10 +65,13 @@ export function vapidKeys(env: Env): { publicKey: string; privateKey: string } |
   if (env.NODE_ENV === 'test') return webpush.generateVAPIDKeys();
   if (env.NODE_ENV !== 'development') return null;
   const file = join(__dirname, '..', '..', '.vapid.dev.json');
-  if (existsSync(file)) {
+  const keys = webpush.generateVAPIDKeys();
+  try {
+    // 'wx' creates the file only if it doesn't exist yet, in one step.
+    writeFileSync(file, JSON.stringify(keys), { mode: 0o600, flag: 'wx' });
+    return keys;
+  } catch (err) {
+    if ((err as { code?: string }).code !== 'EEXIST') throw err;
     return JSON.parse(readFileSync(file, 'utf8')) as { publicKey: string; privateKey: string };
   }
-  const keys = webpush.generateVAPIDKeys();
-  writeFileSync(file, JSON.stringify(keys), { mode: 0o600 });
-  return keys;
 }
