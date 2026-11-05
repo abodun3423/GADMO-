@@ -2,7 +2,7 @@ import { EMERGENCY_OFFER_SECONDS } from '@gadmo/shared';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { categories, jobOffers, jobs, proProfiles } from '../src/db/schema';
-import { DispatchService } from '../src/dispatch/dispatch.service';
+import { DispatchService, EMERGENCY_REOFFER_MINUTES } from '../src/dispatch/dispatch.service';
 import { CLIENT_HEADER, createTestApp, login, type TestContext } from './helpers';
 
 /**
@@ -145,7 +145,7 @@ describe('emergency dispatch', () => {
     expect(mine.body.jobs.map((j: { id: string }) => j.id)).toContain(job.id);
   });
 
-  it('declining or running out moves it to the next nearest Pro, never back', async () => {
+  it('declining or running out moves it to the next nearest Pro, not back for now', async () => {
     const base = somewhere();
     const first = await pro(north(base, 1));
     const second = await pro(north(base, 2));
@@ -185,6 +185,55 @@ describe('emergency dispatch', () => {
     expect(lateOffer!.job.id).toBe(job.id);
     const again = await customer.agent.get(`/v1/jobs/${job.id}`).expect(200);
     expect(again.body.job.dispatch).toBe('OFFERED');
+  });
+
+  it('a Pro who missed it is asked again after 10 minutes if nobody took it; never after a decline', async () => {
+    const base = somewhere();
+    const missed = await pro(north(base, 1));
+    const declined = await pro(north(base, 2));
+    const customer = await login(ctx);
+    const job = await emergency(customer, base);
+
+    await runOut(job.id); // `missed` didn't answer
+    const [o2] = await offersOf(declined);
+    await declined.agent.post(`/v1/pro/offers/${o2!.id}/decline`).set(CLIENT_HEADER).expect(200);
+    await dispatch.advance(job.id);
+    expect(await offersOf(missed)).toEqual([]); // too soon
+
+    // Ten minutes after the missed offer ran out, it comes back to that Pro only.
+    await ctx.db
+      .update(jobOffers)
+      .set({
+        expiresAt: sql`now() - make_interval(mins => ${EMERGENCY_REOFFER_MINUTES}) - interval '1 second'`,
+      })
+      .where(and(eq(jobOffers.jobId, job.id), eq(jobOffers.proId, missed.userId)));
+    await dispatch.tick();
+    const [again] = await offersOf(missed);
+    expect(again!.job.id).toBe(job.id);
+    expect(await offersOf(declined)).toEqual([]);
+    await missed.agent.post(`/v1/pro/offers/${again!.id}/accept`).set(CLIENT_HEADER).expect(200);
+    const done = await customer.agent.get(`/v1/jobs/${job.id}`).expect(200);
+    expect(done.body.job).toMatchObject({ status: 'ACCEPTED', proId: missed.userId });
+  });
+
+  it('a Pro never asked comes before one who missed it', async () => {
+    const base = somewhere();
+    const missed = await pro(north(base, 1));
+    const customer = await login(ctx);
+    const job = await emergency(customer, base);
+    await runOut(job.id);
+    await ctx.db
+      .update(jobOffers)
+      .set({ expiresAt: sql`now() - interval '1 hour'` })
+      .where(eq(jobOffers.jobId, job.id));
+    const newcomer = await pro(north(base, 5), { online: false });
+    await newcomer.agent
+      .post('/v1/pro/online')
+      .set(CLIENT_HEADER)
+      .send({ online: true })
+      .expect(200);
+    expect((await offersOf(newcomer)).map((o) => o.job.id)).toEqual([job.id]);
+    expect(await offersOf(missed)).toEqual([]);
   });
 
   it('skips Pros who are offline, unverified, too far, or offer another service', async () => {

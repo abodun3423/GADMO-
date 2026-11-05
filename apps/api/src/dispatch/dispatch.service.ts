@@ -17,14 +17,22 @@ import { distanceKmSql } from './geo';
 const TICK_MS = 10_000;
 
 /**
+ * A Pro who let an emergency offer run out (didn't answer) may be offered the same job
+ * again this long after it ran out, if nobody else has taken it. A Pro who declined is
+ * never asked again.
+ */
+export const EMERGENCY_REOFFER_MINUTES = 10;
+
+/**
  * Emergency dispatch (PRD section 5): an emergency request is offered to one online,
  * verified Pro at a time, nearest first, for EMERGENCY_OFFER_SECONDS. When an offer is
  * declined or runs out, the next nearest Pro is offered it. If nobody is left, the request
- * stays open and is offered to matching Pros as they come online.
+ * stays open and is offered to matching Pros as they come online, and again to Pros who
+ * missed it, EMERGENCY_REOFFER_MINUTES after their offer ran out (Pros never asked come
+ * first).
  *
  * Safe with several API instances: each job is locked while it is advanced, and the
- * database allows one PENDING offer per job and one offer per job and Pro. All times
- * come from the database clock.
+ * database allows one PENDING offer per job. All times come from the database clock.
  */
 @Injectable()
 export class DispatchService implements OnModuleInit, OnModuleDestroy {
@@ -145,12 +153,19 @@ export class DispatchService implements OnModuleInit, OnModuleDestroy {
               eq(users.role, 'PRO'),
               sql`${proProfiles.latitude} is not null`,
               sql`${distance} <= ${proProfiles.serviceRadiusKm}`,
-              // Never the same Pro twice for one job.
+              // Not a Pro who declined, holds or held this job, or who let it run out
+              // less than EMERGENCY_REOFFER_MINUTES ago.
               notExists(
                 tx
                   .select({ one: sql`1` })
                   .from(jobOffers)
-                  .where(and(eq(jobOffers.jobId, jobId), eq(jobOffers.proId, proProfiles.userId))),
+                  .where(
+                    and(
+                      eq(jobOffers.jobId, jobId),
+                      eq(jobOffers.proId, proProfiles.userId),
+                      sql`not (${jobOffers.status} = 'EXPIRED' and ${jobOffers.expiresAt} <= now() - make_interval(mins => ${EMERGENCY_REOFFER_MINUTES}))`,
+                    ),
+                  ),
               ),
               // One live emergency offer per Pro at a time (scheduled requests don't count).
               notExists(
@@ -169,7 +184,11 @@ export class DispatchService implements OnModuleInit, OnModuleDestroy {
               ),
             ),
           )
-          .orderBy(asc(distance))
+          // Pros never asked about this job first, then the nearest.
+          .orderBy(
+            sql`exists (select 1 from ${jobOffers} where ${jobOffers.jobId} = ${jobId} and ${jobOffers.proId} = ${proProfiles.userId})`,
+            asc(distance),
+          )
           .limit(1);
         if (!next) return; // Nobody free nearby: the request stays open.
 
@@ -181,7 +200,7 @@ export class DispatchService implements OnModuleInit, OnModuleDestroy {
         });
       });
     } catch (err) {
-      // Another instance offered the job at the same moment (unique index): that's fine.
+      // Another instance offered the job at the same moment (one-pending index): that's fine.
       if ((err as { code?: string }).code === '23505') return;
       throw err;
     }
