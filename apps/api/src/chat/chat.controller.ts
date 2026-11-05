@@ -22,7 +22,7 @@ import {
 } from '@gadmo/shared';
 import type { Request, Response } from 'express';
 import { randomInt } from 'node:crypto';
-import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type Redis from 'ioredis';
 import { z } from 'zod';
 import { AlertsService } from '../alerts/alerts.service';
@@ -44,7 +44,9 @@ import type { FieldCrypto } from '../common/field-crypto';
 import { DB, type Db, FIELD_CRYPTO, REDIS } from '../infra/infra.module';
 
 const idPipe = new ZodValidationPipe(z.uuid());
-const afterPipe = new ZodValidationPipe(z.iso.datetime({ offset: true }).optional());
+const afterSeqPipe = new ZodValidationPipe(
+  z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+);
 
 /** The raw upload bytes; anything else (a JSON body, a string, an array) is refused. */
 function rawBytes(req: Request, message: string): Buffer {
@@ -108,12 +110,12 @@ export class ChatController {
     };
   }
 
-  /** Messages oldest first; `after` (an ISO time) returns only newer ones, for polling. */
+  /** Messages in order of arrival; `afterSeq` returns only later ones, for polling. */
   @Get('messages')
   async list(
     @CurrentUser() user: AuthUser,
     @Param('jobId', idPipe) jobId: string,
-    @Query('after', afterPipe) after?: string,
+    @Query('afterSeq', afterSeqPipe) afterSeq?: number,
   ) {
     const job = await this.partyJob(user, jobId);
     if (!job.proId) throw new ConflictException('Chat opens when a Pro accepts the job.');
@@ -124,6 +126,7 @@ export class ChatController {
         kind: messages.kind,
         body: messages.body,
         wasMasked: messages.wasMasked,
+        seq: messages.seq,
         createdAt: messages.createdAt,
         fileId: messages.attachmentRef,
         latitude: messages.latitude,
@@ -140,13 +143,10 @@ export class ChatController {
       .where(
         and(
           eq(messages.jobId, jobId),
-          // Compared at millisecond precision, as the client received the time.
-          after
-            ? sql`date_trunc('milliseconds', ${messages.createdAt}) > ${new Date(after)}`
-            : undefined,
+          afterSeq !== undefined ? gt(messages.seq, afterSeq) : undefined,
         ),
       )
-      .orderBy(asc(messages.createdAt), asc(messages.id))
+      .orderBy(asc(messages.seq))
       .limit(200);
     // Offer statuses change after the message is sent, so polling clients also get the
     // current state of every offer in the chat.
@@ -398,6 +398,7 @@ export class ChatController {
           kind: messages.kind,
           body: messages.body,
           wasMasked: messages.wasMasked,
+          seq: messages.seq,
           createdAt: messages.createdAt,
           fileId: messages.attachmentRef,
           latitude: messages.latitude,

@@ -14,8 +14,11 @@ import { useSession } from '@/lib/useSession';
 /** New messages are checked for every few seconds while the chat is on screen. */
 const POLL_MS = 4000;
 
-/** Re-asks for this much before the last message seen, in case a slower one lands earlier. */
-const OVERLAP_MS = 15_000;
+/**
+ * Re-asks from a little before the last message seen (the counter is shared by all chats),
+ * in case a message saved a moment earlier was still being written. Repeats are dropped.
+ */
+const OVERLAP = 1000;
 
 const timeFormat = new Intl.DateTimeFormat('en-NG', {
   hour: 'numeric',
@@ -39,11 +42,9 @@ function dayLabel(iso: string): string {
   return dayFormat.format(day);
 }
 
-/** Oldest first, by the time GADMO received each message. */
-function byTime(a: ChatMessage, b: ChatMessage): number {
-  return a.createdAt === b.createdAt
-    ? a.id.localeCompare(b.id)
-    : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+/** In the order GADMO received them (a counter, so a wrong clock can't reorder them). */
+function byArrival(a: ChatMessage, b: ChatMessage): number {
+  return a.seq - b.seq;
 }
 
 export function JobChat({ jobId }: { jobId: string }) {
@@ -57,7 +58,7 @@ export function JobChat({ jobId }: { jobId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [toolError, setToolError] = useState<string | null>(null);
   const [liveCall, setLiveCall] = useState<LiveCall | null>(null);
-  const lastAt = useRef<string | null>(null);
+  const lastSeq = useRef<number | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   /** Adds new messages in time order, whichever way they arrived (sent here or polled). */
@@ -66,7 +67,7 @@ export function JobChat({ jobId }: { jobId: string }) {
     setMessages((current) => {
       const known = new Set(current.map((m) => m.id));
       const fresh = incoming.filter((m) => !known.has(m.id));
-      return fresh.length ? [...current, ...fresh].sort(byTime) : current;
+      return fresh.length ? [...current, ...fresh].sort(byArrival) : current;
     });
   }, []);
 
@@ -74,14 +75,14 @@ export function JobChat({ jobId }: { jobId: string }) {
     try {
       // Only polled messages move the cursor, so the other person's messages are never
       // skipped because ours was sent in between.
-      const since = lastAt.current
-        ? new Date(new Date(lastAt.current).getTime() - OVERLAP_MS).toISOString()
-        : null;
-      const query = since ? `?after=${encodeURIComponent(since)}` : '';
+      const query =
+        lastSeq.current === null ? '' : `?afterSeq=${Math.max(0, lastSeq.current - OVERLAP)}`;
       const res = await api<MessagesResponse>(`/v1/jobs/${jobId}/messages${query}`);
       addMessages(res.messages);
-      const newest = res.messages.at(-1)?.createdAt;
-      if (newest && (!lastAt.current || newest > lastAt.current)) lastAt.current = newest;
+      const newest = res.messages.at(-1)?.seq;
+      if (newest !== undefined && (lastSeq.current === null || newest > lastSeq.current)) {
+        lastSeq.current = newest;
+      }
       setOfferStatus(Object.fromEntries(res.offers.map((o) => [o.id, o.status])));
       setLiveCall(res.call);
       setConvo((c) =>

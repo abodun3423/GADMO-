@@ -85,13 +85,15 @@ test('the Pro offers an inspection fee, the customer counters, the Pro accepts',
   await expect(proPage.getByText(code)).toHaveCount(0);
   await proPage.getByRole('button', { name: 'I’m on my way' }).click();
   await expect(page.getByText('Your Pro is on the way.').first()).toBeVisible({ timeout: 10_000 });
+  await expect(proPage.getByText('Your customer knows you’re on the way.')).toBeVisible();
+  await proPage.getByRole('button', { name: 'I have arrived' }).click();
   await proPage
     .getByLabel(/Enter the customer’s arrival code/)
     .fill(code === '0000' ? '1111' : '0000');
-  await proPage.getByRole('button', { name: 'Confirm arrival' }).click();
+  await proPage.getByRole('button', { name: 'Confirm arrival and get ₦1,500' }).click();
   await expect(proPage.locator('p[role="alert"]')).toContainText('That code isn’t right.');
   await proPage.getByLabel(/Enter the customer’s arrival code/).fill(code);
-  await proPage.getByRole('button', { name: 'Confirm arrival' }).click();
+  await proPage.getByRole('button', { name: 'Confirm arrival and get ₦1,500' }).click();
   await expect(proPage.getByText('Arrival confirmed.')).toBeVisible();
   await expect(proPage.getByText(/now yours, in your GADMO earnings/)).toBeVisible();
   await expect(page.getByText('Your Pro has arrived.', { exact: true })).toBeVisible({
