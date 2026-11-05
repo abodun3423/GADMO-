@@ -21,7 +21,7 @@ export function AccountLink() {
     <nav className="topbar-nav" aria-label="Your GADMO">
       {me.role === 'ADMIN' || me.role === 'SUPER_ADMIN' ? (
         <Link href="/admin" className="topbar-link">
-          Review
+          Dashboard
         </Link>
       ) : me.role === 'PRO' ? (
         <Link href="/pro" className="topbar-link">

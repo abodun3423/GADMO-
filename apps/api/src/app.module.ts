@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AccountController } from './account/account.controller';
+import { AdminUsersController } from './admin/users.controller';
 import { AdminVerificationsController } from './admin/verifications.controller';
 import { AuthModule } from './auth/auth.module';
 import { CatalogController } from './catalog/catalog.controller';
@@ -17,6 +18,7 @@ import { VerificationController } from './verification/verification.controller';
   imports: [ConfigModule, InfraModule, AuthModule, DispatchModule],
   controllers: [
     AccountController,
+    AdminUsersController,
     AdminVerificationsController,
     HealthController,
     CatalogController,

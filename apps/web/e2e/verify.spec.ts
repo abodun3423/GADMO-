@@ -78,8 +78,14 @@ test('GADMO staff ask for a better photo, then approve; the Pro can go online', 
   await staffSignIn(staffPage, await createStaff());
   await expect(staffPage).toHaveURL('/admin');
   await expect(
-    staffPage.getByRole('navigation', { name: 'Your GADMO' }).getByRole('link', { name: 'Review' }),
+    staffPage
+      .getByRole('navigation', { name: 'Your GADMO' })
+      .getByRole('link', { name: 'Dashboard' }),
   ).toBeVisible();
+  await staffPage
+    .getByRole('navigation', { name: 'Staff sections' })
+    .getByRole('link', { name: 'Identity checks' })
+    .click();
   await staffPage
     .getByRole('link', { name: /Kemi Adeyemi/ })
     .first()
@@ -100,7 +106,7 @@ test('GADMO staff ask for a better photo, then approve; the Pro can go online', 
   await expect(page.getByText('The ID photo is blurred. Please retake it.')).toBeVisible();
   await sendCheck();
 
-  await staffPage.goto('/admin');
+  await staffPage.goto('/admin/checks');
   await staffPage
     .getByRole('link', { name: /Kemi Adeyemi/ })
     .first()

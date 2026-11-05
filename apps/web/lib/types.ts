@@ -179,3 +179,67 @@ export interface MessagesResponse {
   offers: { id: string; status: OfferStatus }[];
   inspectionFeeKobo: number | null;
 }
+
+export type AccountStatus = 'ACTIVE' | 'SUSPENDED' | 'BANNED';
+
+/** Staff: GET /v1/admin/overview */
+export interface AdminOverviewData {
+  customers: number;
+  pros: number;
+  staff: number;
+  prosVerified: number;
+  prosOnline: number;
+  checksWaiting: number;
+  jobsToday: number;
+  jobsByStatus: Partial<Record<JobStatus, number>>;
+}
+
+/** Staff: a row in GET /v1/admin/users */
+export interface AdminUserRow {
+  id: string;
+  name: string | null;
+  phone: string;
+  role: Role;
+  status: AccountStatus;
+  chatFlags: number;
+  createdAt: string;
+  verificationStatus: VerificationStatus | null;
+  isOnline: boolean | null;
+}
+
+/** Staff: a row in GET /v1/admin/jobs */
+export interface AdminJobRow {
+  id: string;
+  type: 'EMERGENCY' | 'SCHEDULED';
+  status: JobStatus;
+  description: string;
+  serviceName: string;
+  customerId: string;
+  customerName: string | null;
+  proId: string | null;
+  proName: string | null;
+  inspectionFeeKobo: number | null;
+  scheduledAt: string | null;
+  createdAt: string;
+}
+
+/** Staff: GET /v1/admin/users/:id */
+export interface AdminUserDetail extends Omit<AdminUserRow, 'verificationStatus' | 'isOnline'> {
+  email: string | null;
+  pro: {
+    bio: string | null;
+    serviceRadiusKm: number;
+    isOnline: boolean;
+    verificationStatus: VerificationStatus;
+    ratingAvg: number;
+    ratingCount: number;
+  } | null;
+  skills: string[];
+  latestCheck: { id: string; result: ReviewResult } | null;
+  recentJobs: AdminJobRow[];
+  statusHistory: {
+    action: string;
+    metadata: { from?: string; to?: string; reason?: string } | null;
+    createdAt: string;
+  }[];
+}

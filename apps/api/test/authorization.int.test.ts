@@ -1024,3 +1024,112 @@ describe('inspection fee agreed in chat (max ₦5,000)', () => {
     expect(res.body.offer.note).not.toMatch(/0803|4567/);
   });
 });
+
+describe('staff: overview, users and jobs', () => {
+  async function staffMember(role: 'ADMIN' | 'SUPER_ADMIN' = 'ADMIN') {
+    const s = await login(ctx);
+    await ctx.db.update(users).set({ role }).where(eq(users.id, s.userId));
+    return s;
+  }
+
+  it('only staff can see the overview, accounts and jobs, or change an account', async () => {
+    const customer = await login(ctx);
+    const pro = await login(ctx, { role: 'pro' });
+    for (const who of [customer, pro]) {
+      await who.agent.get('/v1/admin/overview').expect(403);
+      await who.agent.get('/v1/admin/users').expect(403);
+      await who.agent.get(`/v1/admin/users/${customer.userId}`).expect(403);
+      await who.agent.get('/v1/admin/jobs').expect(403);
+      await who.agent
+        .post(`/v1/admin/users/${customer.userId}/status`)
+        .set(CLIENT_HEADER)
+        .send({ status: 'BANNED', reason: 'testing access' })
+        .expect(403);
+    }
+    await request(ctx.server).get('/v1/admin/users').expect(401);
+  });
+
+  it('staff find accounts by name or phone in any format, and see them in full', async () => {
+    const reviewer = await staffMember();
+    const pro = await login(ctx, { role: 'pro' });
+    const name = `Zainab ${Array.from({ length: 8 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join('')}`;
+    await pro.agent.patch('/v1/me').set(CLIENT_HEADER).send({ name }).expect(200);
+
+    const byName = await reviewer.agent.get('/v1/admin/users').query({ q: name }).expect(200);
+    expect(byName.body.users).toHaveLength(1);
+    expect(byName.body.users[0]).toMatchObject({ id: pro.userId, role: 'PRO', status: 'ACTIVE' });
+    const local = `${pro.phone.local.slice(0, 4)} ${pro.phone.local.slice(4, 7)} ${pro.phone.local.slice(7)}`;
+    const byPhone = await reviewer.agent.get('/v1/admin/users').query({ q: local }).expect(200);
+    expect(byPhone.body.users.map((u: { id: string }) => u.id)).toContain(pro.userId);
+    const pros = await reviewer.agent.get('/v1/admin/users').query({ role: 'PRO' }).expect(200);
+    expect(pros.body.users.every((u: { role: string }) => u.role === 'PRO')).toBe(true);
+    await reviewer.agent.get('/v1/admin/users').query({ role: 'GOD' }).expect(400);
+    await reviewer.agent.get('/v1/admin/users').query({ q: '%' }).expect(200);
+
+    const detail = await reviewer.agent.get(`/v1/admin/users/${pro.userId}`).expect(200);
+    expect(detail.body.user).toMatchObject({ name, phone: pro.phone.e164, role: 'PRO' });
+    expect(detail.body.user.pro).toMatchObject({ verificationStatus: 'NOT_STARTED' });
+    await reviewer.agent.get('/v1/admin/users/00000000-0000-4000-8000-000000000000').expect(404);
+
+    const overview = await reviewer.agent.get('/v1/admin/overview').expect(200);
+    expect(overview.body.overview.pros).toBeGreaterThanOrEqual(1);
+    expect(overview.body.overview.customers).toBeGreaterThanOrEqual(1);
+    const list = await reviewer.agent.get('/v1/admin/jobs').expect(200);
+    expect(Array.isArray(list.body.jobs)).toBe(true);
+    await reviewer.agent.get('/v1/admin/jobs').query({ status: 'NOPE' }).expect(400);
+  });
+
+  it('suspending signs the account out at once; reactivating lets it back in', async () => {
+    const reviewer = await staffMember();
+    const pro = await login(ctx, { role: 'pro' });
+    const change = (status: string, reason = 'Repeated no-shows reported') =>
+      reviewer.agent
+        .post(`/v1/admin/users/${pro.userId}/status`)
+        .set(CLIENT_HEADER)
+        .send({ status, reason });
+
+    await change('SUSPENDED', 'no').expect(400); // a reason is required
+    await change('SUSPENDED').expect(200);
+    await change('SUSPENDED').expect(409);
+    await pro.agent.get('/v1/auth/me').expect(403);
+    await pro.agent.post('/v1/auth/refresh').set(CLIENT_HEADER).expect(401);
+
+    const [log] = await ctx.db
+      .select()
+      .from(auditLogs)
+      .where(
+        and(
+          eq(auditLogs.target, `user:${pro.userId}`),
+          eq(auditLogs.action, 'USER_STATUS_CHANGED'),
+        ),
+      );
+    expect(log).toMatchObject({ actorId: reviewer.userId });
+    expect(log!.metadata).toMatchObject({
+      from: 'ACTIVE',
+      to: 'SUSPENDED',
+      reason: 'Repeated no-shows reported',
+    });
+
+    await change('ACTIVE', 'Cleared after review').expect(200);
+    const again = await login(ctx, { role: 'pro', phone: pro.phone });
+    await again.agent.get('/v1/auth/me').expect(200);
+  });
+
+  it('staff cannot change themselves, and only a super-admin can change staff', async () => {
+    const a = await staffMember();
+    const b = await staffMember();
+    const boss = await staffMember('SUPER_ADMIN');
+    const set = (who: typeof a, id: string) =>
+      who.agent
+        .post(`/v1/admin/users/${id}/status`)
+        .set(CLIENT_HEADER)
+        .send({ status: 'SUSPENDED', reason: 'Testing staff rules' });
+    await set(a, a.userId).expect(403);
+    await set(a, b.userId).expect(403);
+    await set(boss, b.userId).expect(200);
+    await a.agent
+      .post(`/v1/admin/users/${a.userId}/status`)
+      .send({ status: 'ACTIVE', reason: 'missing header' })
+      .expect(403);
+  });
+});

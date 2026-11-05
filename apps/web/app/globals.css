@@ -565,6 +565,126 @@ input[type='password'] {
   font-weight: 600;
 }
 
+/* ---------- Staff dashboard ---------- */
+.admin-nav {
+  margin-top: 16px;
+}
+
+.tabs-sub {
+  border-bottom: 0;
+}
+
+.stats {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.stat > a,
+.stat > div {
+  display: block;
+  height: 100%;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.stat-alert > a,
+.stat-alert > div {
+  border-color: var(--warn);
+  box-shadow: inset 4px 0 0 var(--warn);
+}
+
+.stat-value {
+  display: block;
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--indigo);
+}
+
+.stat-label {
+  display: block;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.status-counts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  columns: 2 220px;
+}
+
+.status-counts li {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--line);
+  break-inside: avoid;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.filters .field {
+  margin: 0;
+  flex: 1 1 160px;
+}
+
+.filters .button-small {
+  margin: 0;
+  min-height: 48px;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.tags .badge {
+  margin: 0;
+}
+
+.badge-plain {
+  background: #e9ebf2;
+}
+
+.badge-ok {
+  background: #e5f4e4;
+  color: var(--ok);
+}
+
+.admin-jobs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pager {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.history {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
 /* ---------- Account details ---------- */
 .details {
   margin: 24px 0 8px;

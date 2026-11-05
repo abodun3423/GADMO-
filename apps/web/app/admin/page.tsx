@@ -1,17 +1,12 @@
 import type { Metadata } from 'next';
-import { ReviewQueue } from '@/components/admin/ReviewQueue';
+import { AdminOverview } from '@/components/admin/AdminOverview';
 
-export const metadata: Metadata = { title: 'Identity checks', robots: { index: false } };
+export const metadata: Metadata = { title: 'Staff dashboard', robots: { index: false } };
 
-export default async function AdminPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ status?: string; done?: string }>;
-}) {
-  const { status, done } = await searchParams;
+export default function AdminPage() {
   return (
     <main className="page page-wide">
-      <ReviewQueue status={status} done={done} />
+      <AdminOverview />
     </main>
   );
 }

@@ -68,7 +68,7 @@ function Check({ id }: { id: string }) {
         decision,
         ...(note.trim() ? { note } : {}),
       });
-      router.push(`/admin?done=${decision}`);
+      router.push(`/admin/checks?done=${decision}`);
     } catch (err) {
       setError(
         fieldMessage(err) ?? (err instanceof ApiError ? err.message : 'Could not save. Try again.'),
@@ -80,7 +80,7 @@ function Check({ id }: { id: string }) {
   return (
     <>
       <p className="meta">
-        <Link href="/admin">← All checks</Link>
+        <Link href="/admin/checks">← All checks</Link>
       </p>
       <h1 className="page-title">{check?.proName ?? (check ? 'No name yet' : 'Identity check')}</h1>
 
