@@ -8,7 +8,8 @@ import {
 import { EMERGENCY_OFFER_SECONDS } from '@gadmo/shared';
 import { and, asc, eq, isNull, lte, notExists, sql } from 'drizzle-orm';
 import { ENV, type Env } from '../config/env';
-import { jobOffers, jobs, proCategories, proProfiles, users } from '../db/schema';
+import { jobOffers, jobs, proProfiles, users } from '../db/schema';
+import { offersAnyOf, withRelated } from '../catalog/related';
 import { DB, type Db } from '../infra/infra.module';
 import { distanceKmSql } from './geo';
 
@@ -129,19 +130,15 @@ export class DispatchService implements OnModuleInit, OnModuleDestroy {
           job.latitude,
           job.longitude,
         );
+        // The nearest online Pro with the exact skill or a related one.
+        const skills = await withRelated(tx, [job.categoryId]);
         const [next] = await tx
           .select({ proId: proProfiles.userId, distanceKm: distance })
           .from(proProfiles)
           .innerJoin(users, eq(users.id, proProfiles.userId))
-          .innerJoin(
-            proCategories,
-            and(
-              eq(proCategories.proId, proProfiles.userId),
-              eq(proCategories.categoryId, job.categoryId),
-            ),
-          )
           .where(
             and(
+              offersAnyOf(tx, proProfiles.userId, skills),
               eq(proProfiles.isOnline, true),
               eq(proProfiles.verificationStatus, 'APPROVED'),
               eq(users.status, 'ACTIVE'),

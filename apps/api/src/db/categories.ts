@@ -226,4 +226,86 @@ export const CATALOGUE: GroupSeed[] = [
   },
 ];
 
+/**
+ * Related skills: a Pro with any skill in a set can also be matched to requests for the
+ * others in that set (customers see them on "Choose a Pro"; emergencies go to the nearest
+ * online Pro with the exact or a related skill). Hand-picked by the founder's rule that a
+ * related Pro must plausibly be able to do the job. A skill can appear in several sets.
+ */
+export const RELATED: string[][] = [
+  // Home repairs
+  ['electrician', 'generator-repair', 'solar-inverter', 'cctv-security', 'satellite-tv'],
+  ['electrician', 'ac-refrigerator-repair', 'home-appliance-repair'],
+  ['plumber', 'borehole-pump', 'septic-tank'],
+  ['carpenter', 'furniture-upholstery'],
+  ['carpenter', 'roofer', 'pop-ceiling'],
+  ['carpenter', 'locksmith'],
+  ['aluminium-works', 'glazier', 'welder'],
+  ['bricklayer', 'tiler'],
+  ['painter', 'pop-ceiling', 'interior-decorator'],
+  ['ac-refrigerator-repair', 'car-ac-repair'],
+  ['gardener', 'farm-hand'],
+  // Auto
+  ['auto-mechanic', 'auto-electrician', 'motorcycle-mechanic', 'car-ac-repair'],
+  ['auto-mechanic', 'towing'],
+  ['driver', 'car-rental', 'driving-instructor'],
+  // Cleaning and household
+  ['house-cleaner', 'deep-cleaning', 'housekeeper', 'rug-upholstery-cleaning'],
+  ['laundry', 'housekeeper'],
+  ['nanny', 'housekeeper'],
+  ['private-chef', 'caterer'],
+  ['elderly-caregiver', 'home-nurse'],
+  // Fashion and beauty
+  ['hairstylist', 'barber'],
+  ['makeup-artist', 'gele-stylist', 'lash-brow-technician'],
+  ['nail-technician', 'lash-brow-technician'],
+  // Events
+  ['event-planner', 'event-decorator', 'ushers'],
+  ['caterer', 'small-chops', 'baker'],
+  ['photographer', 'videographer', 'video-editor'],
+  ['dj', 'mc', 'live-band', 'sound-pa-rental'],
+  ['event-hall', 'canopy-chairs-rental', 'event-decorator'],
+  // Tech
+  ['phone-repair', 'computer-repair', 'electronics-repair'],
+  ['computer-repair', 'printer-repair', 'pos-repair'],
+  ['computer-repair', 'it-support', 'cybersecurity'],
+  ['electronics-repair', 'satellite-tv'],
+  ['web-developer', 'app-developer', 'software-developer'],
+  ['software-developer', 'data-analyst'],
+  ['graphic-designer', 'ui-ux-designer', 'printing-branding'],
+  ['social-media-manager', 'digital-marketer', 'content-writer'],
+  ['it-support', 'tech-trainer'],
+  // Lessons
+  ['home-tutor', 'exam-prep', 'language-tutor'],
+  ['music-teacher', 'live-band'],
+  // Professional
+  ['accountant', 'tax-consultant'],
+  ['business-registration', 'business-consultant', 'lawyer'],
+  ['estate-agent', 'land-surveyor'],
+  ['architect', 'structural-engineer', 'land-surveyor'],
+  ['translator', 'language-tutor'],
+  // Health
+  ['fitness-trainer', 'dietitian'],
+  ['physiotherapist', 'home-nurse'],
+  // Businesses, moving, farming
+  ['generator-rental', 'generator-repair'],
+  ['car-rental', 'truck-hire'],
+  ['truck-hire', 'movers'],
+  ['water-supply', 'borehole-pump'],
+  ['tractor-hire', 'farm-hand'],
+  ['dispatch-rider', 'errand-runner'],
+  ['veterinary-doctor', 'poultry-consultant'],
+  ['poultry-consultant', 'fish-farming-consultant', 'agronomist'],
+];
+
+/** The skills related to these (not including them). */
+export function relatedSlugs(slugs: Iterable<string>): string[] {
+  const mine = new Set(slugs);
+  const out = new Set<string>();
+  for (const set of RELATED) {
+    if (set.some((s) => mine.has(s))) for (const s of set) if (!mine.has(s)) out.add(s);
+  }
+  return [...out];
+}
+
 export const INSPECTION_POLICY = { R: 'REQUIRED', O: 'OPTIONAL', N: 'NONE' } as const;

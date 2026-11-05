@@ -13,6 +13,7 @@ let ctx: TestContext;
 let dispatch: DispatchService;
 let electricianId: string;
 let plumberId: string;
+let generatorRepairId: string;
 
 beforeAll(async () => {
   ctx = await createTestApp();
@@ -20,6 +21,7 @@ beforeAll(async () => {
   const rows = await ctx.db.select().from(categories);
   electricianId = rows.find((c) => c.slug === 'electrician')!.id;
   plumberId = rows.find((c) => c.slug === 'plumber')!.id;
+  generatorRepairId = rows.find((c) => c.slug === 'generator-repair')!.id;
 });
 afterAll(async () => {
   await ctx.app.close();
@@ -200,6 +202,19 @@ describe('emergency dispatch', () => {
     }
   });
 
+  it('goes to the nearest Pro with the exact or a related skill', async () => {
+    const base = somewhere();
+    const electrician = await pro(north(base, 3));
+    const generatorRepair = await pro(north(base, 1), { skills: [generatorRepairId] });
+    await pro(north(base, 0.5), { skills: [plumberId] }); // not related
+    const customer = await login(ctx);
+    const job = await emergency(customer, base);
+    expect((await offersOf(generatorRepair)).map((o) => o.job.id)).toEqual([job.id]);
+    expect(await offersOf(electrician)).toEqual([]);
+    await runOut(job.id);
+    expect((await offersOf(electrician)).map((o) => o.job.id)).toEqual([job.id]);
+  });
+
   it('a Pro holds one emergency offer at a time', async () => {
     const base = somewhere();
     const busy = await pro(north(base, 1));
@@ -295,6 +310,46 @@ describe('scheduled jobs: the customer chooses a Pro', () => {
     expect(res.body.pros[0]).toMatchObject({ ratingAvg: 4.8, skills: ['Electrician'] });
     expect(res.body.pros[0].phone).toBeUndefined();
     expect(res.body.pros[0].latitude).toBeUndefined();
+  });
+
+  it('Pros with a related skill are listed after exact ones, and see the request', async () => {
+    const base = somewhere();
+    const related = await pro(north(base, 1), { skills: [generatorRepairId] });
+    await ctx.db
+      .update(proProfiles)
+      .set({ ratingAvg: 5, ratingCount: 3 })
+      .where(eq(proProfiles.userId, related.userId));
+    const exact = await pro(north(base, 4));
+    const unrelated = await pro(north(base, 1), { skills: [plumberId] });
+    const customer = await login(ctx);
+    const job = await scheduled(customer, base);
+
+    const res = await customer.agent.get(`/v1/jobs/${job.id}/pros`).expect(200);
+    expect(
+      res.body.pros.map((p: { id: string; exactSkill: boolean }) => [p.id, p.exactSkill]),
+    ).toEqual([
+      [exact.userId, true],
+      [related.userId, false],
+    ]);
+    expect(res.body.pros[1].skills).toEqual(['Generator repair']);
+
+    const nearby = async (p: Agent) =>
+      (await p.agent.get('/v1/pro/jobs/nearby').expect(200)).body.jobs.map(
+        (j: { id: string }) => j.id,
+      );
+    expect(await nearby(related)).toContain(job.id);
+    expect(await nearby(unrelated)).not.toContain(job.id);
+
+    await customer.agent
+      .post(`/v1/jobs/${job.id}/requests`)
+      .set(CLIENT_HEADER)
+      .send({ proId: unrelated.userId })
+      .expect(422);
+    await customer.agent
+      .post(`/v1/jobs/${job.id}/requests`)
+      .set(CLIENT_HEADER)
+      .send({ proId: related.userId })
+      .expect(201);
   });
 
   it('the chosen Pro accepts, and chat opens; the customer saw who they asked', async () => {

@@ -17,11 +17,14 @@ import { type AuthUser, CurrentUser, JwtAuthGuard, Roles } from '../auth/guards'
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { categories, jobOffers, jobs, proCategories, proProfiles, users } from '../db/schema';
 import { DB, type Db } from '../infra/infra.module';
+import { offersAnyOf, withRelated } from '../catalog/related';
 import { distanceKmSql, roughKm } from './geo';
 
 const idPipe = new ZodValidationPipe(z.uuid());
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type Job = { id: string; categoryId: string; latitude: number; longitude: number };
+/** The job's own skill, then related skills (see RELATED in db/categories.ts). */
+type Skills = string[];
 
 /**
  * Scheduled jobs (PRD section 5): the customer picks a Pro from the verified Pros nearby
@@ -39,7 +42,11 @@ export class ChooseProController {
   @Get('pros')
   async pros(@CurrentUser() user: AuthUser, @Param('jobId', idPipe) jobId: string) {
     const job = await this.openScheduledJob(this.db, user, jobId);
-    const rows = await this.eligible(this.db, job).limit(30);
+    const rows = await this.eligible(
+      this.db,
+      job,
+      await withRelated(this.db, [job.categoryId]),
+    ).limit(30);
     const skills = rows.length
       ? await this.db
           .select({ proId: proCategories.proId, name: categories.name })
@@ -89,7 +96,12 @@ export class ChooseProController {
         .set({ status: 'EXPIRED' })
         .where(and(eq(jobOffers.jobId, jobId), eq(jobOffers.status, 'PENDING')));
 
-      const [pro] = await this.eligible(tx, job, body.proId).limit(1);
+      const [pro] = await this.eligible(
+        tx,
+        job,
+        await withRelated(tx, [job.categoryId]),
+        body.proId,
+      ).limit(1);
       if (!pro) {
         throw new UnprocessableEntityException(
           'That Pro can’t take this job. Choose one from the list.',
@@ -139,8 +151,12 @@ export class ChooseProController {
     return job;
   }
 
-  /** Verified, active Pros with this skill whose travel distance covers the job. */
-  private eligible(db: Db | Tx, job: Job, onlyProId?: string) {
+  /**
+   * Verified, active Pros with this skill or a related one whose travel distance covers
+   * the job. Pros with the exact skill come first.
+   */
+  private eligible(db: Db | Tx, job: Job, skills: Skills, onlyProId?: string) {
+    const exact = offersAnyOf(db, proProfiles.userId, [job.categoryId]);
     const distance = distanceKmSql(
       proProfiles.latitude,
       proProfiles.longitude,
@@ -156,18 +172,13 @@ export class ChooseProController {
         ratingCount: proProfiles.ratingCount,
         isOnline: proProfiles.isOnline,
         distanceKm: distance,
+        exactSkill: sql<boolean>`${exact}`,
       })
       .from(proProfiles)
       .innerJoin(users, eq(users.id, proProfiles.userId))
-      .innerJoin(
-        proCategories,
-        and(
-          eq(proCategories.proId, proProfiles.userId),
-          eq(proCategories.categoryId, job.categoryId),
-        ),
-      )
       .where(
         and(
+          offersAnyOf(db, proProfiles.userId, skills),
           onlyProId ? eq(proProfiles.userId, onlyProId) : undefined,
           eq(proProfiles.verificationStatus, 'APPROVED'),
           eq(users.status, 'ACTIVE'),
@@ -183,7 +194,7 @@ export class ChooseProController {
           ),
         ),
       )
-      .orderBy(desc(proProfiles.ratingAvg), asc(distance))
+      .orderBy(sql`${exact} desc`, desc(proProfiles.ratingAvg), asc(distance))
       .$dynamic();
     // Note: callers add .limit() only; another .where() would replace these conditions.
   }

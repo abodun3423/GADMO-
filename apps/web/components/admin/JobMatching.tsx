@@ -95,9 +95,9 @@ function Matching({ id }: { id: string }) {
       <h2 className="section-title">Which Pros can take it?</h2>
       <p className={`alert ${matching.length ? 'alert-ok' : 'alert-info'}`} role="status">
         {pros.length === 0
-          ? `No Pro offers ${job.serviceName} yet. A Pro adds it in Pro profile → skills.`
+          ? `No Pro offers ${job.serviceName} or a related service yet. A Pro adds skills in Pro profile.`
           : matching.length === 0
-            ? `${pros.length} ${pros.length === 1 ? 'Pro offers' : 'Pros offer'} ${job.serviceName}, but none can take this job yet. The reasons are below.`
+            ? `${pros.length} ${pros.length === 1 ? 'Pro offers' : 'Pros offer'} ${job.serviceName} or a related service, but none can take this job yet. The reasons are below.`
             : `${matching.length} ${matching.length === 1 ? 'Pro' : 'Pros'} can take this job${emergency ? ' right now' : ' (the customer sees them on “Choose a Pro”)'}.`}
       </p>
       <ul className="admin-jobs">
@@ -114,6 +114,7 @@ function Matching({ id }: { id: string }) {
                 )}
               </h3>
               <p className="meta">
+                {p.exactSkill ? `Offers ${job.serviceName}` : 'Related skill'} ·{' '}
                 {CHECK_LABEL[p.verificationStatus]} · {p.isOnline ? 'online' : 'offline'}
                 {p.distanceKm !== null &&
                   ` · ${p.distanceKm} km away (travels ${p.serviceRadiusKm} km)`}
@@ -132,7 +133,9 @@ function Matching({ id }: { id: string }) {
 
       {otherPros.length > 0 && (
         <>
-          <h2 className="section-title">Pros who don’t offer {job.serviceName}</h2>
+          <h2 className="section-title">
+            Pros who don’t offer {job.serviceName} or anything related
+          </h2>
           <p className="meta">In case a Pro picked a similar skill by mistake.</p>
           <ul className="admin-jobs">
             {otherPros.map((p) => (

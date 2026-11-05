@@ -62,6 +62,8 @@ export interface Job {
 
 /** A Pro the customer can choose for a scheduled job (GET /v1/jobs/:id/pros). */
 export interface ChoosablePro {
+  /** False when the Pro offers a related service rather than this exact one. */
+  exactSkill: boolean;
   id: string;
   name: string | null;
   bio: string | null;
@@ -252,6 +254,7 @@ export interface JobMatching {
   pros: {
     id: string;
     name: string | null;
+    exactSkill: boolean;
     verificationStatus: VerificationStatus;
     accountStatus: AccountStatus;
     isOnline: boolean;
