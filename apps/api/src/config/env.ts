@@ -23,6 +23,19 @@ const envSchema = z
       .regex(/^sk_(test|live)_\w+$/, 'PAYSTACK_SECRET_KEY must start with sk_test_ or sk_live_')
       .optional()
       .or(z.literal('').transform(() => undefined)),
+    /**
+     * Web push (VAPID) keys, from `npx web-push generate-vapid-keys`. Required in
+     * production; in development GADMO makes a pair once and keeps it in apps/api/.vapid.dev.json.
+     */
+    VAPID_PUBLIC_KEY: z
+      .string()
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+    VAPID_PRIVATE_KEY: z
+      .string()
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+    VAPID_SUBJECT: z.string().default('mailto:support@gadmo.ng'),
     /** Login codes one network address may request per hour (raised only for browser tests). */
     OTP_IP_HOURLY_LIMIT: z.coerce.number().int().positive().default(30),
     /** 32 random bytes, base64: encrypts NINs and identity photos (AES-256-GCM). */
@@ -66,6 +79,13 @@ const envSchema = z
         code: 'custom',
         path: ['PAYSTACK_SECRET_KEY'],
         message: 'PAYSTACK_SECRET_KEY is required when PAYMENT_PROVIDER=paystack',
+      });
+    }
+    if (env.NODE_ENV === 'production' && (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['VAPID_PUBLIC_KEY'],
+        message: 'VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY are required in production (web push)',
       });
     }
     if (env.NODE_ENV === 'production' && !env.WEB_ORIGIN.startsWith('https://')) {

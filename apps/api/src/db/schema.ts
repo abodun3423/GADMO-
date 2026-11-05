@@ -126,6 +126,23 @@ export const refreshTokens = pgTable(
 export const inspectionPolicyEnum = pgEnum('inspection_policy', ['REQUIRED', 'OPTIONAL', 'NONE']);
 
 /** Top-level rows (parentId null) are groups shown on the home screen; their children are bookable. */
+/** A browser or phone that agreed to receive GADMO alerts (web push). */
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** The push service URL for this browser; unique, so re-subscribing just moves it. */
+    endpoint: text('endpoint').notNull().unique(),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('push_subscriptions_user_idx').on(t.userId)],
+);
+
 export const categories = pgTable('categories', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),

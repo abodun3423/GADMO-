@@ -14,6 +14,7 @@ import { maskContactInfo, type SendMessage, sendMessageSchema } from '@gadmo/sha
 import { and, asc, eq, or, sql } from 'drizzle-orm';
 import type Redis from 'ioredis';
 import { z } from 'zod';
+import { AlertsService } from '../alerts/alerts.service';
 import { type AuthUser, CurrentUser, JwtAuthGuard } from '../auth/guards';
 import { enforceLimits } from '../common/rate-limit';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -39,6 +40,7 @@ export class ChatController {
     @Inject(DB) private readonly db: Db,
     @Inject(REDIS) private readonly redis: Redis,
     @Inject(FIELD_CRYPTO) private readonly crypto: FieldCrypto,
+    private readonly alerts: AlertsService,
   ) {}
 
   /** The job, as seen by one of its two parties, with the other party's name. */
@@ -170,6 +172,19 @@ export class ChatController {
           createdAt: messages.createdAt,
         });
     });
+    const to = job.customerId === user.id ? job.proId : job.customerId;
+    const preview = masked.text.length > 100 ? `${masked.text.slice(0, 99)}…` : masked.text;
+    this.alerts.send(
+      to,
+      {
+        title: `New message from your ${job.customerId === user.id ? 'customer' : 'Pro'}`,
+        body: preview,
+        url: `/jobs/${jobId}`,
+        tag: `chat-${jobId}`,
+      },
+      // One alert a minute per chat is enough; the chat itself shows the rest.
+      { throttle: { key: `chat:${jobId}:${to}`, seconds: 60 } },
+    );
     return {
       message: { ...message!, mine: true, offer: null },
       notice: masked.masked ? HIDDEN_NOTE : null,

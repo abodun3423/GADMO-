@@ -11,9 +11,10 @@ import {
 } from '@nestjs/common';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { AlertsService } from '../alerts/alerts.service';
 import { type AuthUser, CurrentUser, JwtAuthGuard, Roles } from '../auth/guards';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { jobOffers, jobs, proProfiles } from '../db/schema';
+import { categories, jobOffers, jobs, proProfiles, users } from '../db/schema';
 import { DB, type Db } from '../infra/infra.module';
 import { DispatchService } from './dispatch.service';
 import { roughKm } from './geo';
@@ -31,6 +32,7 @@ export class OffersController {
   constructor(
     @Inject(DB) private readonly db: Db,
     private readonly dispatch: DispatchService,
+    private readonly alerts: AlertsService,
   ) {}
 
   /**
@@ -72,7 +74,7 @@ export class OffersController {
   @Post(':id/accept')
   @HttpCode(200)
   async accept(@CurrentUser() pro: AuthUser, @Param('id', offerId) id: string) {
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       const [offer] = await tx
         .select({
           id: jobOffers.id,
@@ -117,6 +119,35 @@ export class OffersController {
         .returning({ id: jobs.id, status: jobs.status, proId: jobs.proId });
       return { job: taken };
     });
+    const info = await this.jobInfo(result.job!.id);
+    if (info) {
+      this.alerts.send(
+        info.customerId,
+        {
+          title: 'A Pro accepted your request',
+          body: `${info.proName ?? 'Your Pro'} accepted your ${info.service} request. Chat with them in GADMO.`,
+          url: `/jobs/${result.job!.id}`,
+          tag: `job-${result.job!.id}`,
+        },
+        { sms: true },
+      );
+    }
+    return result;
+  }
+
+  private async jobInfo(jobId: string) {
+    const [info] = await this.db
+      .select({
+        customerId: jobs.customerId,
+        type: jobs.type,
+        service: categories.name,
+        proName: users.name,
+      })
+      .from(jobs)
+      .innerJoin(categories, eq(categories.id, jobs.categoryId))
+      .leftJoin(users, eq(users.id, jobs.proId))
+      .where(eq(jobs.id, jobId));
+    return info;
   }
 
   /** Passes on the job; it moves straight on to the next nearest Pro. */
@@ -139,6 +170,16 @@ export class OffersController {
       return { ok: true };
     }
     await this.dispatch.advance(declined.jobId);
+    const info = await this.jobInfo(declined.jobId);
+    // Customers choose scheduled Pros themselves, so they need to choose again.
+    if (info?.type === 'SCHEDULED') {
+      this.alerts.send(info.customerId, {
+        title: 'Choose another Pro',
+        body: `The Pro you chose can’t take your ${info.service} job. Choose another Pro in GADMO.`,
+        url: `/jobs/${declined.jobId}/choose`,
+        tag: `job-${declined.jobId}`,
+      });
+    }
     return { ok: true };
   }
 }

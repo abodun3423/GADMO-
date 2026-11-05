@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { formatNaira } from '@gadmo/shared';
 import { and, desc, eq, gt, sql } from 'drizzle-orm';
+import { AlertsService } from '../alerts/alerts.service';
 import { ENV, type Env } from '../config/env';
 import { categories, jobs, ledgerEntries, messages, payments } from '../db/schema';
 import type { FieldCrypto } from '../common/field-crypto';
@@ -50,6 +51,7 @@ export class PaymentsService {
     @Inject(ENV) private readonly env: Env,
     @Inject(PAYMENT_GATEWAY) readonly gateway: PaymentGateway,
     @Inject(FIELD_CRYPTO) private readonly crypto: FieldCrypto,
+    private readonly alerts: AlertsService,
   ) {}
 
   /** The customer starts paying the agreed inspection fee. Returns the checkout page. */
@@ -158,7 +160,8 @@ export class PaymentsService {
    */
   async confirm(reference: string): Promise<PaymentView | null> {
     const check = await this.gateway.verify(reference);
-    return this.db.transaction(async (tx) => {
+    let paidJob: { id: string; proId: string | null; amount: number } | null = null;
+    const result = await this.db.transaction(async (tx) => {
       const [payment] = await tx
         .select({
           id: payments.id,
@@ -201,7 +204,12 @@ export class PaymentsService {
       payment.status = 'SUCCEEDED';
 
       const [job] = await tx
-        .select({ id: jobs.id, status: jobs.status, customerId: jobs.customerId })
+        .select({
+          id: jobs.id,
+          status: jobs.status,
+          customerId: jobs.customerId,
+          proId: jobs.proId,
+        })
         .from(jobs)
         .where(eq(jobs.id, payment.jobId))
         .for('update');
@@ -242,6 +250,7 @@ export class PaymentsService {
           kind: 'EVENT',
           body: `Inspection fee paid: ${naira(amount)}. GADMO holds it until the Pro arrives and enters the customer’s arrival code.`,
         });
+        paidJob = { id: job!.id, proId: job!.proId, amount };
       } else {
         this.log.warn(`Payment ${reference} no longer applies to job ${job!.id}; refund due`);
         await tx.insert(messages).values({
@@ -253,6 +262,16 @@ export class PaymentsService {
       }
       return view();
     });
+    const paid = paidJob as { id: string; proId: string | null; amount: number } | null;
+    if (paid?.proId) {
+      this.alerts.send(paid.proId, {
+        title: 'Inspection fee paid',
+        body: `The customer paid the inspection fee (${naira(paid.amount)}). Tap “I’m on my way” in the job chat when you set off.`,
+        url: `/jobs/${paid.id}`,
+        tag: `job-${paid.id}`,
+      });
+    }
+    return result;
   }
 }
 

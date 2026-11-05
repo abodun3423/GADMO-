@@ -13,6 +13,7 @@ import {
 import { type ChoosePro, chooseProSchema, SCHEDULED_REQUEST_HOURS } from '@gadmo/shared';
 import { and, asc, desc, eq, inArray, notExists, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { AlertsService } from '../alerts/alerts.service';
 import { type AuthUser, CurrentUser, JwtAuthGuard, Roles } from '../auth/guards';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { categories, jobOffers, jobs, proCategories, proProfiles, users } from '../db/schema';
@@ -36,7 +37,10 @@ type Skills = string[];
 @UseGuards(JwtAuthGuard)
 @Roles(['CUSTOMER'])
 export class ChooseProController {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    private readonly alerts: AlertsService,
+  ) {}
 
   /** Pros the customer can choose: verified, active, offering the service, in range. */
   @Get('pros')
@@ -76,7 +80,7 @@ export class ChooseProController {
     @Param('jobId', idPipe) jobId: string,
     @Body(new ZodValidationPipe(chooseProSchema)) body: ChoosePro,
   ) {
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       const job = await this.openScheduledJob(tx, user, jobId, true);
       const [waiting] = await tx
         .select({ id: jobOffers.id })
@@ -125,6 +129,29 @@ export class ChooseProController {
         request: { id: offer!.id, proId: pro.id, proName: pro.name, expiresAt: offer!.expiresAt },
       };
     });
+    const [job] = await this.db
+      .select({ service: categories.name, scheduledAt: jobs.scheduledAt })
+      .from(jobs)
+      .innerJoin(categories, eq(categories.id, jobs.categoryId))
+      .where(eq(jobs.id, jobId));
+    const when = job?.scheduledAt
+      ? new Intl.DateTimeFormat('en-NG', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+          timeZone: 'Africa/Lagos',
+        }).format(job.scheduledAt)
+      : 'soon';
+    this.alerts.send(
+      result.request.proId,
+      {
+        title: 'New booking request',
+        body: `A customer chose you for ${job?.service ?? 'a job'} on ${when}. Accept or decline in GADMO.`,
+        url: '/pro',
+        tag: `request-${jobId}`,
+      },
+      { sms: true },
+    );
+    return result;
   }
 
   private async openScheduledJob(db: Db | Tx, user: AuthUser, jobId: string, lock = false) {

@@ -1,5 +1,7 @@
 'use client';
 
+import { AlertsPrompt } from './AlertsPrompt';
+
 import Link from 'next/link';
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, fieldMessage, post } from '@/lib/api';
@@ -161,6 +163,9 @@ export function JobChat({ jobId }: { jobId: string }) {
             <p className="empty">Chat opens as soon as a Pro accepts this job.</p>
           ) : (
             <>
+              {convo.open && (
+                <AlertsPrompt why="so you see new messages even when this chat isn’t open." />
+              )}
               {convo.open && (
                 <InspectionPanel
                   convo={convo}
