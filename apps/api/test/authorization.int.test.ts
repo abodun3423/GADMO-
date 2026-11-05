@@ -1352,6 +1352,27 @@ describe('paying the inspection fee (test checkout)', () => {
     expect(chat.body.visit.arrivedAt).not.toBeNull();
   });
 
+  it('a job paid before arrival codes existed gets one when the customer opens the chat', async () => {
+    const { customer, pro, id } = await agreedJob();
+    await ctx.db.update(jobs).set({ status: 'INSPECTION_PAID' }).where(eq(jobs.id, id));
+    await pro.agent.post(`/v1/jobs/${id}/on-the-way`).set(CLIENT_HEADER).expect(200);
+    const early = await pro.agent
+      .post(`/v1/jobs/${id}/arrived`)
+      .set(CLIENT_HEADER)
+      .send({ code: '1234' })
+      .expect(409);
+    expect(early.body.message).toContain('open this job’s chat');
+
+    const first = await customer.agent.get(`/v1/jobs/${id}/conversation`).expect(200);
+    const code = first.body.conversation.job.arrivalCode as string;
+    expect(code).toMatch(/^\d{4}$/);
+    const again = await customer.agent.get(`/v1/jobs/${id}/conversation`).expect(200);
+    expect(again.body.conversation.job.arrivalCode).toBe(code); // the same code every time
+    const theirs = await pro.agent.get(`/v1/jobs/${id}/conversation`).expect(200);
+    expect(theirs.body.conversation.job.arrivalCode).toBeNull();
+    await pro.agent.post(`/v1/jobs/${id}/arrived`).set(CLIENT_HEADER).send({ code }).expect(200);
+  });
+
   it('wrong arrival codes are limited, so the code can’t be guessed', async () => {
     const { customer, pro, id } = await agreedJob();
     const ref = (await pay(customer.agent, id).expect(200)).body.reference as string;

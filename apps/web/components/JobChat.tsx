@@ -5,7 +5,7 @@ import { CallPanel, type LiveCall } from './CallPanel';
 import { ChatTools, MessageBody } from './ChatTools';
 
 import Link from 'next/link';
-import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { type FormEvent, Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, fieldMessage, post } from '@/lib/api';
 import type { ChatMessage, Conversation, MessagesResponse, OfferStatus } from '@/lib/types';
 import { InspectionPanel, OfferCard } from './InspectionFee';
@@ -14,7 +14,37 @@ import { useSession } from '@/lib/useSession';
 /** New messages are checked for every few seconds while the chat is on screen. */
 const POLL_MS = 4000;
 
-const timeFormat = new Intl.DateTimeFormat('en-NG', { hour: 'numeric', minute: '2-digit' });
+/** Re-asks for this much before the last message seen, in case a slower one lands earlier. */
+const OVERLAP_MS = 15_000;
+
+const timeFormat = new Intl.DateTimeFormat('en-NG', {
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true,
+});
+const dayFormat = new Intl.DateTimeFormat('en-NG', {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+});
+
+/** "Today", "Yesterday" or "Thu, 5 Nov", for the line between days in the chat. */
+function dayLabel(iso: string): string {
+  const day = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (day.toDateString() === today.toDateString()) return 'Today';
+  if (day.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return dayFormat.format(day);
+}
+
+/** Oldest first, by the time GADMO received each message. */
+function byTime(a: ChatMessage, b: ChatMessage): number {
+  return a.createdAt === b.createdAt
+    ? a.id.localeCompare(b.id)
+    : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+}
 
 export function JobChat({ jobId }: { jobId: string }) {
   const { me, loading } = useSession();
@@ -30,21 +60,28 @@ export function JobChat({ jobId }: { jobId: string }) {
   const lastAt = useRef<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
+  /** Adds new messages in time order, whichever way they arrived (sent here or polled). */
   const addMessages = useCallback((incoming: ChatMessage[]) => {
     if (incoming.length === 0) return;
     setMessages((current) => {
       const known = new Set(current.map((m) => m.id));
       const fresh = incoming.filter((m) => !known.has(m.id));
-      return fresh.length ? [...current, ...fresh] : current;
+      return fresh.length ? [...current, ...fresh].sort(byTime) : current;
     });
-    lastAt.current = incoming[incoming.length - 1]!.createdAt;
   }, []);
 
   const poll = useCallback(async () => {
     try {
-      const query = lastAt.current ? `?after=${encodeURIComponent(lastAt.current)}` : '';
+      // Only polled messages move the cursor, so the other person's messages are never
+      // skipped because ours was sent in between.
+      const since = lastAt.current
+        ? new Date(new Date(lastAt.current).getTime() - OVERLAP_MS).toISOString()
+        : null;
+      const query = since ? `?after=${encodeURIComponent(since)}` : '';
       const res = await api<MessagesResponse>(`/v1/jobs/${jobId}/messages${query}`);
       addMessages(res.messages);
+      const newest = res.messages.at(-1)?.createdAt;
+      if (newest && (!lastAt.current || newest > lastAt.current)) lastAt.current = newest;
       setOfferStatus(Object.fromEntries(res.offers.map((o) => [o.id, o.status])));
       setLiveCall(res.call);
       setConvo((c) =>
@@ -199,32 +236,40 @@ export function JobChat({ jobId }: { jobId: string }) {
                       : 'Say hello and tell your Pro anything they should know.'}
                   </li>
                 )}
-                {messages.map((m) =>
-                  m.kind === 'OFFER' && m.offer ? (
-                    <OfferCard
-                      key={m.id}
-                      message={m}
-                      status={offerStatus[m.offer.id] ?? m.offer.status}
-                      canAnswer={!m.mine && convo.open && convo.job.inspectionFeeKobo === null}
-                      onChanged={poll}
-                    />
-                  ) : m.kind === 'EVENT' ? (
-                    <li key={m.id} className="chat-event">
-                      {m.body}
-                    </li>
-                  ) : (
-                    <li key={m.id} className={`bubble ${m.mine ? 'bubble-mine' : 'bubble-theirs'}`}>
-                      <span className="sr-only">{m.mine ? 'You' : otherLabel}: </span>
-                      <MessageBody jobId={jobId} message={m} />
-                      <span className="bubble-meta">
-                        {timeFormat.format(new Date(m.createdAt))}
-                        {m.wasMasked && ' · contact details hidden'}
-                      </span>
-                    </li>
-                  ),
-                )}
+                {messages.map((m, i) => (
+                  <Fragment key={m.id}>
+                    {(i === 0 ||
+                      dayLabel(messages[i - 1]!.createdAt) !== dayLabel(m.createdAt)) && (
+                      <li className="chat-day">{dayLabel(m.createdAt)}</li>
+                    )}
+                    {m.kind === 'OFFER' && m.offer ? (
+                      <OfferCard
+                        message={m}
+                        status={offerStatus[m.offer.id] ?? m.offer.status}
+                        canAnswer={!m.mine && convo.open && convo.job.inspectionFeeKobo === null}
+                        onChanged={poll}
+                      />
+                    ) : m.kind === 'EVENT' ? (
+                      <li className="chat-event">
+                        {m.body}{' '}
+                        <span className="chat-event-time">
+                          {timeFormat.format(new Date(m.createdAt))}
+                        </span>
+                      </li>
+                    ) : (
+                      <li className={`bubble ${m.mine ? 'bubble-mine' : 'bubble-theirs'}`}>
+                        <span className="sr-only">{m.mine ? 'You' : otherLabel}: </span>
+                        <MessageBody jobId={jobId} message={m} />
+                        <span className="bubble-meta">
+                          {timeFormat.format(new Date(m.createdAt))}
+                          {m.wasMasked && ' · contact details hidden'}
+                        </span>
+                      </li>
+                    )}
+                  </Fragment>
+                ))}
               </ol>
-              <div ref={endRef} />
+              <div ref={endRef} className="chat-end" />
 
               {notice && (
                 <p className="alert alert-info" role="status">

@@ -79,3 +79,36 @@ test('photos, voice notes and location pins in the job chat', async ({ page, bro
   await proContext.close();
   noCspViolations();
 });
+
+test('messages stay in time order, even when both people write at once', async ({
+  page,
+  browser,
+}) => {
+  await page.goto('/signin?next=/jobs');
+  const customer = await signIn(page, 'customer');
+  await expect(page).toHaveURL('/jobs');
+  const proContext = await browser.newContext();
+  const proPage = await proContext.newPage();
+  await proPage.goto('/signin');
+  const pro = await signIn(proPage, 'pro');
+  await expect(proPage).toHaveURL('/pro');
+  const id = await acceptedJob('plumber', customer.e164, pro.e164, 'Kitchen sink is blocked');
+  await page.goto(`/jobs/${id}`);
+  await proPage.goto(`/jobs/${id}`);
+  await expect(page.getByText('Say hello and tell your Pro')).toBeVisible();
+
+  // The Pro writes; the customer writes before their chat has checked for new messages.
+  await proPage.getByLabel('Message', { exact: true }).fill('First, from the Pro');
+  await proPage.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(proPage.getByText('First, from the Pro')).toBeVisible();
+  await page.getByLabel('Message', { exact: true }).fill('Then, from the customer');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+
+  const bubbles = page.locator('.bubble .bubble-text');
+  await expect(bubbles).toHaveText(['First, from the Pro', 'Then, from the customer'], {
+    timeout: 10_000,
+  });
+  await expect(page.locator('.chat-day').first()).toHaveText('Today');
+  await expect(page.locator('.bubble-meta').first()).toHaveText(/\d{1,2}:\d{2}\s?(am|pm)/i);
+  await proContext.close();
+});

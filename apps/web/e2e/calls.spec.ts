@@ -47,7 +47,7 @@ test('the customer calls the Pro inside GADMO; they talk, then hang up', async (
   await page.getByRole('button', { name: 'Hang up' }).click();
   await expect(page.getByRole('button', { name: '📞 Call your Pro' })).toBeVisible();
   await expect(proPage.getByText('Call ended.', { exact: true })).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText(/^Call ended · \d:\d\d$/)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/^Call ended · \d:\d\d\b/)).toBeVisible({ timeout: 10_000 });
 
   // A declined call.
   await proPage.getByRole('button', { name: '📞 Call your customer' }).click();
