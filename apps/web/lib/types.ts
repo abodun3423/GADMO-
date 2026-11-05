@@ -195,6 +195,8 @@ export interface ChatMessage {
    */
   kind: 'TEXT' | 'OFFER' | 'EVENT' | 'PHOTO' | 'VOICE' | 'LOCATION';
   body: string;
+  /** Order of arrival (a database counter): the chat is sorted by this, never by the clock. */
+  seq: number;
   fileId: string | null;
   latitude: number | null;
   longitude: number | null;

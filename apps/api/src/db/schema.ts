@@ -5,6 +5,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  bigserial,
   boolean,
   check,
   doublePrecision,
@@ -529,9 +530,17 @@ export const messages = pgTable(
     attachmentRef: text('attachment_ref'),
     latitude: doublePrecision('latitude'),
     longitude: doublePrecision('longitude'),
+    /**
+     * Order of arrival, from a database counter. The chat is sorted by this, not by the
+     * clock, so a server clock that jumps can never put messages out of order.
+     */
+    seq: bigserial('seq', { mode: 'number' }).notNull(),
     createdAt: createdAt(),
   },
-  (t) => [index('messages_job_idx').on(t.jobId, t.createdAt)],
+  (t) => [
+    index('messages_job_idx').on(t.jobId, t.createdAt),
+    index('messages_job_seq_idx').on(t.jobId, t.seq),
+  ],
 );
 
 export const reviews = pgTable(

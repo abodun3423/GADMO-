@@ -860,9 +860,20 @@ describe('job chat: only the customer and the assigned Pro, contact details hidd
     ]);
     const after = await customer.agent
       .get(`/v1/jobs/${id}/messages`)
-      .query({ after: sent.body.message.createdAt })
+      .query({ afterSeq: sent.body.message.seq })
       .expect(200);
     expect(after.body.messages.map((m: { body: string }) => m.body)).toEqual(['I can come at 3pm']);
+    await customer.agent.get(`/v1/jobs/${id}/messages`).query({ afterSeq: 'x' }).expect(400);
+    // A server clock that jumps (as on some PCs) can't reorder the chat.
+    await ctx.db
+      .update(messages)
+      .set({ createdAt: sql`now() + interval '5 hours'` })
+      .where(eq(messages.id, sent.body.message.id));
+    const ordered = await customer.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+    expect(ordered.body.messages.map((m: { body: string }) => m.body)).toEqual([
+      'The sockets in the kitchen are dead',
+      'I can come at 3pm',
+    ]);
 
     const stranger = await login(ctx);
     const otherPro = await login(ctx, { role: 'pro' });
@@ -877,7 +888,6 @@ describe('job chat: only the customer and the assigned Pro, contact details hidd
     }
     await request(ctx.server).get(`/v1/jobs/${id}/messages`).expect(401);
     await customer.agent.post(`/v1/jobs/${id}/messages`).send({ body: 'hi' }).expect(403); // CSRF
-    await customer.agent.get(`/v1/jobs/${id}/messages`).query({ after: 'yesterday' }).expect(400);
   });
 
   it('phone numbers, emails and handles are hidden before storing, and the sender is flagged', async () => {

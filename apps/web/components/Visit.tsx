@@ -76,6 +76,7 @@ function ProVisit({
 }) {
   const { job } = convo;
   const [code, setCode] = useState('');
+  const [arriving, setArriving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,35 +115,66 @@ function ProVisit({
           {error}
         </p>
       )}
-      {!job.onTheWayAt ? (
-        <button
-          className="button button-small"
-          type="button"
-          disabled={busy}
-          onClick={() => run(() => post(`/v1/jobs/${job.id}/on-the-way`))}
-        >
-          I’m on my way
-        </button>
+      {!arriving ? (
+        <>
+          {job.onTheWayAt && <p className="meta">Your customer knows you’re on the way.</p>}
+          <div className="fee-actions">
+            {!job.onTheWayAt && (
+              <button
+                className="button button-quiet button-small"
+                type="button"
+                disabled={busy}
+                onClick={() => run(() => post(`/v1/jobs/${job.id}/on-the-way`))}
+              >
+                I’m on my way
+              </button>
+            )}
+            <button
+              className="button button-small"
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setError(null);
+                setArriving(true);
+              }}
+            >
+              I have arrived
+            </button>
+          </div>
+        </>
       ) : (
         <form onSubmit={confirm} noValidate>
           <div className="field">
             <label htmlFor="arrival-code">
-              Arrived? Enter the customer’s arrival code
-              <span className="hint">Ask the customer for the 4 digits in their GADMO chat.</span>
+              Enter the customer’s arrival code
+              <span className="hint">
+                Ask the customer for the 4 digits shown in their GADMO chat.
+              </span>
             </label>
             <input
               id="arrival-code"
               type="text"
               inputMode="numeric"
               autoComplete="off"
+              autoFocus
               maxLength={4}
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
             />
           </div>
-          <button className="button button-small" type="submit" disabled={busy}>
-            {busy ? 'Checking…' : 'Confirm arrival'}
-          </button>
+          <div className="fee-actions">
+            <button className="button button-small" type="submit" disabled={busy}>
+              {busy ? 'Checking…' : `Confirm arrival and get ${fee}`}
+            </button>
+            <button
+              className="button button-quiet button-small"
+              type="button"
+              disabled={busy}
+              onClick={() => setArriving(false)}
+            >
+              Back
+            </button>
+          </div>
         </form>
       )}
     </div>
