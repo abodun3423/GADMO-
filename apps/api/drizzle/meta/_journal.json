@@ -113,6 +113,20 @@
       "when": 1793890119642,
       "tag": "0015_account_deletion_request",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793891359434,
+      "tag": "0016_wallets",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793891360425,
+      "tag": "0017_drop_unused_payouts",
+      "breakpoints": true
     }
   ]
 }

@@ -231,7 +231,9 @@ export class PaymentsService {
           account: counts ? `escrow:job:${job!.id}` : `refund-due:customer:${job!.customerId}`,
           creditKobo: amount,
           jobId: job!.id,
-          description: counts ? 'Inspection fee held until the Pro arrives' : 'To refund',
+          description: counts
+            ? 'Inspection fee held until the Pro arrives'
+            : 'Refund: a payment that was no longer needed',
         },
       ]);
       if (counts) {

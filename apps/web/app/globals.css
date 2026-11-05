@@ -306,6 +306,86 @@ a {
   color: #fff;
 }
 
+.kpi-strong:hover {
+  background: var(--indigo-deep);
+}
+
+a.kpi {
+  text-decoration: none;
+}
+
+.wallet-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 16px;
+  padding: 20px;
+  border-radius: var(--radius-panel);
+  background: var(--indigo);
+  color: #fff;
+}
+
+.wallet-balance {
+  font-size: 36px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ledger li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ledger li:last-child {
+  border-bottom: 0;
+}
+
+.ledger strong {
+  display: block;
+  font-weight: 600;
+}
+
+.ledger .meta {
+  margin: 0;
+  font-size: 13px;
+}
+
+.ledger-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ledger-in {
+  color: var(--ok);
+}
+
+.ledger-status {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ledger-paid {
+  color: var(--ok);
+}
+
+.ledger-failed {
+  color: var(--error);
+}
+
 .kpi-label {
   font-size: 13px;
   font-weight: 600;

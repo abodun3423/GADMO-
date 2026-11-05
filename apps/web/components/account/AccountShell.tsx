@@ -18,6 +18,7 @@ interface Item {
 const CUSTOMER: Item[] = [
   { href: '/account', label: 'Dashboard', icon: 'home' },
   { href: '/jobs', label: 'My jobs', icon: 'jobs' },
+  { href: '/account/wallet', label: 'Wallet', icon: 'wallet' },
   { href: '/account/profile', label: 'Profile', icon: 'user' },
   { href: '/account/settings', label: 'Settings', icon: 'settings' },
   { href: '/account/privacy', label: 'Privacy & security', icon: 'shield' },
@@ -27,6 +28,7 @@ const CUSTOMER: Item[] = [
 const PRO: Item[] = [
   { href: '/account', label: 'Dashboard', icon: 'home' },
   { href: '/pro', label: 'Jobs & requests', icon: 'jobs' },
+  { href: '/account/wallet', label: 'Wallet', icon: 'wallet' },
   { href: '/pro/profile', label: 'Skills & area', icon: 'tools' },
   { href: '/pro/verify', label: 'Verification', icon: 'badge' },
   { href: '/account/profile', label: 'Profile', icon: 'user' },

@@ -8,6 +8,7 @@ const SECTIONS = [
   { href: '/admin/checks', label: 'Identity checks' },
   { href: '/admin/users', label: 'Users' },
   { href: '/admin/jobs', label: 'Jobs' },
+  { href: '/admin/withdrawals', label: 'Withdrawals' },
 ];
 
 /** The staff dashboard's sections. */

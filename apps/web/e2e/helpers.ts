@@ -23,6 +23,18 @@ export async function approvePro(e164: string): Promise<void> {
   if (res.rowCount !== 1) throw new Error(`No Pro profile for ${e164}`);
 }
 
+/** Puts money in a Pro's wallet, as an arrival code would (balanced ledger entries). */
+export async function creditProWallet(e164: string, kobo: number): Promise<void> {
+  await db.query(
+    `WITH u AS (SELECT id FROM users WHERE phone = $1), t AS (SELECT gen_random_uuid() AS id)
+     INSERT INTO ledger_entries (txn_id, account, debit_kobo, credit_kobo, description)
+     SELECT t.id, 'test:source', $2, 0, 'test' FROM t
+     UNION ALL
+     SELECT t.id, 'pro:' || u.id, 0, $2, 'Inspection fee for arriving' FROM t, u`,
+    [e164, kobo],
+  );
+}
+
 /** How many browsers get alerts for this account. */
 export async function pushSubscriptionsOf(e164: string): Promise<number> {
   const res = await db.query(
