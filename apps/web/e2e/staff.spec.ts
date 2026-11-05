@@ -23,7 +23,8 @@ test('staff sign in on their own page, not the customer one', async ({ page }) =
   // Password, then the phone code: straight to the review queue.
   await staffSignIn(page, staff);
   await expect(page).toHaveURL('/admin');
-  await expect(page.getByRole('heading', { name: 'Identity checks' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'GADMO in numbers' })).toContainText('Customers');
 
   // Staff change the password they were given.
   await page.goto('/account');

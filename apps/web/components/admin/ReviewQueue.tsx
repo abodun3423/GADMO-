@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import type { ReviewItem, ReviewResult } from '@/lib/types';
+import { AdminNav } from './AdminNav';
 import { StaffOnly } from './StaffOnly';
 
 const TABS: { status: ReviewResult; label: string }[] = [
@@ -29,7 +30,7 @@ const dateFormat = new Intl.DateTimeFormat('en-NG', {
 export function ReviewQueue({ status, done }: { status?: string; done?: string }) {
   const current = TABS.find((t) => t.status === status)?.status ?? 'PENDING';
   return (
-    <StaffOnly next="/admin">
+    <StaffOnly next="/admin/checks">
       <Queue status={current} done={done} />
     </StaffOnly>
   );
@@ -48,6 +49,7 @@ function Queue({ status, done }: { status: ReviewResult; done?: string }) {
 
   return (
     <>
+      <AdminNav />
       <h1 className="page-title">Identity checks</h1>
       <p className="lede">Check that the selfie matches the ID photo and the name looks right.</p>
 
@@ -57,11 +59,11 @@ function Queue({ status, done }: { status: ReviewResult; done?: string }) {
         </p>
       )}
 
-      <nav className="tabs" aria-label="Filter checks">
+      <nav className="tabs tabs-sub" aria-label="Filter checks">
         {TABS.map((t) => (
           <Link
             key={t.status}
-            href={t.status === 'PENDING' ? '/admin' : `/admin?status=${t.status}`}
+            href={t.status === 'PENDING' ? '/admin/checks' : `/admin/checks?status=${t.status}`}
             className="tab"
             aria-current={t.status === status ? 'page' : undefined}
           >

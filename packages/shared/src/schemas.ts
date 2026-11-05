@@ -174,3 +174,12 @@ export const inspectionOfferSchema = z
   })
   .strict();
 export type InspectionOfferInput = z.infer<typeof inspectionOfferSchema>;
+
+/** Staff changing an account's status. A reason is always recorded in the audit log. */
+export const userStatusChangeSchema = z
+  .object({
+    status: z.enum(['ACTIVE', 'SUSPENDED', 'BANNED']),
+    reason: z.string().trim().min(5, 'Give a short reason').max(500),
+  })
+  .strict();
+export type UserStatusChange = z.infer<typeof userStatusChangeSchema>;

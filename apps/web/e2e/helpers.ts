@@ -159,5 +159,7 @@ export async function signIn(
   await page.getByLabel('6-digit code').fill(await readCode(phone.e164));
   await page.getByRole('radio', { name: as === 'pro' ? /I offer a skill/ : /I need help/ }).check();
   await page.getByRole('button', { name: 'Continue' }).click();
+  // Wait until the session exists, so the next navigation can't cut sign-in short.
+  await expect(page).not.toHaveURL(/\/signin/);
   return phone;
 }
