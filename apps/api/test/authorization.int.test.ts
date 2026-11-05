@@ -9,6 +9,7 @@ import {
   messages,
   payments,
   privateFiles,
+  proCategories,
   proProfiles,
   users,
   verifications,
@@ -1131,6 +1132,86 @@ describe('paying the inspection fee (test checkout)', () => {
     await pay(notAgreed.customer.agent, notAgreed.id).expect(409);
     // The Paystack webhook is off while the test checkout is in use.
     await request(ctx.server).post('/v1/payments/paystack/webhook').send({}).expect(404);
+  });
+});
+
+describe('staff: why a job reaches (or misses) Pros', () => {
+  it('only staff can see it; each matching rule is shown per Pro', async () => {
+    const customer = await login(ctx);
+    const lat = -30 - Math.random() * 10; // far from every other test Pro
+    const lng = -60 - Math.random() * 10;
+    const created = await customer.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(
+        newJob(electricianId, {
+          type: 'SCHEDULED',
+          scheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
+          latitude: lat,
+          longitude: lng,
+        }),
+      )
+      .expect(201);
+    const id = created.body.job.id as string;
+
+    const makePro = async (patch: Partial<typeof proProfiles.$inferInsert>) => {
+      const p = await login(ctx, { role: 'pro' });
+      await ctx.db
+        .insert(proProfiles)
+        .values({ userId: p.userId, ...patch })
+        .onConflictDoUpdate({ target: proProfiles.userId, set: patch });
+      await ctx.db
+        .insert(proCategories)
+        .values({ proId: p.userId, categoryId: electricianId })
+        .onConflictDoNothing();
+      return p;
+    };
+    const ready = await makePro({ latitude: lat, longitude: lng, verificationStatus: 'APPROVED' });
+    const unverified = await makePro({
+      latitude: lat,
+      longitude: lng,
+      verificationStatus: 'PENDING',
+    });
+    const farAway = await makePro({
+      latitude: lat + 1,
+      longitude: lng,
+      verificationStatus: 'APPROVED',
+    });
+    const noArea = await makePro({ verificationStatus: 'APPROVED' });
+
+    for (const who of [customer, ready]) {
+      await who.agent.get(`/v1/admin/jobs/${id}/matching`).expect(403);
+    }
+    await request(ctx.server).get(`/v1/admin/jobs/${id}/matching`).expect(401);
+
+    const staff = await login(ctx);
+    await ctx.db.update(users).set({ role: 'ADMIN' }).where(eq(users.id, staff.userId));
+    const res = await staff.agent.get(`/v1/admin/jobs/${id}/matching`).expect(200);
+    expect(res.body.job).toMatchObject({ id, serviceName: 'Electrician', type: 'SCHEDULED' });
+    const byId = new Map(res.body.pros.map((p: { id: string }) => [p.id, p] as const)) as Map<
+      string,
+      { matches: boolean; checks: Record<string, boolean>; distanceKm: number }
+    >;
+    expect(byId.get(ready.userId)).toMatchObject({ matches: true, distanceKm: 0 });
+    expect(byId.get(unverified.userId)).toMatchObject({
+      matches: false,
+      checks: { verified: false, withinDistance: true },
+    });
+    expect(byId.get(farAway.userId)!.checks).toMatchObject({
+      verified: true,
+      withinDistance: false,
+    });
+    expect(byId.get(farAway.userId)!.distanceKm).toBeGreaterThan(100);
+    expect(byId.get(noArea.userId)!.checks).toMatchObject({
+      serviceAreaSet: false,
+      withinDistance: false,
+    });
+    // The matching agrees with what the customer sees.
+    const seen = await customer.agent.get(`/v1/jobs/${id}/pros`).expect(200);
+    expect(seen.body.pros.map((p: { id: string }) => p.id)).toEqual([ready.userId]);
+    await staff.agent
+      .get('/v1/admin/jobs/00000000-0000-4000-8000-000000000000/matching')
+      .expect(404);
   });
 });
 

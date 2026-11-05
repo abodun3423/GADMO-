@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AccountController } from './account/account.controller';
+import { AdminJobMatchingController } from './admin/job-matching.controller';
 import { AdminUsersController } from './admin/users.controller';
 import { AdminVerificationsController } from './admin/verifications.controller';
 import { AuthModule } from './auth/auth.module';
@@ -19,6 +20,7 @@ import { VerificationController } from './verification/verification.controller';
   imports: [ConfigModule, InfraModule, AuthModule, DispatchModule, PaymentsModule],
   controllers: [
     AccountController,
+    AdminJobMatchingController,
     AdminUsersController,
     AdminVerificationsController,
     HealthController,

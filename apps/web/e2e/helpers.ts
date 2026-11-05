@@ -28,13 +28,17 @@ export async function insertJob(
   categorySlug: string,
   customerE164: string,
   description: string,
-): Promise<void> {
-  await db.query(
-    `INSERT INTO jobs (customer_id, category_id, type, description, latitude, longitude)
-     SELECT u.id, c.id, 'EMERGENCY', $3, 7.63, 5.221
-     FROM users u, categories c WHERE u.phone = $2 AND c.slug = $1`,
-    [categorySlug, customerE164, description],
+  type: 'EMERGENCY' | 'SCHEDULED' = 'EMERGENCY',
+): Promise<string> {
+  const res = await db.query(
+    `INSERT INTO jobs (customer_id, category_id, type, description, latitude, longitude, scheduled_at)
+     SELECT u.id, c.id, $4::job_type, $3, 7.63, 5.221,
+            CASE WHEN $4::job_type = 'SCHEDULED' THEN now() + interval '2 days' END
+     FROM users u, categories c WHERE u.phone = $2 AND c.slug = $1
+     RETURNING id`,
+    [categorySlug, customerE164, description, type],
   );
+  return (res.rows[0] as { id: string }).id;
 }
 
 /** What the e2e database holds for a Pro's identity check (to prove the NIN is not stored in clear). */
