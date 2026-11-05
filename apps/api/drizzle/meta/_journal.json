@@ -85,6 +85,13 @@
       "when": 1793880412818,
       "tag": "0011_push_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793881236978,
+      "tag": "0012_chat_media",
+      "breakpoints": true
     }
   ]
 }

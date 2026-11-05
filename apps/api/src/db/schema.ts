@@ -218,7 +218,12 @@ export const verifications = pgTable(
   ],
 );
 
-export const privateFilePurposeEnum = pgEnum('private_file_purpose', ['ID_DOCUMENT', 'SELFIE']);
+export const privateFilePurposeEnum = pgEnum('private_file_purpose', [
+  'ID_DOCUMENT',
+  'SELFIE',
+  'CHAT_PHOTO',
+  'CHAT_VOICE',
+]);
 
 /**
  * Sensitive uploads (identity photos), encrypted with FIELD_ENCRYPTION_KEY and never
@@ -472,10 +477,15 @@ export const messages = pgTable(
     /** Stored AFTER contact masking — the raw text is never saved. */
     body: text('body').notNull(),
     wasMasked: boolean('was_masked').notNull().default(false),
-    /** TEXT, or OFFER for an inspection-fee offer card (see offerId). */
+    /**
+     * TEXT; OFFER for an inspection-fee offer card (see offerId); EVENT from GADMO;
+     * PHOTO or VOICE (attachmentRef = the private_files id); LOCATION (latitude, longitude).
+     */
     kind: text('kind').notNull().default('TEXT'),
     offerId: uuid('offer_id').references(() => inspectionOffers.id),
     attachmentRef: text('attachment_ref'),
+    latitude: doublePrecision('latitude'),
+    longitude: doublePrecision('longitude'),
     createdAt: createdAt(),
   },
   (t) => [index('messages_job_idx').on(t.jobId, t.createdAt)],

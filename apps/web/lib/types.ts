@@ -189,9 +189,15 @@ export type OfferStatus = 'PENDING' | 'ACCEPTED' | 'COUNTERED' | 'DECLINED';
 export interface ChatMessage {
   id: string;
   senderId: string;
-  /** TEXT, OFFER (an inspection-fee offer card) or EVENT (e.g. "fee agreed"). */
-  kind: 'TEXT' | 'OFFER' | 'EVENT';
+  /**
+   * TEXT, OFFER (an inspection-fee offer card), EVENT (e.g. "fee agreed"), PHOTO or VOICE
+   * (fileId), or LOCATION (latitude, longitude).
+   */
+  kind: 'TEXT' | 'OFFER' | 'EVENT' | 'PHOTO' | 'VOICE' | 'LOCATION';
   body: string;
+  fileId: string | null;
+  latitude: number | null;
+  longitude: number | null;
   wasMasked: boolean;
   createdAt: string;
   mine: boolean;

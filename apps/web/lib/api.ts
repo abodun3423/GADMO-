@@ -79,3 +79,11 @@ export const put = <T>(path: string, data: unknown) =>
 /** Sends a photo as raw bytes (PUT), e.g. for the identity check. */
 export const putImage = (path: string, image: Blob) =>
   api<void>(path, { method: 'PUT', body: image, headers: { 'content-type': image.type } });
+
+/** Sends a photo or voice note as raw bytes (POST) and returns the API's answer. */
+export const postBlob = <T>(path: string, blob: Blob) =>
+  api<T>(path, {
+    method: 'POST',
+    body: blob,
+    headers: { 'content-type': blob.type.split(';')[0]! },
+  });
