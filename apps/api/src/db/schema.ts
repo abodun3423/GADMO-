@@ -337,7 +337,9 @@ export const jobOffers = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
-    unique('job_offers_job_pro_uq').on(t.jobId, t.proId),
+    // A Pro who let an emergency offer run out can be offered the same job again later,
+    // so (job, Pro) is not unique; the dispatcher enforces who may be asked again.
+    index('job_offers_job_pro_idx').on(t.jobId, t.proId),
     uniqueIndex('job_offers_one_pending_per_job')
       .on(t.jobId)
       .where(sql`${t.status} = 'PENDING'`),
