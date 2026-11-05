@@ -37,6 +37,15 @@ import { DB, type Db, FIELD_CRYPTO, REDIS } from '../infra/infra.module';
 const idPipe = new ZodValidationPipe(z.uuid());
 const afterPipe = new ZodValidationPipe(z.iso.datetime({ offset: true }).optional());
 
+/** The raw upload bytes; anything else (a JSON body, a string, an array) is refused. */
+function rawBytes(req: Request, message: string): Buffer {
+  const body: unknown = req.body;
+  if (typeof body === 'string' || Array.isArray(body) || !Buffer.isBuffer(body)) {
+    throw new BadRequestException(message);
+  }
+  return body;
+}
+
 const HIDDEN_NOTE =
   'Contact details were hidden. Keep talking in GADMO chat: it’s how your payment and the job stay protected.';
 
@@ -179,10 +188,10 @@ export class ChatController {
     @Req() req: Request,
   ) {
     const job = await this.openChat(user, jobId);
-    const bytes: unknown = req.body;
+    const bytes = rawBytes(req, 'Send a JPEG, PNG or WebP photo.');
     const type = sniffImageType(bytes);
     if (!type) throw new BadRequestException('Send a JPEG, PNG or WebP photo.');
-    return { message: await this.attach(user, job, 'CHAT_PHOTO', type, bytes as Buffer) };
+    return { message: await this.attach(user, job, 'CHAT_PHOTO', type, bytes) };
   }
 
   /** A voice note (WebM, Ogg or MP4 audio, up to a minute), sent as raw bytes. */
@@ -193,10 +202,10 @@ export class ChatController {
     @Req() req: Request,
   ) {
     const job = await this.openChat(user, jobId);
-    const bytes: unknown = req.body;
+    const bytes = rawBytes(req, 'Send a voice note recorded in GADMO.');
     const type = sniffAudioType(bytes);
     if (!type) throw new BadRequestException('Send a voice note recorded in GADMO.');
-    return { message: await this.attach(user, job, 'CHAT_VOICE', type, bytes as Buffer) };
+    return { message: await this.attach(user, job, 'CHAT_VOICE', type, bytes) };
   }
 
   /**
