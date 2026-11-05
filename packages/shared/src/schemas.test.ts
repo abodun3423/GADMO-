@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  bankAccountSchema,
+  callSdpSchema,
+  deletionRequestSchema,
+  MIN_WITHDRAWAL_KOBO,
+  shareLocationSchema,
+  withdrawalSchema,
   otpRequestSchema,
   otpVerifySchema,
   proProfileSchema,
@@ -129,5 +135,37 @@ describe('staff sign-in', () => {
         newPassword: 'green plantain market',
       }).success,
     ).toBe(true);
+  });
+});
+
+describe('wallet, chat extras and account schemas', () => {
+  it('bank accounts: a 10-digit number (spaces allowed) and a bank code', () => {
+    expect(bankAccountSchema.parse({ bankCode: '058', accountNumber: '0123 456 789' })).toEqual({
+      bankCode: '058',
+      accountNumber: '0123456789',
+    });
+    expect(bankAccountSchema.safeParse({ bankCode: '058', accountNumber: '12345' }).success).toBe(
+      false,
+    );
+    expect(bankAccountSchema.safeParse({ bankCode: '', accountNumber: '0123456789' }).success).toBe(
+      false,
+    );
+  });
+
+  it('withdrawals: ₦1,000 or more, whole naira', () => {
+    expect(withdrawalSchema.safeParse({ amountKobo: MIN_WITHDRAWAL_KOBO }).success).toBe(true);
+    expect(withdrawalSchema.safeParse({ amountKobo: 99_900 }).success).toBe(false);
+    expect(withdrawalSchema.safeParse({ amountKobo: 150_050 }).success).toBe(false);
+    expect(withdrawalSchema.safeParse({ amountKobo: 200_000, to: 'x' }).success).toBe(false);
+  });
+
+  it('location pins, call details and deletion requests', () => {
+    expect(shareLocationSchema.safeParse({ latitude: 7.62, longitude: 5.22 }).success).toBe(true);
+    expect(shareLocationSchema.safeParse({ latitude: 91, longitude: 0 }).success).toBe(false);
+    expect(callSdpSchema.safeParse({ sdp: 'v=0\r\no=- 1 2 IN IP4 0.0.0.0' }).success).toBe(true);
+    expect(callSdpSchema.safeParse({ sdp: 'x' }).success).toBe(false);
+    expect(deletionRequestSchema.parse({ reason: '  moving  ' })).toEqual({ reason: 'moving' });
+    expect(deletionRequestSchema.safeParse({}).success).toBe(true);
+    expect(deletionRequestSchema.safeParse({ reason: 'x'.repeat(501) }).success).toBe(false);
   });
 });

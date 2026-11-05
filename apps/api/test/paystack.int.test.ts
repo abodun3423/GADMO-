@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { categories, jobs, payments } from '../src/db/schema';
+import { categories, jobs, ledgerEntries, payments } from '../src/db/schema';
 import { PAYMENT_GATEWAY, PaystackGateway } from '../src/payments/gateway';
 import { CLIENT_HEADER, createTestApp, login, type TestContext } from './helpers';
 
@@ -11,6 +11,7 @@ const SECRET = 'sk_test_fake_integration';
 const paystack = {
   calls: [] as { url: string; body: unknown; auth: string | null }[],
   verify: new Map<string, { status: string; amount: number; currency: string }>(),
+  transfers: new Map<string, string>(),
 };
 const fakeFetch = (async (input: string | URL, init?: RequestInit) => {
   const url = String(input);
@@ -20,6 +21,28 @@ const fakeFetch = (async (input: string | URL, init?: RequestInit) => {
     body: init?.body ? JSON.parse(String(init.body)) : null,
     auth: headers.get('authorization'),
   });
+  if (url.includes('/bank?')) {
+    return Response.json({
+      status: true,
+      data: [{ code: '058', name: 'Guaranty Trust Bank', active: true }],
+    });
+  }
+  if (url.includes('/bank/resolve')) {
+    return Response.json({ status: true, data: { account_name: 'BOBADE MERCY' } });
+  }
+  if (url.endsWith('/transferrecipient')) {
+    return Response.json({ status: true, data: { recipient_code: 'RCP_fake123' } });
+  }
+  if (url.endsWith('/transfer')) {
+    return Response.json({ status: true, data: { status: 'pending' } });
+  }
+  if (url.includes('/transfer/verify/')) {
+    const ref = decodeURIComponent(url.split('/transfer/verify/')[1] ?? '');
+    return Response.json({
+      status: true,
+      data: { status: paystack.transfers.get(ref) ?? 'pending' },
+    });
+  }
   if (url.endsWith('/transaction/initialize')) {
     return Response.json({
       status: true,
@@ -141,5 +164,48 @@ describe('Paystack', () => {
     expect(job!.status).toBe('ACCEPTED');
     // The test checkout is off when Paystack is in use.
     await customer.agent.get(`/v1/payments/test/${ref}`).expect(404);
+  });
+});
+
+describe('Paystack transfers (wallet withdrawals)', () => {
+  it('pays out through Paystack and settles when its signed webhook arrives', async () => {
+    const pro = await login(ctx, { role: 'pro' });
+    const txnId = crypto.randomUUID();
+    await ctx.db.insert(ledgerEntries).values([
+      { txnId, account: 'test:source', debitKobo: 500_000, description: 'test' },
+      { txnId, account: `pro:${pro.userId}`, creditKobo: 500_000, description: 'test' },
+    ]);
+    const bank = await pro.agent
+      .put('/v1/wallet/bank-account')
+      .set(CLIENT_HEADER)
+      .send({ bankCode: '058', accountNumber: '0123456789' })
+      .expect(200);
+    expect(bank.body.bankAccount.accountName).toBe('BOBADE MERCY');
+    const recipient = paystack.calls.find((c) => c.url.endsWith('/transferrecipient'))!;
+    expect(recipient.body).toMatchObject({
+      type: 'nuban',
+      account_number: '0123456789',
+      bank_code: '058',
+    });
+
+    const sent = await pro.agent
+      .post('/v1/wallet/withdrawals')
+      .set(CLIENT_HEADER)
+      .send({ amountKobo: 300_000 })
+      .expect(200);
+    expect(sent.body.withdrawal.status).toBe('PROCESSING');
+    const transfer = paystack.calls.filter((c) => c.url.endsWith('/transfer')).at(-1)!;
+    const reference = (transfer.body as { reference: string }).reference;
+    expect(transfer.body).toMatchObject({
+      amount: 300_000,
+      recipient: 'RCP_fake123',
+      currency: 'NGN',
+    });
+
+    paystack.transfers.set(reference, 'success');
+    await webhook({ event: 'transfer.success', data: { reference } }).expect(200);
+    const after = await pro.agent.get('/v1/wallet').expect(200);
+    expect(after.body.wallet.withdrawals[0].status).toBe('PAID');
+    expect(after.body.wallet.balanceKobo).toBe(200_000);
   });
 });

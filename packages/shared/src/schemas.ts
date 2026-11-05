@@ -214,3 +214,30 @@ export const deletionRequestSchema = z
   .object({ reason: z.string().trim().max(500).optional() })
   .strict();
 export type DeletionRequest = z.infer<typeof deletionRequestSchema>;
+
+/** Wallet withdrawals: the smallest amount (founder decision: ₦1,000; GADMO pays the fee). */
+export const MIN_WITHDRAWAL_KOBO = 100_000;
+
+/** The bank account a person withdraws to (Nigerian 10-digit NUBAN). */
+export const bankAccountSchema = z
+  .object({
+    bankCode: z.string().regex(/^[0-9A-Za-z]{2,12}$/, 'Choose your bank.'),
+    accountNumber: z
+      .string()
+      .transform((v) => v.replace(/\s/g, ''))
+      .pipe(z.string().regex(/^\d{10}$/, 'Your account number has 10 digits.')),
+  })
+  .strict();
+export type BankAccountInput = z.infer<typeof bankAccountSchema>;
+
+export const withdrawalSchema = z
+  .object({
+    amountKobo: z
+      .number()
+      .int()
+      .min(MIN_WITHDRAWAL_KOBO, 'You can withdraw ₦1,000 or more.')
+      .max(100_000_000_00)
+      .refine((v) => v % 100 === 0, 'Withdraw whole naira.'),
+  })
+  .strict();
+export type WithdrawalInput = z.infer<typeof withdrawalSchema>;

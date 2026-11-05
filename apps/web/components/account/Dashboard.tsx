@@ -233,14 +233,22 @@ function Stat({
   label: string;
   value: string;
   note?: string;
+  /** The wallet card: highlighted, and opens the wallet. */
   strong?: boolean;
 }) {
-  return (
-    <div className={`kpi${strong ? ' kpi-strong' : ''}`}>
+  const body = (
+    <>
       <span className="kpi-label">{label}</span>
       <span className="kpi-value">{value}</span>
       {note && <span className="kpi-note">{note}</span>}
-    </div>
+    </>
+  );
+  return strong ? (
+    <Link href="/account/wallet" className="kpi kpi-strong">
+      {body}
+    </Link>
+  ) : (
+    <div className="kpi">{body}</div>
   );
 }
 

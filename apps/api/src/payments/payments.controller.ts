@@ -22,6 +22,7 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { REDIS } from '../infra/infra.module';
 import { PaystackGateway, TestGateway } from './gateway';
 import { PaymentsService, REFERENCE_PATTERN } from './payments.service';
+import { WalletService, WITHDRAWAL_REFERENCE } from '../wallet/wallet.service';
 
 const idPipe = new ZodValidationPipe(z.uuid());
 const referencePipe = new ZodValidationPipe(z.string().regex(REFERENCE_PATTERN));
@@ -94,7 +95,10 @@ export class PaymentsController {
  */
 @Controller('payments/paystack')
 export class PaystackWebhookController {
-  constructor(private readonly payments: PaymentsService) {}
+  constructor(
+    private readonly payments: PaymentsService,
+    private readonly wallet: WalletService,
+  ) {}
 
   @Post('webhook')
   @SkipCsrf(true)
@@ -112,6 +116,11 @@ export class PaystackWebhookController {
     if (event.success && event.data.event === 'charge.success') {
       const reference = event.data.data.reference;
       if (REFERENCE_PATTERN.test(reference)) await this.payments.confirm(reference);
+    }
+    // transfer.success / transfer.failed / transfer.reversed: a wallet withdrawal.
+    if (event.success && event.data.event.startsWith('transfer.')) {
+      const reference = event.data.data.reference;
+      if (WITHDRAWAL_REFERENCE.test(reference)) await this.wallet.recheck(reference);
     }
     return { received: true };
   }

@@ -500,18 +500,47 @@ export const ledgerEntries = pgTable(
   ],
 );
 
-export const payouts = pgTable('payouts', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  proId: uuid('pro_id')
-    .notNull()
-    .references(() => proProfiles.userId),
-  /** Paystack transfer-recipient code, never a raw account number. */
-  bankAccountRef: text('bank_account_ref').notNull(),
-  amountKobo: kobo('amount_kobo').notNull(),
-  status: payoutStatusEnum('status').notNull().default('PENDING'),
+/** A bank account a person withdraws to (one each). The number is stored encrypted. */
+export const bankAccounts = pgTable('bank_accounts', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  bankCode: text('bank_code').notNull(),
+  bankName: text('bank_name').notNull(),
+  accountNumberEncrypted: text('account_number_encrypted').notNull(),
+  last4: text('last4').notNull(),
+  /** The name the bank holds for the account, as the bank reported it. */
+  accountName: text('account_name').notNull(),
+  /** Paystack transfer-recipient code. */
+  recipientCode: text('recipient_code').notNull(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+/** Money sent from a GADMO wallet to the person's bank account. */
+export const withdrawals = pgTable(
+  'withdrawals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    /** Unique so a replayed Paystack webhook is processed only once. */
+    reference: text('reference').notNull().unique(),
+    amountKobo: kobo('amount_kobo').notNull(),
+    /** "Guaranty Trust Bank ••••1234", as it was when sent. */
+    destination: text('destination').notNull(),
+    recipientCode: text('recipient_code').notNull(),
+    status: payoutStatusEnum('status').notNull().default('PROCESSING'),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('withdrawals_user_idx').on(t.userId, t.createdAt),
+    check('withdrawals_amount_positive', sql`${t.amountKobo} > 0`),
+  ],
+);
 
 export const messages = pgTable(
   'messages',

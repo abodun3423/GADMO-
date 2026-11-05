@@ -18,12 +18,36 @@ export interface PaymentCheck {
   currency: string;
 }
 
+export interface Bank {
+  code: string;
+  name: string;
+}
+
+export interface TransferRequest {
+  reference: string;
+  amountKobo: number;
+  recipientCode: string;
+  reason: string;
+}
+
+export type TransferStatus = 'success' | 'failed' | 'pending';
+
 export interface PaymentGateway {
   readonly name: 'test' | 'paystack';
   /** Starts a checkout and returns the page to send the customer to. */
   initialize(request: CheckoutRequest): Promise<{ authorizationUrl: string }>;
   /** Asks the provider what happened to a payment. Never trust the browser for this. */
   verify(reference: string): Promise<PaymentCheck>;
+  /** Nigerian banks that can receive transfers. */
+  listBanks(): Promise<Bank[]>;
+  /** The name on a bank account (null if the account doesn't exist). */
+  resolveAccount(accountNumber: string, bankCode: string): Promise<string | null>;
+  /** Registers a bank account to send money to; returns its recipient code. */
+  createRecipient(name: string, accountNumber: string, bankCode: string): Promise<string>;
+  /** Sends money to a registered bank account. */
+  transfer(request: TransferRequest): Promise<TransferStatus>;
+  /** Asks the provider what happened to a transfer. */
+  verifyTransfer(reference: string): Promise<TransferStatus>;
 }
 
 /**
@@ -73,6 +97,77 @@ export class PaystackGateway implements PaymentGateway {
     };
   }
 
+  private banks: { at: number; list: Bank[] } | null = null;
+
+  async listBanks(): Promise<Bank[]> {
+    // The list rarely changes: keep it for a day.
+    if (this.banks && Date.now() - this.banks.at < 24 * 60 * 60 * 1000) return this.banks.list;
+    const res = await this.call('/bank?country=nigeria&currency=NGN&perPage=200', {
+      method: 'GET',
+    });
+    const list = ((res.data as { code?: string; name?: string; active?: boolean }[]) ?? [])
+      .filter((b) => b.active !== false && b.code && b.name)
+      .map((b) => ({ code: String(b.code), name: String(b.name) }));
+    this.banks = { at: Date.now(), list };
+    return list;
+  }
+
+  async resolveAccount(accountNumber: string, bankCode: string): Promise<string | null> {
+    try {
+      const res = await this.call(
+        `/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bankCode)}`,
+        { method: 'GET' },
+      );
+      const name = (res.data as { account_name?: unknown } | undefined)?.account_name;
+      return typeof name === 'string' && name.trim() ? name.trim() : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async createRecipient(name: string, accountNumber: string, bankCode: string): Promise<string> {
+    const res = await this.call('/transferrecipient', {
+      method: 'POST',
+      body: JSON.stringify({
+        type: 'nuban',
+        name,
+        account_number: accountNumber,
+        bank_code: bankCode,
+        currency: 'NGN',
+      }),
+    });
+    const code = (res.data as { recipient_code?: unknown } | undefined)?.recipient_code;
+    if (typeof code !== 'string') throw new Error('Paystack did not return a recipient');
+    return code;
+  }
+
+  async transfer(request: TransferRequest): Promise<TransferStatus> {
+    try {
+      const res = await this.call('/transfer', {
+        method: 'POST',
+        body: JSON.stringify({
+          source: 'balance',
+          amount: request.amountKobo,
+          recipient: request.recipientCode,
+          reference: request.reference,
+          reason: request.reason,
+          currency: 'NGN',
+        }),
+      });
+      return transferStatus((res.data as { status?: string } | undefined)?.status);
+    } catch {
+      // Paystack may still have accepted it: the webhook or a later check settles it.
+      return 'pending';
+    }
+  }
+
+  async verifyTransfer(reference: string): Promise<TransferStatus> {
+    const res = await this.call(`/transfer/verify/${encodeURIComponent(reference)}`, {
+      method: 'GET',
+    });
+    return transferStatus((res.data as { status?: string } | undefined)?.status);
+  }
+
   /** A webhook is genuine only if signed with our secret key (HMAC-SHA512 of the raw body). */
   isGenuineWebhook(rawBody: Buffer, signature: string | undefined): boolean {
     if (!signature) return false;
@@ -103,9 +198,38 @@ export class PaystackGateway implements PaymentGateway {
  * The "checkout page" is /pay/test in the web app; the outcome is recorded here.
  * env.ts refuses this gateway in production.
  */
+/** Paystack transfer statuses, in GADMO's three. */
+function transferStatus(status: string | undefined): TransferStatus {
+  if (status === 'success') return 'success';
+  if (status === 'failed' || status === 'reversed' || status === 'abandoned') return 'failed';
+  return 'pending';
+}
+
+/** A few real bank codes, so the test checkout looks like the real thing. */
+const TEST_BANKS: Bank[] = [
+  { code: '044', name: 'Access Bank' },
+  { code: '011', name: 'First Bank of Nigeria' },
+  { code: '058', name: 'Guaranty Trust Bank' },
+  { code: '50211', name: 'Kuda Bank' },
+  { code: '999992', name: 'OPay' },
+  { code: '999991', name: 'PalmPay' },
+  { code: '232', name: 'Sterling Bank' },
+  { code: '033', name: 'United Bank For Africa' },
+  { code: '035', name: 'Wema Bank' },
+  { code: '057', name: 'Zenith Bank' },
+];
+
+/**
+ * GADMO's own test checkout, for development and automated tests: no money moves.
+ * The "checkout page" is /pay/test in the web app; the outcome is recorded here.
+ * Test transfers succeed at once; an account number starting with 000 doesn't exist,
+ * and one starting with 999 fails to receive money. env.ts refuses this gateway in
+ * production.
+ */
 export class TestGateway implements PaymentGateway {
   readonly name = 'test' as const;
   private readonly outcomes = new Map<string, PaymentCheck>();
+  private readonly transfers = new Map<string, TransferStatus>();
   constructor(private readonly webOrigin: string) {}
 
   async initialize(request: CheckoutRequest): Promise<{ authorizationUrl: string }> {
@@ -121,5 +245,30 @@ export class TestGateway implements PaymentGateway {
 
   async verify(reference: string): Promise<PaymentCheck> {
     return this.outcomes.get(reference) ?? { status: 'pending', amountKobo: 0, currency: 'NGN' };
+  }
+
+  async listBanks(): Promise<Bank[]> {
+    return TEST_BANKS;
+  }
+
+  async resolveAccount(accountNumber: string, bankCode: string): Promise<string | null> {
+    if (accountNumber.startsWith('000') || !TEST_BANKS.some((b) => b.code === bankCode)) {
+      return null;
+    }
+    return 'TEST ACCOUNT HOLDER';
+  }
+
+  async createRecipient(_name: string, accountNumber: string, bankCode: string): Promise<string> {
+    return `RCP_test_${bankCode}_${accountNumber}`;
+  }
+
+  async transfer(request: TransferRequest): Promise<TransferStatus> {
+    const status: TransferStatus = /_999\d{7}$/.test(request.recipientCode) ? 'failed' : 'success';
+    this.transfers.set(request.reference, status);
+    return status;
+  }
+
+  async verifyTransfer(reference: string): Promise<TransferStatus> {
+    return this.transfers.get(reference) ?? 'pending';
   }
 }

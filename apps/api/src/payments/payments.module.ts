@@ -4,6 +4,8 @@ import { ENV, type Env } from '../config/env';
 import { PAYMENT_GATEWAY, PaystackGateway, TestGateway } from './gateway';
 import { PaymentsController, PaystackWebhookController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { AdminWithdrawalsController, WalletController } from '../wallet/wallet.controller';
+import { WalletService } from '../wallet/wallet.service';
 
 @Module({
   imports: [AuthModule],
@@ -17,7 +19,13 @@ import { PaymentsService } from './payments.service';
           : new TestGateway(env.WEB_ORIGIN),
     },
     PaymentsService,
+    WalletService,
   ],
-  controllers: [PaymentsController, PaystackWebhookController],
+  controllers: [
+    PaymentsController,
+    PaystackWebhookController,
+    WalletController,
+    AdminWithdrawalsController,
+  ],
 })
 export class PaymentsModule {}
