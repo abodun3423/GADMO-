@@ -912,6 +912,112 @@ describe('job chat: only the customer and the assigned Pro, contact details hidd
   });
 });
 
+describe('chat photos, voice notes and location pins', () => {
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const WEBM = Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.alloc(64, 1)]);
+
+  async function chat(categoryId = electricianId) {
+    const customer = await login(ctx);
+    const pro = await login(ctx, { role: 'pro' });
+    const created = await customer.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(
+        newJob(categoryId, {
+          type: 'SCHEDULED',
+          scheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
+          latitude: 1 + Math.random(),
+          longitude: 1 + Math.random(),
+        }),
+      )
+      .expect(201);
+    const id = created.body.job.id as string;
+    await ctx.db.update(jobs).set({ proId: pro.userId, status: 'ACCEPTED' }).where(eq(jobs.id, id));
+    return { customer, pro, id };
+  }
+  const upload = (
+    who: Awaited<ReturnType<typeof login>>,
+    id: string,
+    what: 'photo' | 'voice',
+    type: string,
+    bytes: Buffer,
+  ) =>
+    who.agent
+      .post(`/v1/jobs/${id}/messages/${what}`)
+      .set(CLIENT_HEADER)
+      .set('content-type', type)
+      .send(bytes);
+
+  it('photos and voice notes reach the other party only, stored encrypted', async () => {
+    const { customer, pro, id } = await chat();
+    const sent = await upload(customer, id, 'photo', 'image/png', PNG).expect(201);
+    expect(sent.body.message).toMatchObject({ kind: 'PHOTO', mine: true });
+    const photoId = sent.body.message.fileId as string;
+    const voice = await upload(pro, id, 'voice', 'audio/webm', WEBM).expect(201);
+    expect(voice.body.message.kind).toBe('VOICE');
+
+    const listed = await pro.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+    expect(listed.body.messages.map((m: { kind: string }) => m.kind)).toEqual(['PHOTO', 'VOICE']);
+    const got = await pro.agent.get(`/v1/jobs/${id}/files/${photoId}`).expect(200);
+    expect(got.headers['content-type']).toContain('image/png');
+    expect(Buffer.from(got.body as Buffer).equals(PNG)).toBe(true);
+    const audio = await customer.agent
+      .get(`/v1/jobs/${id}/files/${voice.body.message.fileId}`)
+      .expect(200);
+    expect(audio.headers['content-type']).toContain('audio/webm');
+
+    const [stored] = await ctx.db.select().from(privateFiles).where(eq(privateFiles.id, photoId));
+    expect(stored!.dataEncrypted).not.toContain(PNG.toString('base64').slice(0, 20));
+
+    // Nobody else, and not through another job.
+    const stranger = await login(ctx);
+    await stranger.agent.get(`/v1/jobs/${id}/files/${photoId}`).expect(404);
+    await upload(stranger, id, 'photo', 'image/png', PNG).expect(404);
+    const other = await chat();
+    await other.customer.agent.get(`/v1/jobs/${other.id}/files/${photoId}`).expect(404);
+    // CSRF, and only real images or audio.
+    await customer.agent
+      .post(`/v1/jobs/${id}/messages/photo`)
+      .set('content-type', 'image/png')
+      .send(PNG)
+      .expect(403);
+    await upload(customer, id, 'photo', 'image/png', Buffer.from('<svg onload=alert(1)>')).expect(
+      400,
+    );
+    await upload(customer, id, 'voice', 'audio/webm', PNG).expect(400);
+  });
+
+  it('a customer shares their exact location only once the inspection fee is paid', async () => {
+    const { customer, pro, id } = await chat();
+    const pin = { latitude: 7.6233, longitude: 5.2209 };
+    const share = (who: Awaited<ReturnType<typeof login>>, jobId: string, body: object) =>
+      who.agent.post(`/v1/jobs/${jobId}/messages/location`).set(CLIENT_HEADER).send(body);
+    await share(customer, id, pin).expect(409);
+    await share(pro, id, pin).expect(201); // e.g. where the Pro's workshop is
+    await share(pro, id, { latitude: 91, longitude: 0 }).expect(400);
+    await share(pro, id, { ...pin, label: 'x' }).expect(400);
+
+    await ctx.db.update(jobs).set({ status: 'INSPECTION_PAID' }).where(eq(jobs.id, id));
+    const sent = await share(customer, id, pin).expect(201);
+    expect(sent.body.message).toMatchObject({ kind: 'LOCATION', ...pin });
+    const listed = await pro.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+    expect(listed.body.messages.at(-1)).toMatchObject({ kind: 'LOCATION', ...pin, mine: false });
+    await share(await login(ctx), id, pin).expect(404);
+
+    // Services with no inspection fee: straight away.
+    const [none] = await ctx.db
+      .select()
+      .from(categories)
+      .where(and(eq(categories.inspectionPolicy, 'NONE'), isNotNull(categories.parentId)))
+      .limit(1);
+    const noFee = await chat(none!.id);
+    await share(noFee.customer, noFee.id, pin).expect(201);
+  });
+});
+
 describe('inspection fee agreed in chat (max ₦5,000)', () => {
   async function acceptedJob(categoryId = electricianId) {
     const customer = await login(ctx);

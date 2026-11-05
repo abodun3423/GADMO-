@@ -1,6 +1,7 @@
 'use client';
 
 import { AlertsPrompt } from './AlertsPrompt';
+import { ChatTools, MessageBody } from './ChatTools';
 
 import Link from 'next/link';
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
@@ -23,6 +24,7 @@ export function JobChat({ jobId }: { jobId: string }) {
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toolError, setToolError] = useState<string | null>(null);
   const lastAt = useRef<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -203,7 +205,7 @@ export function JobChat({ jobId }: { jobId: string }) {
                   ) : (
                     <li key={m.id} className={`bubble ${m.mine ? 'bubble-mine' : 'bubble-theirs'}`}>
                       <span className="sr-only">{m.mine ? 'You' : otherLabel}: </span>
-                      <span className="bubble-text">{m.body}</span>
+                      <MessageBody jobId={jobId} message={m} />
                       <span className="bubble-meta">
                         {timeFormat.format(new Date(m.createdAt))}
                         {m.wasMasked && ' · contact details hidden'}
@@ -220,26 +222,43 @@ export function JobChat({ jobId }: { jobId: string }) {
                 </p>
               )}
 
-              {convo.open ? (
-                <form className="composer" onSubmit={send} noValidate>
-                  <label htmlFor="message" className="sr-only">
-                    Message
-                  </label>
-                  <textarea
-                    id="message"
-                    rows={2}
-                    maxLength={1000}
-                    placeholder="Write a message"
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                  />
-                  <button className="button" type="submit" disabled={sending || !draft.trim()}>
-                    {sending ? 'Sending…' : 'Send'}
-                  </button>
-                </form>
-              ) : (
-                <p className="empty">This chat is closed.</p>
+              {toolError && (
+                <p className="alert alert-error" role="alert">
+                  {toolError}
+                </p>
               )}
+              <div className="chat-bottom">
+                {convo.open && (
+                  <ChatTools
+                    jobId={jobId}
+                    onSent={(m) => {
+                      setToolError(null);
+                      addMessages([m]);
+                    }}
+                    onError={setToolError}
+                  />
+                )}
+                {convo.open ? (
+                  <form className="composer" onSubmit={send} noValidate>
+                    <label htmlFor="message" className="sr-only">
+                      Message
+                    </label>
+                    <textarea
+                      id="message"
+                      rows={2}
+                      maxLength={1000}
+                      placeholder="Write a message"
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                    />
+                    <button className="button" type="submit" disabled={sending || !draft.trim()}>
+                      {sending ? 'Sending…' : 'Send'}
+                    </button>
+                  </form>
+                ) : (
+                  <p className="empty">This chat is closed.</p>
+                )}
+              </div>
             </>
           )}
         </>

@@ -494,16 +494,19 @@ input[type='password'] {
   opacity: 0.75;
 }
 
-.composer {
+.chat-bottom {
   position: sticky;
   bottom: 0;
+  margin-top: 12px;
+  padding: 4px 0 calc(10px + env(safe-area-inset-bottom));
+  background: var(--paper);
+}
+
+.composer {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
   align-items: end;
-  margin-top: 12px;
-  padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
-  background: var(--paper);
 }
 
 .composer textarea {
@@ -513,6 +516,52 @@ input[type='password'] {
 
 .composer .button {
   width: auto;
+}
+
+/* ---------- Chat photos, voice notes, locations ---------- */
+.chat-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+.chat-tools .button {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  min-height: 36px;
+  padding: 4px 12px;
+  font-size: 15px;
+}
+
+.bubble-photo img {
+  display: block;
+  max-width: min(260px, 100%);
+  max-height: 320px;
+  border-radius: 10px;
+}
+
+.bubble-audio {
+  display: block;
+  width: 240px;
+  max-width: 65vw;
+  height: 40px;
+}
+
+.voice-recording {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.recording-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--error);
 }
 
 /* ---------- Alerts ---------- */

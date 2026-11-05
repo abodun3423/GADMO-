@@ -158,6 +158,15 @@ export const sendMessageSchema = z
   .strict();
 export type SendMessage = z.infer<typeof sendMessageSchema>;
 
+/** A location pin dropped in the chat. */
+export const shareLocationSchema = z
+  .object({
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+  })
+  .strict();
+export type ShareLocation = z.infer<typeof shareLocationSchema>;
+
 /**
  * An inspection-fee offer or counter-offer: whole naira, more than ₦0 and never above
  * ₦5,000 (MAX_INSPECTION_FEE_KOBO). The note says why (distance, urgency…).

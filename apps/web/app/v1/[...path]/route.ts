@@ -15,9 +15,11 @@ const FORWARD_REQUEST_HEADERS = [
 ];
 const FORWARD_RESPONSE_HEADERS = ['content-type', 'retry-after', 'cache-control'];
 const MAX_BODY_BYTES = 100 * 1024;
-/** Identity photos (resized on the phone first) may be larger; nothing else may. */
+/** Photos (resized on the phone first) and voice notes may be larger; nothing else may. */
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const MAX_VOICE_BYTES = 1024 * 1024;
+const AUDIO_TYPES = new Set(['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/aac']);
 
 async function forward(request: NextRequest, path: string[]): Promise<Response> {
   const apiUrl = process.env.API_URL ?? 'http://localhost:4000';
@@ -36,7 +38,11 @@ async function forward(request: NextRequest, path: string[]): Promise<Response> 
   let body: ArrayBuffer | undefined;
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     const type = (request.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
-    const limit = IMAGE_TYPES.has(type) ? MAX_IMAGE_BYTES : MAX_BODY_BYTES;
+    const limit = IMAGE_TYPES.has(type)
+      ? MAX_IMAGE_BYTES
+      : AUDIO_TYPES.has(type)
+        ? MAX_VOICE_BYTES
+        : MAX_BODY_BYTES;
     const declared = Number(request.headers.get('content-length') ?? 0);
     if (declared > limit) {
       return Response.json({ message: 'Request too large' }, { status: 413 });
