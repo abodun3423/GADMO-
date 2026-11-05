@@ -28,6 +28,10 @@ export default defineConfig({
     timezoneId: 'Africa/Lagos',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
+    // In-app calls: a pretend microphone, and no permission prompt.
+    launchOptions: {
+      args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
+    },
   },
   webServer: [
     {

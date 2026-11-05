@@ -1,8 +1,9 @@
-import { and, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   auditLogs,
+  calls,
   categories,
   jobs,
   ledgerEntries,
@@ -1015,6 +1016,106 @@ describe('chat photos, voice notes and location pins', () => {
       .limit(1);
     const noFee = await chat(none!.id);
     await share(noFee.customer, noFee.id, pin).expect(201);
+  });
+});
+
+describe('in-app calls: only the job’s customer and Pro', () => {
+  const SDP = 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\n';
+  async function callable() {
+    const customer = await login(ctx);
+    const pro = await login(ctx, { role: 'pro' });
+    const created = await customer.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(newJob(electricianId, { latitude: 1 + Math.random(), longitude: 1 + Math.random() }))
+      .expect(201);
+    const id = created.body.job.id as string;
+    return { customer, pro, id };
+  }
+  type Who = Awaited<ReturnType<typeof login>>;
+  const start = (who: Who, id: string) =>
+    who.agent.post(`/v1/jobs/${id}/calls`).set(CLIENT_HEADER).send({ sdp: SDP });
+  const act = (who: Who, callId: string, action: 'answer' | 'decline' | 'end', body: object = {}) =>
+    who.agent.post(`/v1/calls/${callId}/${action}`).set(CLIENT_HEADER).send(body);
+  const current = (who: Who, id: string) =>
+    who.agent
+      .get(`/v1/jobs/${id}/calls/current`)
+      .expect(200)
+      .then((r) => r.body.call);
+
+  it('the customer calls, the Pro answers, either hangs up; nobody else can listen in', async () => {
+    const { customer, pro, id } = await callable();
+    await start(customer, id).expect(409); // no Pro yet
+    await ctx.db.update(jobs).set({ proId: pro.userId, status: 'ACCEPTED' }).where(eq(jobs.id, id));
+
+    const started = await start(customer, id).expect(201);
+    const callId = started.body.call.id as string;
+    expect(started.body.call).toMatchObject({ status: 'RINGING', you: 'CALLER', offerSdp: null });
+    await start(pro, id).expect(409); // one call at a time
+
+    const ringing = await current(pro, id);
+    expect(ringing).toMatchObject({ id: callId, you: 'CALLEE', offerSdp: SDP });
+    const chat = await pro.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+    expect(chat.body.call).toEqual({ id: callId, status: 'RINGING', you: 'CALLEE' });
+
+    const stranger = await login(ctx);
+    await stranger.agent.get(`/v1/jobs/${id}/calls/current`).expect(404);
+    await start(stranger, id).expect(404);
+    for (const action of ['answer', 'decline', 'end'] as const) {
+      await act(stranger, callId, action, { sdp: SDP }).expect(404);
+    }
+    await act(customer, callId, 'answer', { sdp: SDP }).expect(403); // can't answer yourself
+    await pro.agent.post(`/v1/calls/${callId}/answer`).send({ sdp: SDP }).expect(403); // CSRF
+    await act(pro, callId, 'answer', { sdp: 'x' }).expect(400);
+
+    const answered = await act(pro, callId, 'answer', { sdp: `${SDP}a=answer\r\n` }).expect(200);
+    expect(answered.body.call).toMatchObject({ status: 'ACTIVE', answerSdp: null });
+    expect(await current(customer, id)).toMatchObject({
+      status: 'ACTIVE',
+      answerSdp: `${SDP}a=answer\r\n`,
+      offerSdp: null,
+    });
+    await act(pro, callId, 'answer', { sdp: SDP }).expect(409);
+
+    const ended = await act(customer, callId, 'end').expect(200);
+    expect(ended.body.call.status).toBe('ENDED');
+    expect(await current(pro, id)).toMatchObject({ id: callId, status: 'ENDED' });
+    const after = await pro.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+    expect(after.body.messages.at(-1).body).toMatch(/^Call ended · 0:0\d$/);
+    expect(after.body.call).toBeNull();
+  });
+
+  it('a call rings out as missed, can be declined, and a silent call ends', async () => {
+    const { customer, pro, id } = await callable();
+    await ctx.db.update(jobs).set({ proId: pro.userId, status: 'ACCEPTED' }).where(eq(jobs.id, id));
+    const first = (await start(pro, id).expect(201)).body.call.id as string;
+    await ctx.db
+      .update(calls)
+      .set({ createdAt: sql`now() - interval '1 minute'` })
+      .where(eq(calls.id, first));
+    expect(await current(customer, id)).toMatchObject({ id: first, status: 'MISSED' });
+    await act(customer, first, 'answer', { sdp: SDP }).expect(409);
+
+    const second = (await start(pro, id).expect(201)).body.call.id as string;
+    await act(pro, second, 'decline').expect(403);
+    expect((await act(customer, second, 'decline').expect(200)).body.call.status).toBe('DECLINED');
+
+    const third = (await start(customer, id).expect(201)).body.call.id as string;
+    await act(pro, third, 'answer', { sdp: SDP }).expect(200);
+    await ctx.db
+      .update(calls)
+      .set({ calleeSeenAt: sql`now() - interval '1 minute'` })
+      .where(eq(calls.id, third));
+    expect(await current(customer, id)).toMatchObject({ id: third, status: 'ENDED' });
+
+    const events = (await customer.agent.get(`/v1/jobs/${id}/messages`).expect(200)).body.messages
+      .filter((m: { kind: string }) => m.kind === 'EVENT')
+      .map((m: { body: string }) => m.body);
+    expect(events.slice(0, 2)).toEqual(['Missed call.', 'Call declined.']);
+    expect(events[2]).toMatch(/^Call ended/);
+    expect(
+      (await customer.agent.get('/v1/calls/ice-servers').expect(200)).body.iceServers[0].urls[0],
+    ).toMatch(/^stun:/);
   });
 });
 

@@ -376,6 +376,49 @@ export const jobOffers = pgTable(
   ],
 );
 
+export const callStatusEnum = pgEnum('call_status', [
+  'RINGING',
+  'ACTIVE',
+  'ENDED',
+  'MISSED',
+  'DECLINED',
+]);
+
+/**
+ * In-app voice calls between a job's customer and Pro (WebRTC; no phone numbers). The
+ * server only passes the connection details (SDP) between the two browsers; the voice
+ * itself goes browser to browser. One live call per job.
+ */
+export const calls = pgTable(
+  'calls',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    jobId: uuid('job_id')
+      .notNull()
+      .references(() => jobs.id, { onDelete: 'cascade' }),
+    callerId: uuid('caller_id')
+      .notNull()
+      .references(() => users.id),
+    calleeId: uuid('callee_id')
+      .notNull()
+      .references(() => users.id),
+    status: callStatusEnum('status').notNull().default('RINGING'),
+    offerSdp: text('offer_sdp').notNull(),
+    answerSdp: text('answer_sdp'),
+    /** Each side checks in while the call is live; a silent side ends it. */
+    callerSeenAt: timestamp('caller_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    calleeSeenAt: timestamp('callee_seen_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    answeredAt: timestamp('answered_at', { withTimezone: true }),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('calls_one_live_per_job')
+      .on(t.jobId)
+      .where(sql`${t.status} in ('RINGING', 'ACTIVE')`),
+  ],
+);
+
 export const quotes = pgTable(
   'quotes',
   {

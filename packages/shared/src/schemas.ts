@@ -201,3 +201,10 @@ export const SCHEDULED_REQUEST_HOURS = 24;
 
 export const chooseProSchema = z.object({ proId: z.uuid() }).strict();
 export type ChoosePro = z.infer<typeof chooseProSchema>;
+
+/** In-app calls: how long a call rings before it counts as missed. */
+export const CALL_RING_SECONDS = 45;
+
+/** A browser's WebRTC connection details (SDP), offered or answered. */
+export const callSdpSchema = z.object({ sdp: z.string().min(10).max(20_000) }).strict();
+export type CallSdp = z.infer<typeof callSdpSchema>;

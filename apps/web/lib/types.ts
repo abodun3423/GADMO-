@@ -210,6 +210,7 @@ export interface MessagesResponse {
   inspectionFeeKobo: number | null;
   jobStatus: JobStatus;
   visit: { onTheWayAt: string | null; arrivedAt: string | null };
+  call: { id: string; status: 'RINGING' | 'ACTIVE'; you: 'CALLER' | 'CALLEE' } | null;
 }
 
 /** POST /v1/payments/:reference/check, GET /v1/payments/test/:reference */

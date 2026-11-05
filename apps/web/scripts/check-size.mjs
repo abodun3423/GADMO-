@@ -19,6 +19,7 @@ const PAGES = [
   '/signin',
   '/request?service=plumber',
   '/jobs',
+  '/jobs/00000000-0000-4000-8000-000000000000',
   '/account',
   '/pro',
   '/pro/profile',

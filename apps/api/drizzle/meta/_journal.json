@@ -92,6 +92,13 @@
       "when": 1793881236978,
       "tag": "0012_chat_media",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793882200126,
+      "tag": "0013_calls",
+      "breakpoints": true
     }
   ]
 }

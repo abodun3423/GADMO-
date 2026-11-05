@@ -36,6 +36,18 @@ const envSchema = z
       .optional()
       .or(z.literal('').transform(() => undefined)),
     VAPID_SUBJECT: z.string().default('mailto:support@gadmo.ng'),
+    /**
+     * In-app calls (WebRTC). STUN finds each phone's public address; comma-separated, empty
+     * to turn off (browser tests). TURN relays the voice when phones can't reach each other
+     * directly (common on mobile networks): optional, from a TURN provider.
+     */
+    STUN_URLS: z.string().default('stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302'),
+    TURN_URLS: z
+      .string()
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+    TURN_USERNAME: z.string().optional(),
+    TURN_CREDENTIAL: z.string().optional(),
     /** Login codes one network address may request per hour (raised only for browser tests). */
     OTP_IP_HOURLY_LIMIT: z.coerce.number().int().positive().default(30),
     /** 32 random bytes, base64: encrypts NINs and identity photos (AES-256-GCM). */

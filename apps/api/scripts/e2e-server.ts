@@ -40,6 +40,8 @@ async function main(): Promise<void> {
     SMS_PROVIDER: 'outbox',
     // Every browser test signs in from the same address.
     OTP_IP_HOURLY_LIMIT: '100000',
+    // Test browsers call each other on this machine; no STUN server needed (or reachable).
+    STUN_URLS: '',
   });
   await resetDatabase();
   // Fresh rate limits and codes for every run (this Redis database is used only by e2e).

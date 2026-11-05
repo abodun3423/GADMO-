@@ -1,6 +1,7 @@
 'use client';
 
 import { AlertsPrompt } from './AlertsPrompt';
+import { CallPanel, type LiveCall } from './CallPanel';
 import { ChatTools, MessageBody } from './ChatTools';
 
 import Link from 'next/link';
@@ -25,6 +26,7 @@ export function JobChat({ jobId }: { jobId: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toolError, setToolError] = useState<string | null>(null);
+  const [liveCall, setLiveCall] = useState<LiveCall | null>(null);
   const lastAt = useRef<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -44,6 +46,7 @@ export function JobChat({ jobId }: { jobId: string }) {
       const res = await api<MessagesResponse>(`/v1/jobs/${jobId}/messages${query}`);
       addMessages(res.messages);
       setOfferStatus(Object.fromEntries(res.offers.map((o) => [o.id, o.status])));
+      setLiveCall(res.call);
       setConvo((c) =>
         c &&
         (c.job.inspectionFeeKobo !== res.inspectionFeeKobo ||
@@ -159,6 +162,13 @@ export function JobChat({ jobId }: { jobId: string }) {
                 : 'Waiting for a Pro to accept'}
             </p>
             <p className="chat-job">{convo.job.description}</p>
+            {convo.other && convo.open && (
+              <CallPanel
+                jobId={jobId}
+                live={liveCall}
+                who={convo.you === 'CUSTOMER' ? 'Pro' : 'customer'}
+              />
+            )}
           </header>
 
           {!convo.other ? (

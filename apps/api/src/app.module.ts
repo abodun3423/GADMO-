@@ -5,6 +5,7 @@ import { AdminUsersController } from './admin/users.controller';
 import { AdminVerificationsController } from './admin/verifications.controller';
 import { AlertsModule } from './alerts/alerts.module';
 import { AuthModule } from './auth/auth.module';
+import { CallsController } from './calls/calls.controller';
 import { CatalogController } from './catalog/catalog.controller';
 import { ChatController } from './chat/chat.controller';
 import { InspectionController } from './chat/inspection.controller';
@@ -26,6 +27,7 @@ import { VerificationController } from './verification/verification.controller';
     AdminUsersController,
     AdminVerificationsController,
     HealthController,
+    CallsController,
     CatalogController,
     ChatController,
     InspectionController,
