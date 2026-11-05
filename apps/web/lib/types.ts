@@ -51,8 +51,25 @@ export interface Job {
   createdAt: string;
   /** Name of the assigned Pro, once one has accepted. */
   proName: string | null;
-  /** Open emergencies: with a Pro right now, or waiting for one to come online. */
-  dispatch: 'OFFERED' | 'NO_PRO_YET' | null;
+  /**
+   * Open jobs: with a Pro right now (OFFERED); an emergency waiting for one to come online
+   * (NO_PRO_YET); or a scheduled job waiting for the customer to choose a Pro (CHOOSE_PRO).
+   */
+  dispatch: 'OFFERED' | 'NO_PRO_YET' | 'CHOOSE_PRO' | null;
+  /** Scheduled jobs: the Pro the customer sent it to, and when they must answer by. */
+  requestedPro?: { name: string | null; answerBy: string } | null;
+}
+
+/** A Pro the customer can choose for a scheduled job (GET /v1/jobs/:id/pros). */
+export interface ChoosablePro {
+  id: string;
+  name: string | null;
+  bio: string | null;
+  ratingAvg: number;
+  ratingCount: number;
+  isOnline: boolean;
+  distanceKm: number;
+  skills: string[];
 }
 
 /** An emergency offer to the signed-in Pro (GET /v1/pro/offers). */
@@ -65,6 +82,7 @@ export interface Offer {
     categoryId: string;
     type: 'EMERGENCY' | 'SCHEDULED';
     description: string;
+    scheduledAt: string | null;
     createdAt: string;
   };
 }

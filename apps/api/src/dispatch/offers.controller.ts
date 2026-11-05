@@ -33,7 +33,10 @@ export class OffersController {
     private readonly dispatch: DispatchService,
   ) {}
 
-  /** Live offers for this Pro, with the seconds left by the server's clock. */
+  /**
+   * Live offers for this Pro: emergencies (2 minutes) and scheduled jobs a customer chose
+   * them for (hours), with the seconds left by the server's clock.
+   */
   @Get()
   async list(@CurrentUser() pro: AuthUser) {
     const rows = await this.db
@@ -47,6 +50,7 @@ export class OffersController {
           categoryId: jobs.categoryId,
           type: jobs.type,
           description: jobs.description,
+          scheduledAt: jobs.scheduledAt,
           createdAt: jobs.createdAt,
         },
       })

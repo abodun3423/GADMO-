@@ -155,15 +155,17 @@ export class DispatchService implements OnModuleInit, OnModuleDestroy {
                   .from(jobOffers)
                   .where(and(eq(jobOffers.jobId, jobId), eq(jobOffers.proId, proProfiles.userId))),
               ),
-              // One live emergency offer per Pro at a time.
+              // One live emergency offer per Pro at a time (scheduled requests don't count).
               notExists(
                 tx
                   .select({ one: sql`1` })
                   .from(jobOffers)
+                  .innerJoin(jobs, eq(jobs.id, jobOffers.jobId))
                   .where(
                     and(
                       eq(jobOffers.proId, proProfiles.userId),
                       eq(jobOffers.status, 'PENDING'),
+                      eq(jobs.type, 'EMERGENCY'),
                       sql`${jobOffers.expiresAt} > now()`,
                     ),
                   ),
