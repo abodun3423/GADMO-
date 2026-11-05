@@ -21,14 +21,22 @@ import {
   shareLocationSchema,
 } from '@gadmo/shared';
 import type { Request, Response } from 'express';
-import { and, asc, eq, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import type Redis from 'ioredis';
 import { z } from 'zod';
 import { AlertsService } from '../alerts/alerts.service';
 import { type AuthUser, CurrentUser, JwtAuthGuard } from '../auth/guards';
 import { enforceLimits } from '../common/rate-limit';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { categories, inspectionOffers, jobs, messages, privateFiles, users } from '../db/schema';
+import {
+  calls,
+  categories,
+  inspectionOffers,
+  jobs,
+  messages,
+  privateFiles,
+  users,
+} from '../db/schema';
 import { sniffImageType } from '../verification/images';
 import { sniffAudioType } from './media';
 import type { FieldCrypto } from '../common/field-crypto';
@@ -158,6 +166,8 @@ export class ChatController {
       inspectionFeeKobo: job.inspectionFeeKobo,
       jobStatus: job.status,
       visit: { onTheWayAt: job.onTheWayAt, arrivedAt: job.arrivedAt },
+      // A call ringing or in progress, so the chat can show it (details: /calls/current).
+      call: await this.liveCall(jobId, user),
     };
   }
 
@@ -268,6 +278,21 @@ export class ChatController {
         'content-disposition': 'inline',
       })
       .send(this.crypto.decrypt(file.data));
+  }
+
+  private async liveCall(jobId: string, user: AuthUser) {
+    const [call] = await this.db
+      .select({ id: calls.id, status: calls.status, callerId: calls.callerId })
+      .from(calls)
+      .where(and(eq(calls.jobId, jobId), inArray(calls.status, ['RINGING', 'ACTIVE'])))
+      .limit(1);
+    return call
+      ? {
+          id: call.id,
+          status: call.status,
+          you: call.callerId === user.id ? ('CALLER' as const) : ('CALLEE' as const),
+        }
+      : null;
   }
 
   /** The job if the caller may write in its chat now. */
