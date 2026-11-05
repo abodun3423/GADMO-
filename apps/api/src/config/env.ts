@@ -13,6 +13,16 @@ const envSchema = z
     SMS_PROVIDER: z.enum(['console', 'outbox', 'termii']).default('console'),
     SMS_API_KEY: z.string().optional(),
     SMS_SENDER_ID: z.string().default('GADMO'),
+    /**
+     * test = GADMO's own test checkout (no money moves; refused in production);
+     * paystack = real Paystack checkout (test or live keys).
+     */
+    PAYMENT_PROVIDER: z.enum(['test', 'paystack']).default('test'),
+    PAYSTACK_SECRET_KEY: z
+      .string()
+      .regex(/^sk_(test|live)_\w+$/, 'PAYSTACK_SECRET_KEY must start with sk_test_ or sk_live_')
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
     /** Login codes one network address may request per hour (raised only for browser tests). */
     OTP_IP_HOURLY_LIMIT: z.coerce.number().int().positive().default(30),
     /** 32 random bytes, base64: encrypts NINs and identity photos (AES-256-GCM). */
@@ -42,6 +52,20 @@ const envSchema = z
         code: 'custom',
         path: ['DEV_LOGIN_CODE'],
         message: 'DEV_LOGIN_CODE lets anyone sign in and only works when NODE_ENV=development',
+      });
+    }
+    if (env.NODE_ENV === 'production' && env.PAYMENT_PROVIDER !== 'paystack') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['PAYMENT_PROVIDER'],
+        message: 'The test checkout moves no money and must never run in production',
+      });
+    }
+    if (env.PAYMENT_PROVIDER === 'paystack' && !env.PAYSTACK_SECRET_KEY) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['PAYSTACK_SECRET_KEY'],
+        message: 'PAYSTACK_SECRET_KEY is required when PAYMENT_PROVIDER=paystack',
       });
     }
     if (env.NODE_ENV === 'production' && !env.WEB_ORIGIN.startsWith('https://')) {

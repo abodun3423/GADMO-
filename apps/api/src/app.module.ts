@@ -11,11 +11,12 @@ import { DispatchModule } from './dispatch/dispatch.module';
 import { HealthController } from './health/health.controller';
 import { InfraModule } from './infra/infra.module';
 import { JobsController } from './jobs/jobs.controller';
+import { PaymentsModule } from './payments/payments.module';
 import { ProController } from './pro/pro.controller';
 import { VerificationController } from './verification/verification.controller';
 
 @Module({
-  imports: [ConfigModule, InfraModule, AuthModule, DispatchModule],
+  imports: [ConfigModule, InfraModule, AuthModule, DispatchModule, PaymentsModule],
   controllers: [
     AccountController,
     AdminUsersController,

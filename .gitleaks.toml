@@ -8,4 +8,6 @@ regexes = [
   '''gadmo_local_only''',
   '''gadmo_ci_only''',
   '''test-only-[a-z-]+''',
+  # Made-up Paystack keys in tests; real keys only ever live in .env files.
+  '''[sp]k_(test|live)_fake_\w+''',
 ]

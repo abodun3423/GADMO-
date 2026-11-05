@@ -534,6 +534,12 @@ input[type='password'] {
   box-shadow: inset 4px 0 0 var(--ok);
 }
 
+.pay-amount {
+  margin: 4px 0 16px;
+  font-size: 32px;
+  font-weight: 700;
+}
+
 .fee-form .field {
   margin-bottom: 10px;
 }
@@ -938,6 +944,12 @@ select {
 .alert-info {
   background: var(--surface);
   border: 1px solid var(--line);
+}
+
+.alert-ok {
+  background: var(--surface);
+  border: 1px solid var(--ok);
+  box-shadow: inset 4px 0 0 var(--ok);
 }
 
 /* ---------- Emergency strip ---------- */

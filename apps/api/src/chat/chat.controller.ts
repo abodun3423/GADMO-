@@ -121,6 +121,7 @@ export class ChatController {
       })),
       offers,
       inspectionFeeKobo: job.inspectionFeeKobo,
+      jobStatus: job.status,
     };
   }
 

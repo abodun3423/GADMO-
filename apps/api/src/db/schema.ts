@@ -381,6 +381,11 @@ export const payments = pgTable(
     amountKobo: kobo('amount_kobo').notNull(),
     status: paymentStatusEnum('status').notNull().default('PENDING'),
     dueAt: timestamp('due_at', { withTimezone: true }),
+    /** 'paystack' or 'test' (GADMO's test checkout; never in production). */
+    gateway: text('gateway'),
+    /** The checkout page, reused if the customer taps Pay again before it expires. */
+    checkoutUrl: text('checkout_url'),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
