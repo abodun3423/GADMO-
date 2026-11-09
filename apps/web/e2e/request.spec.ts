@@ -132,5 +132,6 @@ test('signing out ends the session', async ({ page }) => {
 test('sign-in never redirects to another website', async ({ page }) => {
   await page.goto('/signin?next=//evil.example.com');
   await signIn(page, 'customer');
-  await expect(page).toHaveURL('/');
+  // The unsafe address is ignored: customers land on their own dashboard.
+  await expect(page).toHaveURL('/account');
 });

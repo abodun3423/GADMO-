@@ -2149,23 +2149,6 @@ h1.page-title {
   opacity: 0.35;
 }
 
-.hero-img,
-.join-img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-/* A photo sits under an indigo wash so the white text always reads. */
-.hero-photo::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(100deg, rgb(16 22 63 / 0.94) 30%, rgb(16 22 63 / 0.45));
-}
-
 .hero-inner {
   position: relative;
   z-index: 1;
@@ -2782,5 +2765,568 @@ h1.page-title {
     margin: 48px auto;
     border-radius: var(--radius-panel);
     box-shadow: var(--shadow-card);
+  }
+}
+
+/* ---------- Photos of skilled workers ----------
+ * Prints with a white border and a trade label. On laptops three fan out beside the
+ * hero; phones get a row of small faces instead (about 35 KB in all).
+ */
+.photo-card {
+  position: relative;
+  margin: 0;
+  padding: 8px 8px 0;
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 24px 48px -20px rgb(0 0 0 / 0.55);
+}
+
+.photo-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 560 / 695;
+  object-fit: cover;
+  border-radius: 14px;
+}
+
+.photo-card figcaption {
+  padding: 8px 6px 10px;
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.photo-stack {
+  display: none;
+}
+
+.face-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.face-row ul {
+  display: flex;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.face-row li + li {
+  margin-left: -10px;
+}
+
+.face-row img {
+  display: block;
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  object-position: center 20%;
+  border: 2px solid var(--night);
+  border-radius: 50%;
+}
+
+.face-row p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.3;
+  color: #c6cbef;
+}
+
+.join-photo {
+  position: relative;
+  z-index: 1;
+  width: min(280px, 72%);
+  margin: -8px auto 40px var(--space);
+  transform: rotate(-2deg);
+}
+
+@media (min-width: 900px) {
+  .hero-inner {
+    min-height: 520px;
+  }
+
+  .face-row {
+    display: none;
+  }
+
+  .photo-stack {
+    display: block;
+    position: absolute;
+    top: 48px;
+    right: max(32px, calc((100% - 1120px) / 2 + 32px));
+    width: 460px;
+    height: 470px;
+  }
+
+  .photo-stack .photo-card {
+    position: absolute;
+    width: 230px;
+  }
+
+  .photo-card-1 {
+    left: 0;
+    top: 60px;
+    transform: rotate(-6deg);
+  }
+
+  .photo-card-2 {
+    left: 120px;
+    top: 0;
+    z-index: 2;
+    transform: rotate(2deg);
+  }
+
+  .photo-card-3 {
+    left: 230px;
+    top: 90px;
+    transform: rotate(7deg);
+  }
+
+  .join {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+
+  .join-inner {
+    margin-right: 0;
+    width: 100%;
+  }
+
+  .join-photo {
+    width: 300px;
+    margin: 48px max(32px, calc((100vw - 1120px) / 2 + 32px)) 48px 32px;
+  }
+}
+
+/* ---------- Signed-in homes: welcome band ----------
+ * Customers, Pros and staff all open on the same night-indigo band: greeting, one line
+ * of context, the main actions, and a skilled worker's photo on laptops.
+ */
+.welcome {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: stretch;
+  margin: 4px 0 16px;
+  background: var(--night);
+  color: #fff;
+  border-radius: 22px;
+  box-shadow: var(--shadow-lift);
+}
+
+.welcome-pattern {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.welcome-text {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  padding: 22px 20px 20px;
+}
+
+.welcome-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.welcome .page-title {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 760;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: #fff;
+}
+
+.welcome-sub {
+  margin: 8px 0 0;
+  max-width: 46ch;
+  color: #c6cbef;
+}
+
+.welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.welcome-actions .button {
+  width: auto;
+  min-height: 46px;
+}
+
+.welcome .status-pill {
+  background: rgb(255 255 255 / 0.12);
+  color: #d6daf5;
+}
+
+.welcome .status-pill.status-on {
+  background: rgb(30 127 79 / 0.3);
+  color: #9be5bd;
+}
+
+.welcome-photo {
+  display: none;
+}
+
+.button.button-light {
+  background: #fff;
+  border-color: #fff;
+  color: var(--indigo);
+  box-shadow: none;
+}
+
+.button.button-light:hover {
+  background: var(--mist);
+  border-color: var(--mist);
+}
+
+.button.button-ghost {
+  background: transparent;
+  border-color: rgb(255 255 255 / 0.4);
+  color: #fff;
+  box-shadow: none;
+}
+
+.button.button-ghost:hover {
+  background: rgb(255 255 255 / 0.1);
+}
+
+.button.button-warn {
+  background: var(--warn);
+  border-color: var(--warn);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.button.button-warn:hover {
+  background: #ffc91f;
+  border-color: #ffc91f;
+}
+
+/* KPI cards: a little more air and the display face for numbers. */
+.kpi {
+  padding: 16px;
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-card);
+}
+
+.kpi-value {
+  font-family: var(--display);
+  letter-spacing: -0.02em;
+}
+
+.kpi-strong {
+  background: linear-gradient(140deg, var(--indigo), var(--dye));
+}
+
+/* ---------- Job cards with a progress bar ---------- */
+.job-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.job-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-card);
+}
+
+.job-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.job-card h3 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.job-tag {
+  flex: none;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c-indigo);
+  background: var(--t-indigo);
+  border-radius: 999px;
+}
+
+.job-tag-urgent {
+  color: var(--ink);
+  background: var(--warn);
+}
+
+.job-card-when {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.job-card-desc {
+  margin: 4px 0 8px;
+}
+
+.job-progress {
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--mist);
+  overflow: hidden;
+}
+
+.job-progress::-webkit-progress-bar {
+  background: var(--mist);
+  border-radius: 3px;
+}
+
+.job-progress::-webkit-progress-value {
+  background: var(--indigo);
+  border-radius: 3px;
+}
+
+.job-progress::-moz-progress-bar {
+  background: var(--indigo);
+  border-radius: 3px;
+}
+
+.job-progress-done::-webkit-progress-value {
+  background: var(--ok);
+}
+
+.job-progress-done::-moz-progress-bar {
+  background: var(--ok);
+}
+
+.job-card-status {
+  margin: 4px 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ok);
+}
+
+.job-card .button {
+  align-self: flex-start;
+  width: auto;
+}
+
+/* Quick service tiles on the customer dashboard are links. */
+a.tile {
+  text-decoration: none;
+  min-height: 104px;
+}
+
+.top-pros-embedded {
+  margin-top: 8px;
+}
+
+/* ---------- Staff overview ---------- */
+.attention ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attention a {
+  display: block;
+  padding: 14px 16px;
+  background: #fff6d6;
+  border: 1px solid #f1d58a;
+  border-radius: var(--radius-panel);
+  color: #5a4500;
+  text-decoration: none;
+}
+
+.attention strong {
+  font-family: var(--display);
+  font-size: 20px;
+}
+
+.stat > a,
+.stat > div {
+  padding: 16px;
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-card);
+}
+
+.stat-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--display);
+  font-size: 32px;
+  letter-spacing: -0.02em;
+}
+
+.stat-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 4px var(--ok-tint);
+}
+
+.status-bars {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 16px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-card);
+}
+
+.status-bars li {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 2fr 40px;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.status-bars span {
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-bars meter {
+  width: 100%;
+  height: 10px;
+  appearance: none;
+  border: 0;
+  border-radius: 5px;
+  background: var(--mist);
+}
+
+.status-bars meter::-webkit-meter-bar {
+  background: var(--mist);
+  border: 0;
+  border-radius: 5px;
+  height: 10px;
+}
+
+.status-bars meter::-webkit-meter-optimum-value {
+  background: var(--indigo);
+  border-radius: 5px;
+}
+
+.status-bars meter::-moz-meter-bar {
+  background: var(--indigo);
+  border-radius: 5px;
+}
+
+@media (min-width: 900px) {
+  .welcome {
+    min-height: 240px;
+  }
+
+  .welcome-text {
+    padding: 36px 40px;
+  }
+
+  .welcome .page-title {
+    font-size: 44px;
+  }
+
+  .welcome-photo {
+    display: block;
+    position: relative;
+    z-index: 1;
+    flex: none;
+    width: 230px;
+    margin: 24px 40px -60px 0;
+    padding: 8px;
+    background: #fff;
+    border-radius: 18px;
+    transform: rotate(4deg);
+    box-shadow: 0 24px 48px -20px rgb(0 0 0 / 0.6);
+  }
+
+  .welcome-photo img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
+  }
+
+  .job-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .tiles-quick {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+.auth-photos {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .auth-photos {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-top: 40px;
+  }
+
+  .auth-photos .photo-card {
+    padding: 6px 6px 0;
+  }
+
+  .auth-photos .photo-card:nth-child(2) {
+    transform: translateY(-16px);
+  }
+
+  .auth-photos figcaption {
+    font-size: 13px;
+  }
+}
+
+@media (min-width: 900px) {
+  /* The join text lines up with the page content above it. */
+  .join .join-inner {
+    max-width: 620px;
+    margin: 0 0 0 max(0px, calc((100vw - 1120px) / 2));
+  }
+
+  .stats {
+    grid-template-columns: repeat(4, 1fr);
   }
 }

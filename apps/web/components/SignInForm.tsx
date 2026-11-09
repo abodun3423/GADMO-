@@ -65,8 +65,8 @@ export function SignInForm({ next }: { next: string }) {
         role,
       });
       await loadMe(true);
-      // Pros land on their own home unless they were on their way somewhere.
-      router.replace(user.role === 'PRO' && next === '/' ? '/pro' : next);
+      // Customers and Pros land on their own home unless they were on their way somewhere.
+      router.replace(next !== '/' ? next : user.role === 'PRO' ? '/pro' : '/account');
       router.refresh();
     } catch (err) {
       setError(

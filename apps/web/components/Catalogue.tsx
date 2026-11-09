@@ -3,10 +3,11 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { serviceNote } from '@/lib/catalogue';
-import { HERO_IMAGE } from '@/lib/images';
+import { HERO_PHOTOS } from '@/lib/images';
 import type { Category, CategoryGroup } from '@/lib/types';
 import { AdirePattern } from './home/AdirePattern';
 import { GroupIcon, groupLook } from './home/groupLook';
+import { FaceRow, PhotoStack } from './home/Photos';
 
 function ServiceLink({ category }: { category: Category }) {
   return (
@@ -31,12 +32,8 @@ export function Catalogue({ groups }: { groups: CategoryGroup[] | null }) {
 
   return (
     <>
-      <section className={`hero${HERO_IMAGE ? ' hero-photo' : ''}`}>
-        {HERO_IMAGE ? (
-          <img className="hero-img" src={HERO_IMAGE} alt="" fetchPriority="high" />
-        ) : (
-          <AdirePattern className="hero-pattern" />
-        )}
+      <section className="hero">
+        <AdirePattern className="hero-pattern" />
         <div className="hero-inner">
           <h1>The right skills. Within reach.</h1>
           <p className="hero-lede">
@@ -66,7 +63,12 @@ export function Catalogue({ groups }: { groups: CategoryGroup[] | null }) {
             <li>Payments protected by GADMO</li>
             <li>Your number stays private</li>
           </ul>
+          <FaceRow
+            photos={HERO_PHOTOS}
+            caption="Electricians, hairstylists, mechanics, bakers, tailors and more"
+          />
         </div>
+        <PhotoStack photos={HERO_PHOTOS} eager />
       </section>
 
       <div className="page page-wide home">

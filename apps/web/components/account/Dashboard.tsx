@@ -4,13 +4,28 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { money } from '@/lib/money';
-import { type AccountSummary, type Job, JOB_STATUS_LABEL } from '@/lib/types';
+import { PHOTOS } from '@/lib/images';
+import { type AccountSummary, type Job, JOB_STATUS_LABEL, type TopPro } from '@/lib/types';
 import { useSession } from '@/lib/useSession';
 import { Account } from '../Account';
 import { AlertsPrompt } from '../AlertsPrompt';
 import { AccountShell } from './AccountShell';
 import { Icon } from './Icon';
 import { SignedOut } from './SignedOut';
+import { Welcome } from './Welcome';
+import { JobCard } from '../JobCard';
+import { TopPros } from '../home/HomeSections';
+import { GroupIcon, type Tone } from '../home/groupLook';
+
+/** A service shown as a quick tile on the customer dashboard. */
+export interface QuickService {
+  slug: string;
+  name: string;
+  tone: Tone;
+  icon: string;
+}
+
+const FINISHED = new Set(['COMPLETED', 'CASH_COMPLETED', 'CANCELLED']);
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -18,7 +33,15 @@ function greeting(): string {
 }
 
 /** The account home: where things stand, what to do next, and recent jobs. */
-export function Dashboard({ serviceNames }: { serviceNames: Record<string, string> }) {
+export function Dashboard({
+  serviceNames,
+  quick = [],
+  topPros = [],
+}: {
+  serviceNames: Record<string, string>;
+  quick?: QuickService[];
+  topPros?: TopPro[];
+}) {
   const { me, loading } = useSession();
   const [summary, setSummary] = useState<AccountSummary | null>(null);
   const [jobs, setJobs] = useState<Job[] | null>(null);
@@ -32,7 +55,7 @@ export function Dashboard({ serviceNames }: { serviceNames: Record<string, strin
     ])
       .then(([s, j]) => {
         setSummary(s.summary);
-        setJobs(j.jobs.slice(0, 4));
+        setJobs(j.jobs);
       })
       .catch(() => setError(true));
   }, [me]);
@@ -44,26 +67,43 @@ export function Dashboard({ serviceNames }: { serviceNames: Record<string, strin
 
   const pro = me.role === 'PRO';
   const first = me.name?.split(' ')[0];
+  const active = (jobs ?? []).filter((j) => !FINISHED.has(j.status));
+  const recent = (jobs ?? []).filter((j) => FINISHED.has(j.status)).slice(0, 4);
   return (
     <AccountShell>
-      <header className="dash-head">
-        <div>
-          <h1 className="page-title">
-            {greeting()}
-            {first ? `, ${first}` : ''}
-          </h1>
-          <p className="meta">
-            {pro
-              ? 'Here’s how your GADMO work is going.'
-              : 'Here’s what’s happening with your jobs.'}
-          </p>
-        </div>
-        {pro && summary?.pro && (
-          <span className={`status-pill ${summary.pro.isOnline ? 'status-on' : ''}`}>
-            {summary.pro.isOnline ? 'Online' : 'Offline'}
-          </span>
+      <Welcome
+        title={`${greeting()}${first ? `, ${first}` : ''}`}
+        subtitle={
+          pro
+            ? 'Here’s how your GADMO work is going.'
+            : active.length > 0
+              ? `You have ${active.length} ${active.length === 1 ? 'job' : 'jobs'} on the go. Here’s what’s happening with your jobs.`
+              : 'Here’s what’s happening with your jobs. What do you need done today?'
+        }
+        photo={pro ? PHOTOS.electrician : PHOTOS.hairstylist}
+        badge={
+          pro && summary?.pro ? (
+            <span className={`status-pill ${summary.pro.isOnline ? 'status-on' : ''}`}>
+              {summary.pro.isOnline ? 'Online' : 'Offline'}
+            </span>
+          ) : null
+        }
+      >
+        {pro ? (
+          <Link className="button button-light" href="/pro">
+            Jobs & requests
+          </Link>
+        ) : (
+          <>
+            <Link className="button button-light" href="/#search">
+              Request a service
+            </Link>
+            <Link className="button button-warn" href="/#emergency-title">
+              Emergency help
+            </Link>
+          </>
         )}
-      </header>
+      </Welcome>
 
       {!me.name && (
         <p className="alert alert-info">
@@ -128,6 +168,54 @@ export function Dashboard({ serviceNames }: { serviceNames: Record<string, strin
 
           {pro && summary.pro && <ProChecklist pro={summary.pro} />}
 
+          {active.length > 0 && (
+            <section aria-labelledby="active-title">
+              <div className="section-row">
+                <h2 id="active-title" className="section-title">
+                  {pro ? 'Jobs on the go' : 'Your jobs on the go'}
+                </h2>
+                <Link href={pro ? '/pro' : '/jobs'}>See all</Link>
+              </div>
+              <div className="job-grid">
+                {active.slice(0, 4).map((j) => (
+                  <JobCard
+                    key={j.id}
+                    job={j}
+                    serviceName={serviceNames[j.categoryId] ?? 'Service'}
+                    href={j.proId ? `/jobs/${j.id}` : undefined}
+                  >
+                    {!j.proId ? (
+                      <Link className="button button-small button-quiet" href="/jobs">
+                        View request
+                      </Link>
+                    ) : undefined}
+                  </JobCard>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {!pro && quick.length > 0 && (
+            <section aria-labelledby="quick-title">
+              <div className="section-row">
+                <h2 id="quick-title" className="section-title">
+                  Book a Pro
+                </h2>
+                <Link href="/">All services</Link>
+              </div>
+              <ul className="tiles tiles-quick">
+                {quick.map((q) => (
+                  <li key={q.slug}>
+                    <Link className={`tile tone-${q.tone}`} href={`/request?service=${q.slug}`}>
+                      <GroupIcon name={q.icon} className="tile-icon" />
+                      <span className="tile-name">{q.name}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           <section aria-labelledby="actions-title">
             <h2 id="actions-title" className="section-title">
               Quick actions
@@ -187,6 +275,8 @@ export function Dashboard({ serviceNames }: { serviceNames: Record<string, strin
             }
           />
 
+          {!pro && <TopPros pros={topPros} embedded />}
+
           <section aria-labelledby="recent-title">
             <div className="section-row">
               <h2 id="recent-title" className="section-title">
@@ -201,8 +291,11 @@ export function Dashboard({ serviceNames }: { serviceNames: Record<string, strin
                   : 'No jobs yet. Find a skilled Pro near you from the home page.'}
               </p>
             )}
+            {jobs && jobs.length > 0 && recent.length === 0 && (
+              <p className="empty">Finished jobs will show here.</p>
+            )}
             <ul className="recent">
-              {jobs?.map((j) => (
+              {recent.map((j) => (
                 <li key={j.id}>
                   <Link
                     href={j.proId ? `/jobs/${j.id}` : pro ? '/pro' : '/jobs'}

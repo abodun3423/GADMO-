@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { PRO_IMAGE } from '@/lib/images';
 import type { TopPro } from '@/lib/types';
 import { AdirePattern } from './AdirePattern';
+import { PhotoCard } from './Photos';
 import { toneFor } from './groupLook';
 
 function initials(name: string): string {
@@ -14,10 +15,13 @@ function initials(name: string): string {
 }
 
 /** A few of the best-rated verified Pros. Hidden until there are some. */
-export function TopPros({ pros }: { pros: TopPro[] }) {
+export function TopPros({ pros, embedded = false }: { pros: TopPro[]; embedded?: boolean }) {
   if (pros.length === 0) return null;
   return (
-    <section className="page page-wide home-section" aria-labelledby="top-pros">
+    <section
+      className={embedded ? 'top-pros-embedded' : 'page page-wide home-section'}
+      aria-labelledby="top-pros"
+    >
       <h2 id="top-pros" className="section-title">
         Top-rated Pros
       </h2>
@@ -88,11 +92,7 @@ export function HowItWorks() {
 export function BecomePro() {
   return (
     <section className="join" aria-labelledby="join-title">
-      {PRO_IMAGE ? (
-        <img className="join-img" src={PRO_IMAGE} alt="" loading="lazy" />
-      ) : (
-        <AdirePattern className="join-pattern" />
-      )}
+      <AdirePattern className="join-pattern" />
       <div className="join-inner">
         <h2 id="join-title">Have a skill? Earn with GADMO.</h2>
         <p>
@@ -103,6 +103,7 @@ export function BecomePro() {
           Join as a Pro
         </Link>
       </div>
+      <PhotoCard photo={PRO_IMAGE} className="join-photo" />
     </section>
   );
 }
