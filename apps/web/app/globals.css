@@ -1934,12 +1934,13 @@ select {
 
 /* ---------- Jobs ---------- */
 .job {
-  padding: 16px;
+  padding: 16px 16px 16px 20px;
   margin-bottom: 12px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-left: 4px solid var(--indigo);
-  border-radius: var(--radius-control);
+  border-left: 5px solid var(--indigo);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-card);
 }
 
 .job-urgent {
@@ -1948,7 +1949,7 @@ select {
 
 .job h3 {
   margin: 0 0 4px;
-  font-size: 17px;
+  font-size: 19px;
 }
 
 .job p {
@@ -2705,5 +2706,81 @@ h1.page-title {
     margin-inline: -40px;
     padding-inline: 40px;
     border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+  }
+}
+
+/* While the session loads, the top-right slot keeps its place without an empty outline. */
+.topbar-link:empty {
+  border-color: transparent;
+}
+
+/* ---------- Sign in ----------
+ * A short Adire band with the promise, and the form on a card that overlaps it.
+ */
+.auth-brand {
+  position: relative;
+  overflow: hidden;
+  background: var(--night);
+  color: #fff;
+}
+
+.auth-brand .hero-pattern {
+  opacity: 0.8;
+}
+
+.auth-brand-inner {
+  position: relative;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 24px var(--space) 64px;
+}
+
+.auth-tag {
+  margin: 0;
+  max-width: 14ch;
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 750;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
+.auth-brand .trust {
+  margin-top: 12px;
+}
+
+.page.auth-card {
+  position: relative;
+  margin-top: -44px;
+  padding-top: 20px;
+  padding-bottom: 28px;
+  background: var(--surface);
+  border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+}
+
+@media (min-width: 900px) {
+  .auth {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: calc(100vh - 72px);
+  }
+
+  .auth-brand-inner {
+    max-width: 520px;
+    margin: 0 0 0 auto;
+    padding: 96px 64px;
+  }
+
+  .auth-tag {
+    font-size: 56px;
+  }
+
+  .page.auth-card {
+    align-self: center;
+    width: 100%;
+    max-width: 480px;
+    margin: 48px auto;
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-card);
   }
 }
