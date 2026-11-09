@@ -15,6 +15,10 @@ Product requirements: [GADMO PRD v1.0](https://claude.ai/artifact/N4HEkdBtJKrYrZ
 
 ## Run it locally
 
+**On Windows with VS Code and Ubuntu (WSL)**, follow [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md). In short:
+`pnpm services:up`, `pnpm setup:local`, `pnpm check-setup`, then `pnpm dev` (API and app together).
+After every `git pull`, run `pnpm update:local`. `pnpm check` runs everything CI checks.
+
 Requirements: Node 22+, pnpm 10, and Docker Desktop (or your own Postgres 16 + Redis 7).
 Works on Windows, macOS and Linux.
 
