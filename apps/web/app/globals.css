@@ -931,26 +931,147 @@ input[type='password'] {
   margin-top: 16px;
 }
 
-/* ---------- Job chat ---------- */
+/* ---------- Job chat ----------
+ * A header card (who, what, progress), WhatsApp-calm bubbles, money as receipts, and a
+ * pill-shaped message box pinned to the bottom.
+ */
+.chat-head {
+  margin: 4px 0 12px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-card);
+}
+
+.chat-who {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chat-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  font-family: var(--display);
+  font-weight: 750;
+  font-size: 18px;
+}
+
+.chat-who-text {
+  min-width: 0;
+}
+
 .chat-head .page-title {
-  margin-bottom: 2px;
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.chat-head .meta {
+  margin: 2px 0 0;
 }
 
 .chat-job {
-  margin: 6px 0 12px;
+  margin: 12px 0 0;
   padding: 10px 12px;
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: var(--paper);
   border-radius: var(--radius-control);
   font-size: 15px;
+  color: var(--muted);
+}
+
+.chat-head .call-panel {
+  margin: 12px 0 0;
+}
+
+.progress {
+  display: flex;
+  margin: 14px 0 0;
+  padding: 12px 0 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.progress-step {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* The line joining each step to the one before it. */
+.progress-step + .progress-step::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  right: 50%;
+  width: 100%;
+  height: 2px;
+  margin-right: 14px;
+  background: var(--line);
+}
+
+.progress-done + .progress-step::before {
+  background: var(--ok);
+}
+
+.progress-dot {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  background: var(--surface);
+  font-size: 12px;
+}
+
+.progress-dot svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.progress-done .progress-dot {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.progress-now {
+  color: var(--indigo);
+}
+
+.progress-now .progress-dot {
+  border-color: var(--indigo);
+  background: var(--indigo);
+  color: #fff;
+  box-shadow: 0 0 0 4px var(--mist);
 }
 
 .chat-rule {
   margin: 0 0 12px;
-  padding: 8px 12px;
-  border-left: 4px solid var(--warn);
-  background: #fff8e1;
+  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  background: #fff6d6;
   font-size: 14px;
+  color: #5a4500;
 }
 
 .chat {
@@ -969,25 +1090,26 @@ input[type='password'] {
 }
 
 .bubble {
-  max-width: 85%;
-  padding: 8px 12px;
-  border-radius: 16px;
+  max-width: 82%;
+  padding: 9px 13px;
+  border-radius: 20px;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+  line-height: 1.4;
 }
 
 .bubble-mine {
   align-self: flex-end;
   background: var(--indigo);
   color: #fff;
-  border-bottom-right-radius: 4px;
+  border-bottom-right-radius: 6px;
 }
 
 .bubble-theirs {
   align-self: flex-start;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-bottom-left-radius: 4px;
+  border-bottom-left-radius: 6px;
 }
 
 .bubble-text {
@@ -996,17 +1118,20 @@ input[type='password'] {
 
 .bubble-meta {
   display: block;
-  margin-top: 2px;
-  font-size: 12px;
-  opacity: 0.75;
+  margin-top: 3px;
+  font-size: 11px;
+  opacity: 0.7;
+  text-align: right;
 }
 
 .chat-bottom {
   position: sticky;
   bottom: 0;
-  margin-top: 12px;
-  padding: 4px 0 calc(10px + env(safe-area-inset-bottom));
-  background: var(--paper);
+  margin: 12px calc(-1 * var(--space)) 0;
+  padding: 8px var(--space) calc(10px + env(safe-area-inset-bottom));
+  background: rgb(243 244 248 / 0.94);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line);
 }
 
 .composer {
@@ -1017,20 +1142,34 @@ input[type='password'] {
 }
 
 .composer textarea {
-  min-height: 52px;
+  min-height: 50px;
+  padding: 13px 18px;
+  border-radius: 25px;
   resize: none;
 }
 
-.composer .button {
-  width: auto;
+.send-button.button {
+  width: 50px;
+  min-height: 50px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.send-button svg {
+  width: 22px;
+  height: 22px;
+  fill: #fff;
 }
 
 .chat-day {
   align-self: center;
-  margin: 8px 0 2px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted, #5b6075);
+  margin: 10px 0 4px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  background: #e6e8f1;
+  border-radius: 999px;
 }
 
 /* Scrolling to the newest message keeps it above the sticky message box. */
@@ -1041,6 +1180,7 @@ input[type='password'] {
 .chat-event-time {
   opacity: 0.7;
   font-size: 12px;
+  font-weight: 500;
 }
 
 /* ---------- Chat photos, voice notes, locations ---------- */
@@ -1190,10 +1330,11 @@ input[type='password'] {
 /* ---------- Inspection fee ---------- */
 .fee-panel {
   margin: 0 0 12px;
-  padding: 12px 14px;
+  padding: 14px 16px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-card);
   font-size: 15px;
 }
 
@@ -1202,8 +1343,10 @@ input[type='password'] {
 }
 
 .fee-agreed {
-  border-color: var(--ok);
-  box-shadow: inset 4px 0 0 var(--ok);
+  border-color: #b9dfc9;
+  box-shadow:
+    inset 4px 0 0 var(--ok),
+    var(--shadow-card);
 }
 
 .code-boxes {
@@ -1260,24 +1403,54 @@ input[type='password'] {
   margin-top: 0;
 }
 
+/* Money in the chat (fee offers, quotes) reads as a receipt: white, a tear-off edge. */
 .offer-card {
-  align-self: stretch;
-  padding: 12px 14px;
+  position: relative;
+  align-self: flex-start;
+  width: min(100%, 420px);
+  margin-bottom: 10px;
+  padding: 14px 16px 12px;
   background: var(--surface);
-  border: 2px solid var(--indigo);
-  border-radius: var(--radius-control);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+  box-shadow: 0 1px 2px rgb(16 22 63 / 0.06);
+}
+
+.offer-card::after {
+  content: '';
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  bottom: -10px;
+  height: 10px;
+  background: radial-gradient(circle at 6px 0, transparent 6px, var(--surface) 6.5px) -6px 0 / 12px
+    10px repeat-x;
 }
 
 .offer-card-mine {
-  border-style: dashed;
+  align-self: flex-end;
+  background: var(--mist);
+  border-color: #d3d8f1;
+}
+
+.offer-card-mine::after {
+  background-image: radial-gradient(circle at 6px 0, transparent 6px, var(--mist) 6.5px);
 }
 
 .offer-card p {
   margin: 0 0 4px;
 }
 
+.offer-card-title {
+  font-family: var(--display);
+  font-weight: 600;
+}
+
 .offer-card-title strong {
-  font-size: 20px;
+  font-size: 24px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
 }
 
 .offer-card-note {
@@ -1301,12 +1474,14 @@ input[type='password'] {
 
 .chat-event {
   align-self: center;
-  padding: 4px 12px;
-  border-radius: 999px;
-  background: #e5f4e4;
-  color: var(--ink);
-  font-size: 14px;
+  max-width: 92%;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: var(--ok-tint);
+  color: #17583a;
+  font-size: 13px;
   font-weight: 600;
+  text-align: center;
 }
 
 /* ---------- Staff dashboard ---------- */
@@ -2516,5 +2691,19 @@ h1.page-title {
 
   .join h2 {
     font-size: 48px;
+  }
+}
+
+.quote-lines div:last-child dd {
+  font-size: 17px;
+  color: var(--indigo);
+}
+
+@media (min-width: 900px) {
+  /* Inside the centred card the message box spans the card's full width. */
+  .page:not(.page-wide) .chat-bottom {
+    margin-inline: -40px;
+    padding-inline: 40px;
+    border-radius: 0 0 var(--radius-panel) var(--radius-panel);
   }
 }

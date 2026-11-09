@@ -17,6 +17,9 @@ import type {
 import { InspectionPanel, OfferCard } from './InspectionFee';
 import { QuoteCard, QuotePanel } from './Quotes';
 import { WorkPanel } from './Work';
+import { JobProgress } from './JobProgress';
+import { initials } from './account/AccountShell';
+import { toneFor } from './home/groupLook';
 import { useSession } from '@/lib/useSession';
 
 /** New messages are checked for every few seconds while the chat is on screen. */
@@ -207,13 +210,24 @@ export function JobChat({ jobId }: { jobId: string }) {
       {convo && (
         <>
           <header className="chat-head">
-            <h1 className="page-title">{convo.job.serviceName}</h1>
-            <p className="meta">
-              {convo.other
-                ? `${otherLabel}: ${convo.other.name ?? 'name not added yet'}`
-                : 'Waiting for a Pro to accept'}
-            </p>
+            <div className="chat-who">
+              <span
+                className={`chat-avatar tone-${toneFor(convo.other?.id ?? convo.job.id)}`}
+                aria-hidden="true"
+              >
+                {convo.other ? initials(convo.other.name) : '…'}
+              </span>
+              <div className="chat-who-text">
+                <h1 className="page-title">{convo.job.serviceName}</h1>
+                <p className="meta">
+                  {convo.other
+                    ? `${otherLabel}: ${convo.other.name ?? 'name not added yet'}`
+                    : 'Waiting for a Pro to accept'}
+                </p>
+              </div>
+            </div>
             <p className="chat-job">{convo.job.description}</p>
+            {convo.other && <JobProgress job={convo.job} />}
             {convo.other && convo.open && (
               <CallPanel
                 jobId={jobId}
@@ -325,14 +339,21 @@ export function JobChat({ jobId }: { jobId: string }) {
                     </label>
                     <textarea
                       id="message"
-                      rows={2}
+                      rows={1}
                       maxLength={1000}
                       placeholder="Write a message"
                       value={draft}
                       onChange={(e) => setDraft(e.target.value)}
                     />
-                    <button className="button" type="submit" disabled={sending || !draft.trim()}>
-                      {sending ? 'Sending…' : 'Send'}
+                    <button
+                      className="button send-button"
+                      type="submit"
+                      disabled={sending || !draft.trim()}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path d="M4 12 20 4l-6 16-2.5-6.5z" />
+                      </svg>
+                      <span className="sr-only">{sending ? 'Sending…' : 'Send'}</span>
                     </button>
                   </form>
                 ) : (
