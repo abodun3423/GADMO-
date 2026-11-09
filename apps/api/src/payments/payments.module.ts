@@ -4,6 +4,7 @@ import { ENV, type Env } from '../config/env';
 import { PAYMENT_GATEWAY, PaystackGateway, TestGateway } from './gateway';
 import { PaymentsController, PaystackWebhookController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { QuotesController } from '../quotes/quotes.controller';
 import { AdminWithdrawalsController, WalletController } from '../wallet/wallet.controller';
 import { WalletService } from '../wallet/wallet.service';
 
@@ -24,6 +25,7 @@ import { WalletService } from '../wallet/wallet.service';
   controllers: [
     PaymentsController,
     PaystackWebhookController,
+    QuotesController,
     WalletController,
     AdminWithdrawalsController,
   ],

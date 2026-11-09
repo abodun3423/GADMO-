@@ -425,6 +425,17 @@ export const calls = pgTable(
   ],
 );
 
+export const quoteStatusEnum = pgEnum('quote_status', [
+  'PENDING',
+  'ACCEPTED',
+  'DECLINED',
+  'WITHDRAWN',
+]);
+
+/**
+ * The Pro's price for the job, sent as a card in the chat. The customer accepts (paying
+ * the optional materials deposit in the app) or declines; one waits for an answer at a time.
+ */
 export const quotes = pgTable(
   'quotes',
   {
@@ -432,13 +443,22 @@ export const quotes = pgTable(
     jobId: uuid('job_id')
       .notNull()
       .references(() => jobs.id, { onDelete: 'cascade' }),
+    /** The whole job, including the inspection fee already paid (it counts toward this). */
     amountKobo: kobo('amount_kobo').notNull(),
+    /** Optional materials deposit, paid in the app on acceptance; at most half the quote. */
     depositKobo: kobo('deposit_kobo').notNull().default(0),
+    /** What the price covers (masked for contact details). */
     description: text('description').notNull(),
+    status: quoteStatusEnum('status').notNull().default('PENDING'),
     acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    respondedAt: timestamp('responded_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
+    index('quotes_job_idx').on(t.jobId),
+    uniqueIndex('quotes_one_pending_per_job')
+      .on(t.jobId)
+      .where(sql`${t.status} = 'PENDING'`),
     check('quotes_amount_positive', sql`${t.amountKobo} > 0`),
     check(
       'quotes_deposit_cap',
@@ -461,6 +481,8 @@ export const payments = pgTable(
     amountKobo: kobo('amount_kobo').notNull(),
     status: paymentStatusEnum('status').notNull().default('PENDING'),
     dueAt: timestamp('due_at', { withTimezone: true }),
+    /** DEPOSIT payments: the quote being accepted. */
+    quoteId: uuid('quote_id').references(() => quotes.id),
     /** 'paystack' or 'test' (GADMO's test checkout; never in production). */
     gateway: text('gateway'),
     /** The checkout page, reused if the customer taps Pay again before it expires. */
@@ -561,6 +583,8 @@ export const messages = pgTable(
      */
     kind: text('kind').notNull().default('TEXT'),
     offerId: uuid('offer_id').references(() => inspectionOffers.id),
+    /** QUOTE messages: the quote card shown in the chat. */
+    quoteId: uuid('quote_id').references(() => quotes.id),
     attachmentRef: text('attachment_ref'),
     latitude: doublePrecision('latitude'),
     longitude: doublePrecision('longitude'),

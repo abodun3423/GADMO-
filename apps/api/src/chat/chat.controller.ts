@@ -36,6 +36,7 @@ import {
   jobs,
   messages,
   privateFiles,
+  quotes,
   users,
 } from '../db/schema';
 import { sniffImageType } from '../verification/images';
@@ -137,9 +138,17 @@ export class ChatController {
           note: inspectionOffers.note,
           status: inspectionOffers.status,
         },
+        quote: {
+          id: quotes.id,
+          amountKobo: quotes.amountKobo,
+          depositKobo: quotes.depositKobo,
+          description: quotes.description,
+          status: quotes.status,
+        },
       })
       .from(messages)
       .leftJoin(inspectionOffers, eq(inspectionOffers.id, messages.offerId))
+      .leftJoin(quotes, eq(quotes.id, messages.quoteId))
       .where(
         and(
           eq(messages.jobId, jobId),
@@ -155,12 +164,18 @@ export class ChatController {
       .from(inspectionOffers)
       .where(eq(inspectionOffers.jobId, jobId));
     return {
-      messages: rows.map(({ offer, ...m }) => ({
+      messages: rows.map(({ offer, quote, ...m }) => ({
         ...m,
         mine: m.senderId === user.id,
         offer: offer?.id ? offer : null,
+        quote: quote?.id ? quote : null,
       })),
       offers,
+      // Quote statuses change after the card is sent, like offers.
+      quotes: await this.db
+        .select({ id: quotes.id, status: quotes.status })
+        .from(quotes)
+        .where(eq(quotes.jobId, jobId)),
       inspectionFeeKobo: job.inspectionFeeKobo,
       jobStatus: job.status,
       visit: { onTheWayAt: job.onTheWayAt, arrivedAt: job.arrivedAt },
@@ -417,7 +432,7 @@ export class ChatController {
       // One alert a minute per chat is enough; the chat itself shows the rest.
       { throttle: { key: `chat:${job.id}:${to}`, seconds: 60 } },
     );
-    return { ...message!, mine: true, offer: null };
+    return { ...message!, mine: true, offer: null, quote: null };
   }
 
   /** The job if the caller is its customer or its assigned Pro; otherwise 404. */

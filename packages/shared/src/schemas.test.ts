@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_QUOTE_KOBO,
+  quoteSchema,
   bankAccountSchema,
   callSdpSchema,
   deletionRequestSchema,
@@ -167,5 +169,34 @@ describe('wallet, chat extras and account schemas', () => {
     expect(deletionRequestSchema.parse({ reason: '  moving  ' })).toEqual({ reason: 'moving' });
     expect(deletionRequestSchema.safeParse({}).success).toBe(true);
     expect(deletionRequestSchema.safeParse({ reason: 'x'.repeat(501) }).success).toBe(false);
+  });
+});
+
+describe('quotes', () => {
+  it('a price in whole naira, a deposit of at most half, and what it covers', () => {
+    const ok = quoteSchema.parse({ amountKobo: 3_000_000, description: '  Cake for 30  ' });
+    expect(ok).toEqual({ amountKobo: 3_000_000, depositKobo: 0, description: 'Cake for 30' });
+    expect(
+      quoteSchema.safeParse({ amountKobo: 3_000_000, depositKobo: 1_500_000, description: 'Cake' })
+        .success,
+    ).toBe(false); // too short a description
+    expect(
+      quoteSchema.safeParse({
+        amountKobo: 3_000_000,
+        depositKobo: 1_600_000,
+        description: 'A cake',
+      }).success,
+    ).toBe(false);
+    expect(
+      quoteSchema.safeParse({ amountKobo: 3_000_050, description: 'A big cake' }).success,
+    ).toBe(false);
+    expect(
+      quoteSchema.safeParse({ amountKobo: MAX_QUOTE_KOBO + 100, description: 'A big cake' })
+        .success,
+    ).toBe(false);
+    expect(
+      quoteSchema.safeParse({ amountKobo: 3_000_000, depositKobo: 50, description: 'A big cake' })
+        .success,
+    ).toBe(false);
   });
 });
