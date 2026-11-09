@@ -1,18 +1,22 @@
-# GADMO on Render (https://render.com/docs/blueprint-spec).
-# Render → New → Blueprint → pick this repository. Render creates everything below and asks
-# for the values marked `sync: false`. Step-by-step: docs/DEPLOY.md.
+# GADMO on Render (https://render.com/docs/blueprint-spec), on Render's FREE plans: a pilot
+# for demos that costs nothing. Render → New → Blueprint → pick this repository; Render
+# creates everything below and asks for the values marked `sync: false`. Guide: docs/DEPLOY.md.
 #
-# Layout: only the web app is public. It forwards /v1/* to the API over Render's private
-# network, so the API, database and Redis are never reachable from the internet.
-# Frankfurt is Render's closest region to Nigeria.
+# Free plan limits: services sleep after 15 minutes without visits (the next visit takes
+# about a minute to wake them), the free database is deleted after 30 days, and the free
+# Key Value store loses its data on restart (only sign-in codes and limits live there).
+# For launch, switch the plans to paid ones (docs/DEPLOY.md, "At launch").
+#
+# Pilot mode: SMS is off, the demo numbers 0700 000 0001-0099 sign in with DEMO_LOGIN_CODE,
+# and payments use GADMO's test checkout (no money moves).
 
 services:
-  # The PWA (Next.js): the only public service.
+  # The PWA (Next.js): the address people open.
   - type: web
     name: gadmo-web
     runtime: node
     region: frankfurt
-    plan: starter
+    plan: free
     buildCommand: >-
       corepack enable && pnpm install --frozen-lockfile --prod=false &&
       pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/web build
@@ -23,24 +27,26 @@ services:
         value: '22'
       - key: NODE_ENV
         value: production
-      - key: API_HOSTPORT
-        fromService:
-          name: gadmo-api
-          type: pserv
-          property: hostport
+      # The API's address. Free services can't use Render's private network, so this is the
+      # API's public address: change it if Render gives gadmo-api a different one.
+      - key: API_URL
+        value: https://gadmo-api.onrender.com
 
-  # The API (NestJS): private, reached only by gadmo-web.
-  - type: pserv
+  # The API (NestJS). On the free plan it is a web service; people only ever use gadmo-web.
+  - type: web
     name: gadmo-api
     runtime: node
     region: frankfurt
-    plan: starter
+    plan: free
     buildCommand: >-
       corepack enable && pnpm install --frozen-lockfile --prod=false &&
       pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api build
-    # Database changes and the service catalogue are applied before each new version starts.
-    preDeployCommand: pnpm --filter @gadmo/api db:migrate && pnpm --filter @gadmo/api db:seed
-    startCommand: pnpm --filter @gadmo/api start
+    # Free plans have no pre-deploy step, so database changes, the service catalogue and the
+    # demo people are applied each time the API starts (all safe to repeat).
+    startCommand: >-
+      pnpm --filter @gadmo/api db:migrate && pnpm --filter @gadmo/api db:seed &&
+      (pnpm --filter @gadmo/api demo:data || true) && pnpm --filter @gadmo/api start
+    healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
         value: '22'
@@ -62,39 +68,31 @@ services:
         generateValue: true
       - key: FIELD_ENCRYPTION_KEY
         generateValue: true
-      # The public address of gadmo-web, e.g. https://gadmo-web.onrender.com
+      # The address of gadmo-web, e.g. https://gadmo-web.onrender.com
       - key: WEB_ORIGIN
         sync: false
-      # Pilot: SMS off, demo accounts sign in with DEMO_LOGIN_CODE. At launch: termii + SMS_API_KEY.
       - key: SMS_PROVIDER
         value: disabled
-      - key: SMS_API_KEY
-        sync: false
+      # 6 digits that sign in the demo numbers only (e.g. 123456).
       - key: DEMO_LOGIN_CODE
         sync: false
+      # The demo staff account (0700 000 0099): your email and a 12+ character password.
+      - key: DEMO_STAFF_EMAIL
+        sync: false
+      - key: DEMO_STAFF_PASSWORD
+        sync: false
       - key: PAYMENT_PROVIDER
-        value: paystack
-      # sk_test_... for the pilot (test cards, no real money); sk_live_... at launch.
-      - key: PAYSTACK_SECRET_KEY
-        sync: false
-      # From: npx web-push generate-vapid-keys
-      - key: VAPID_PUBLIC_KEY
-        sync: false
-      - key: VAPID_PRIVATE_KEY
-        sync: false
-      # Optional: a TURN server so in-app calls connect on strict mobile networks.
-      - key: TURN_URLS
-        sync: false
-      - key: TURN_USERNAME
-        sync: false
-      - key: TURN_CREDENTIAL
-        sync: false
+        value: test
+      # Every request reaches the API from gadmo-web, so the per-address limit on sign-in
+      # codes is shared by all visitors: raised for the pilot.
+      - key: OTP_IP_HOURLY_LIMIT
+        value: '500'
 
-  # Redis-compatible store: sign-in codes, rate limits. Private.
+  # Sign-in codes and rate limits.
   - type: keyvalue
     name: gadmo-redis
     region: frankfurt
-    plan: starter
+    plan: free
     maxmemoryPolicy: noeviction
     ipAllowList: []
 
@@ -103,6 +101,6 @@ databases:
     databaseName: gadmo
     user: gadmo
     region: frankfurt
-    plan: basic-256mb
+    plan: free
     postgresMajorVersion: '16'
     ipAllowList: []

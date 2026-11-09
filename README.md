@@ -15,8 +15,8 @@ Product requirements: [GADMO PRD v1.0](https://claude.ai/artifact/N4HEkdBtJKrYrZ
 
 ## Put it online
 
-[docs/DEPLOY.md](docs/DEPLOY.md): one Render Blueprint (`render.yaml`) creates the web app, private
-API, database and Redis, starting in pilot mode (demo accounts, Paystack test mode).
+[docs/DEPLOY.md](docs/DEPLOY.md): one Render Blueprint (`render.yaml`) creates the web app, API,
+database and Redis on Render's free plans, in pilot mode (demo accounts, test checkout).
 
 ## Run it locally
 

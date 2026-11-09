@@ -1,115 +1,90 @@
-# Put GADMO online (Render)
+# Put GADMO online (Render, free)
 
-This guide takes GADMO from your computer to a live website at an address like
-`https://gadmo-web.onrender.com`, which anyone can open on their phone. It takes about 30
-minutes, most of it waiting for Render to build.
+This guide puts GADMO on the internet at an address like `https://gadmo-web.onrender.com`,
+which anyone can open on their phone. It uses **Render's free plans only**, so it costs
+nothing and needs no card for the services in `render.yaml`. Setup takes about 30 minutes,
+most of it waiting for Render to build.
 
-The file `render.yaml` in this repository describes everything Render needs:
+| Part        | What it is                              | Render plan |
+| ----------- | --------------------------------------- | ----------- |
+| gadmo-web   | The app people open                     | Free        |
+| gadmo-api   | The API (people never open it directly) | Free        |
+| gadmo-db    | PostgreSQL database                     | Free        |
+| gadmo-redis | Key Value store for sign-in codes       | Free        |
 
-| Part        | What it is                                             | Render plan  | About     |
-| ----------- | ------------------------------------------------------ | ------------ | --------- |
-| gadmo-web   | The app people open (public)                           | Starter      | $7/month  |
-| gadmo-api   | The API (private: only gadmo-web can reach it)         | Starter      | $7/month  |
-| gadmo-db    | PostgreSQL database (private)                          | Basic 256 MB | $6/month  |
-| gadmo-redis | Key Value store for sign-in codes and limits (private) | Starter      | $10/month |
+**Free plan limits:**
 
-About **$30 a month** in total, in Frankfurt (Render's closest region to Nigeria). Scale up
-later from the Render dashboard without changing any code.
+- **It sleeps.** After 15 minutes with no visitors, the app sleeps. The next visit takes
+  about a minute to wake it, so open it yourself 5 minutes before a demo, and again
+  just before you present.
+- **The free database is deleted after 30 days.** Recreate it, or move to a paid plan,
+  before then.
+- **Each workspace gets 750 free hours a month.** Sleeping services don't use any.
 
-## Pilot mode (no SMS yet)
+## Pilot mode
 
-Until GADMO has a Termii SMS account, the deployment runs in **pilot mode**:
+The free deployment runs as a **pilot**, built for demos:
 
-- Real phone numbers see "Sign-in by SMS opens at launch".
-- The reserved demo numbers **0700 000 0001 to 0700 000 0099** sign in with a secret
-  6-digit **demo code** that you choose. These are made-up accounts. No SMS is sent to them.
-- Payments use **Paystack test mode**, so you can pay with Paystack's test cards and no real money moves.
+- **Sign-in**: no SMS is sent. Only the demo numbers **0700 000 0001 to 0700 000 0099**
+  can sign in, with the code you choose (for example `123456`). Real phone numbers see
+  "Sign-in by SMS opens at launch".
+- **Payments**: GADMO's own **test checkout**, the same one you used on your computer. You
+  tap "Pay (test)" and no money moves. Paystack isn't needed.
+- **Demo people**: 8 verified demo Pros around Ado-Ekiti, and a staff account, are added
+  automatically.
 
-At launch you switch to real SMS and live payments (see the end of this guide). No code
-changes are needed.
+| Who                | Number                                                   | Code           |
+| ------------------ | -------------------------------------------------------- | -------------- |
+| Tunde, electrician | 0700 000 0001                                            | your demo code |
+| Other demo Pros    | 0700 000 0002 to 0008                                    | your demo code |
+| A customer         | 0700 000 0050 (or 51, 52…)                               | your demo code |
+| Staff              | at `/staff`: your email and password, then the demo code |                |
 
-## 1. Get these ready
+The first time a customer number signs in, choose "I need help".
 
-1. **A Render account**: sign up at render.com with your GitHub account, and add a payment
-   card (Billing).
-2. **Your Paystack test secret key**: in the Paystack dashboard, go to Settings, then API
-   Keys & Webhooks, and copy the key that starts with `sk_test_`.
-3. **Web push keys**: in your Ubuntu terminal, run:
-   ```bash
-   npx web-push generate-vapid-keys
-   ```
-   Keep the _Public Key_ and _Private Key_ it prints.
-4. **A demo code**: pick any 6 random digits (not 123456), for example `482915`. Anyone
-   with this code can sign in to the demo accounts, so only share it with people you
-   demo to.
+## Steps
 
-## 2. Create everything on Render
-
-1. In Render, click **New → Blueprint**, connect GitHub if asked, and choose
-   **abodun3423/GADMO-**.
-2. Render reads `render.yaml` and lists the four parts. It asks for these values:
+1. In Render, click **New → Blueprint** and choose **abodun3423/GADMO-** (your GitHub is
+   already connected).
+2. Render reads `render.yaml`, lists the four free parts, and asks for:
    - `WEB_ORIGIN`: `https://gadmo-web.onrender.com`
-   - `DEMO_LOGIN_CODE`: your 6 digits
-   - `PAYSTACK_SECRET_KEY`: your `sk_test_...` key
-   - `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`: the two keys from step 1.3
-   - `SMS_API_KEY`, `TURN_URLS`, `TURN_USERNAME`, `TURN_CREDENTIAL`: leave empty for now
-3. Click **Apply**. The first build takes 10 to 15 minutes. When gadmo-web shows **Live**,
-   open its address.
+   - `DEMO_LOGIN_CODE`: 6 digits, for example `123456`
+   - `DEMO_STAFF_EMAIL`: your email, for the staff sign-in
+   - `DEMO_STAFF_PASSWORD`: a password of 12 or more characters for that staff account
+3. Click **Apply**. The first build takes 10 to 15 minutes. When both **gadmo-web** and
+   **gadmo-api** show **Live**, open gadmo-web's address on your phone.
 
-If Render gave the web app a different address (for example `gadmo-web-x1y2.onrender.com`),
-open **gadmo-api → Environment**, set `WEB_ORIGIN` to that exact address (with `https://`)
-and save. The API restarts by itself.
+**If Render gives a different address.** A name like `gadmo-web` may already be taken
+by someone else, and then Render adds letters (for example `gadmo-web-x1y2.onrender.com`).
+Then fix the two addresses:
 
-## 3. Add the demo people and a staff account
+- In **gadmo-api → Environment**, set `WEB_ORIGIN` to gadmo-web's real address.
+- In **gadmo-web → Environment**, set `API_URL` to gadmo-api's real address.
 
-Open **gadmo-api → Shell** in Render and run:
+Both start with `https://`. Save, and each restarts by itself.
 
-```bash
-pnpm --filter @gadmo/api demo:data
-pnpm --filter @gadmo/api admin:grant 0700 000 0099 you@example.com
-```
+Every push to `main` on GitHub deploys a new version automatically. Database changes and
+demo people are applied each time the API starts.
 
-The first command adds 8 verified demo Pros around Ado-Ekiti. The second makes a staff
-account (it asks you to type a password). Staff then sign in at `/staff` with that email
-and password, plus the demo code as the phone code.
+## At launch: real SMS, real payments, paid plans
 
-## 4. Point Paystack at GADMO
+When GADMO is funded, nothing in the code changes. Only the Render settings do.
 
-In Paystack, go to Settings, then API Keys & Webhooks (Test mode). Set the **Test Webhook
-URL** to:
-
-```
-https://gadmo-web.onrender.com/v1/payments/paystack/webhook
-```
-
-## 5. Try it
-
-On your phone, open the address and sign in:
-
-| Who           | Number                                              | Code           |
-| ------------- | --------------------------------------------------- | -------------- |
-| A customer    | 0700 000 0050                                       | your demo code |
-| Tunde (a Pro) | 0700 000 0001                                       | your demo code |
-| Staff         | /staff, your email and password, then the demo code |                |
-
-The first time a number signs in, choose "I need help" (customer) or "I offer a skill"
-(Pro). For test payments, Paystack's test card is `4084 0840 8408 4081`, any future
-expiry date, CVV `408`, PIN `0000`, OTP `123456`.
-
-Every push to `main` on GitHub deploys a new version automatically. Database changes are
-applied first.
-
-## At launch: real SMS, real payments, your own domain
-
-1. **SMS**: open a Termii account and get your sender ID "GADMO" approved. In gadmo-api →
-   Environment, set `SMS_PROVIDER=termii` and `SMS_API_KEY` to your Termii key. Also set
-   `SMS_BASE_URL` if your Termii dashboard shows a different API address. Remove
-   `DEMO_LOGIN_CODE` once the pilot ends.
-2. **Payments**: after Paystack verifies the business, replace the key with your
-   `sk_live_...` key and set the live webhook URL.
-3. **Domain**: in gadmo-web → Settings → Custom Domains, add `gadmo.ng`. Render issues the
-   HTTPS certificate. Then set `WEB_ORIGIN=https://gadmo.ng`.
-4. **Calls**: add a TURN service (for example Metered or Cloudflare Calls) and fill the
-   three `TURN_` values, so calls connect on every mobile network.
-5. **Size**: move the database to a larger plan and turn on backups before real customers
-   arrive.
+1. **Plans**: in `render.yaml`, change `plan: free` to `starter` for the services and Key
+   Value, and to `basic-256mb` for the database (about $30 a month in total). Make
+   gadmo-api a private service (`type: pserv`). gadmo-web then reaches it with
+   `API_HOSTPORT` (`fromService` → `gadmo-api`, `pserv`, `hostport`) in place of `API_URL`.
+   Move the database-change commands into a `preDeployCommand`.
+2. **SMS**: open a Termii account and get your sender ID "GADMO" approved. Set
+   `SMS_PROVIDER=termii` and `SMS_API_KEY`. Remove `DEMO_LOGIN_CODE` and the demo staff
+   settings.
+3. **Payments**: set `PAYMENT_PROVIDER=paystack` and your `PAYSTACK_SECRET_KEY` (`sk_live_…`
+   once Paystack has verified the business). Set the Paystack webhook URL to
+   `https://<your domain>/v1/payments/paystack/webhook`. The app refuses the test checkout
+   once SMS is real.
+4. **Push alerts**: run `npx web-push generate-vapid-keys` and set `VAPID_PUBLIC_KEY` and
+   `VAPID_PRIVATE_KEY`. They are required outside the pilot.
+5. **Domain**: in gadmo-web → Settings → Custom Domains, add `gadmo.ng`, then set
+   `WEB_ORIGIN=https://gadmo.ng`.
+6. **Calls**: add a TURN service (for example Metered or Cloudflare) and set `TURN_URLS`,
+   `TURN_USERNAME` and `TURN_CREDENTIAL`, so calls connect on every mobile network.

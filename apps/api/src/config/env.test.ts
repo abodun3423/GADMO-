@@ -126,4 +126,20 @@ describe('loadEnv', () => {
       /6 digits/,
     );
   });
+
+  it('lets a pilot use the test checkout and skip push keys, but never with real SMS', () => {
+    const pilot = {
+      ...valid,
+      NODE_ENV: 'production',
+      WEB_ORIGIN: 'https://gadmo.ng',
+      SMS_PROVIDER: 'disabled',
+      DEMO_LOGIN_CODE: '123456',
+      PAYMENT_PROVIDER: 'test',
+    };
+    expect(loadEnv(pilot).PAYMENT_PROVIDER).toBe('test');
+    expect(() => loadEnv({ ...pilot, SMS_PROVIDER: 'termii', SMS_API_KEY: 'k' })).toThrow(
+      /PAYMENT_PROVIDER/,
+    );
+    expect(() => loadEnv({ ...pilot, DEMO_STAFF_PASSWORD: 'short' })).toThrow(/12 characters/);
+  });
 });
