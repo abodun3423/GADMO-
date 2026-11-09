@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { AdirePattern } from '@/components/home/AdirePattern';
 import { SignInForm } from '@/components/SignInForm';
+import { PHOTOS } from '@/lib/images';
 import { safeNext } from '@/lib/safe-next';
 
 export const metadata: Metadata = { title: 'Sign in' };
@@ -22,6 +23,14 @@ export default async function SignInPage({
             <li>Payments protected by GADMO</li>
             <li>Your number stays private</li>
           </ul>
+          <div className="auth-photos" aria-hidden="true">
+            {[PHOTOS.mechanic, PHOTOS.tailor, PHOTOS.developer].map((p) => (
+              <figure key={p.src} className="photo-card">
+                <img src={p.src} alt="" width={560} height={695} loading="lazy" />
+                <figcaption>{p.trade}</figcaption>
+              </figure>
+            ))}
+          </div>
         </div>
       </section>
       <div className="page auth-card">

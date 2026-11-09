@@ -5,13 +5,18 @@ import { AlertsPrompt } from './AlertsPrompt';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, post } from '@/lib/api';
+import { PHOTOS } from '@/lib/images';
+import { money } from '@/lib/money';
 import {
+  type AccountSummary,
   type Job,
   JOB_STATUS_LABEL,
   type NearbyJob,
   type Offer,
   type ProProfile,
 } from '@/lib/types';
+import { Welcome } from './account/Welcome';
+import { JobCard } from './JobCard';
 import { useSession } from '@/lib/useSession';
 
 const REFRESH_MS = 30_000;
@@ -40,6 +45,7 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
   const [jobs, setJobs] = useState<NearbyJob[] | null>(null);
   const [offers, setOffers] = useState<(Offer & { receivedAt: number })[]>([]);
   const [mine, setMine] = useState<Job[] | null>(null);
+  const [summary, setSummary] = useState<AccountSummary | null>(null);
   const [answering, setAnswering] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -78,6 +84,9 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
   useEffect(() => {
     if (me?.role !== 'PRO') return;
     void loadMine();
+    api<{ summary: AccountSummary }>('/v1/me/summary')
+      .then((r) => setSummary(r.summary))
+      .catch(() => setSummary(null));
     api<{ profile: ProProfile }>('/v1/pro/profile')
       .then((r) => setProfile(r.profile))
       .catch(() =>
@@ -182,9 +191,70 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
   const profileDone = !!profile && profile.categoryIds.length > 0 && profile.latitude !== null;
   const verified = profile?.verificationStatus === 'APPROVED';
 
+  const active = (mine ?? []).filter(
+    (j) => j.status !== 'COMPLETED' && j.status !== 'CASH_COMPLETED',
+  );
+  const pendingOffers = offers.filter((o) => o.job.type !== 'EMERGENCY' || online).length;
+
   return (
     <>
-      <h1 className="page-title">{me.name ? `Hello, ${me.name.split(' ')[0]}` : 'Pro home'}</h1>
+      <Welcome
+        title={me.name ? `Hello, ${me.name.split(' ')[0]}` : 'Pro home'}
+        subtitle={
+          pendingOffers > 0
+            ? `You have ${pendingOffers} new ${pendingOffers === 1 ? 'request' : 'requests'} waiting for an answer.`
+            : online
+              ? 'You’re visible to customers near you. New requests appear here.'
+              : 'Go online when you’re ready, and customers near you can send you jobs.'
+        }
+        photo={PHOTOS.electrician}
+        badge={
+          profile ? (
+            <span className={`status-pill ${online ? 'status-on' : ''}`}>
+              {online ? 'Online' : 'Offline'}
+            </span>
+          ) : null
+        }
+      >
+        <Link className="button button-light" href="/pro/profile">
+          Skills & area
+        </Link>
+        <Link className="button button-ghost" href="/account/wallet">
+          Wallet
+        </Link>
+      </Welcome>
+
+      {summary && (
+        <section className="kpis kpis-4" aria-label="Your earnings">
+          <Link href="/account/wallet" className="kpi kpi-strong">
+            <span className="kpi-label">Available balance</span>
+            <span className="kpi-value">{money(summary.money.balanceKobo)}</span>
+            <span className="kpi-note">Withdraw to your bank</span>
+          </Link>
+          <div className="kpi">
+            <span className="kpi-label">Total earned</span>
+            <span className="kpi-value">{money(summary.money.earnedKobo ?? 0)}</span>
+          </div>
+          <div className="kpi">
+            <span className="kpi-label">Jobs in progress</span>
+            <span className="kpi-value">{summary.jobs.active}</span>
+          </div>
+          <div className="kpi">
+            <span className="kpi-label">Rating</span>
+            <span className="kpi-value">
+              {summary.pro && summary.pro.ratingCount > 0
+                ? `★ ${summary.pro.ratingAvg.toFixed(1)}`
+                : 'New'}
+            </span>
+            <span className="kpi-note">
+              {summary.pro && summary.pro.ratingCount > 0
+                ? `${summary.pro.ratingCount} reviews`
+                : 'After your first jobs'}
+            </span>
+          </div>
+        </section>
+      )}
+
       <AlertsPrompt why="so you hear about emergency requests near you, even when GADMO isn’t open." />
 
       {error && (
@@ -305,28 +375,26 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
             );
           })}
 
-          {mine && mine.length > 0 && (
+          {active.length > 0 && (
             <section aria-labelledby="mine-title">
               <h2 id="mine-title" className="section-title">
                 Your jobs
               </h2>
-              {mine.map((job) => (
-                <article
-                  key={job.id}
-                  className={`job${job.type === 'EMERGENCY' ? ' job-urgent' : ''}`}
-                >
-                  <h3>{serviceNames[job.categoryId] ?? 'Service'}</h3>
-                  <p>{job.description}</p>
-                  <p className="job-status">
-                    {job.status === 'ACCEPTED'
-                      ? 'You accepted. Chat with the customer to agree the details.'
-                      : JOB_STATUS_LABEL[job.status]}
-                  </p>
-                  <Link className="button button-small" href={`/jobs/${job.id}`}>
-                    Open chat
-                  </Link>
-                </article>
-              ))}
+              <div className="job-grid">
+                {active.map((job) => (
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    serviceName={serviceNames[job.categoryId] ?? 'Service'}
+                    href={`/jobs/${job.id}`}
+                    status={
+                      job.status === 'ACCEPTED'
+                        ? 'You accepted. Chat with the customer to agree the details.'
+                        : JOB_STATUS_LABEL[job.status]
+                    }
+                  />
+                ))}
+              </div>
             </section>
           )}
 

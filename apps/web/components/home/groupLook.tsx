@@ -113,6 +113,13 @@ const ICONS: Record<string, ReactNode> = {
       <circle cx="17.5" cy="17.5" r="1.8" />
     </>
   ),
+  drop: <path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" />,
+  cake: (
+    <>
+      <path d="M4 20h16v-7H4zM4 16c2 1.5 4 1.5 5.3 0s4 1.5 5.4 0 4-1.5 5.3 0" />
+      <path d="M12 13V9M12 6.5V6" />
+    </>
+  ),
   leaf: (
     <>
       <path d="M5 19c0-8 6-14 15-14 0 9-6 14-15 14z" />
