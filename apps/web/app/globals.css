@@ -1,24 +1,52 @@
 /*
  * GADMO visual system.
  * Adire indigo is the brand; warning-triangle yellow is reserved for emergencies.
- * System fonts only: no font downloads on paid mobile data.
+ * Service groups each wear one market-fabric colour. Headings use Bricolage Grotesque
+ * (self-hosted, 44 KB, cached by the service worker); body text uses the phone's own font.
  */
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  src: url('/fonts/bricolage-grotesque.woff2') format('woff2');
+  font-weight: 200 800;
+  font-display: swap;
+}
+
 :root {
   --indigo: #1f2a6b;
   --indigo-deep: #161f52;
+  --night: #10163f;
+  --dye: #3d4fb8;
+  --mist: #e9ecf8;
   --ink: #0f1638;
-  --muted: #4a5070;
-  --paper: #f5f6fa;
+  --muted: #4f5677;
+  --paper: #f3f4f8;
   --surface: #ffffff;
-  --line: #d9dce8;
+  --line: #dcdfeb;
   --warn: #f2b705;
   --spark: #f2b705;
   --ok: #1e7f4f;
+  --ok-tint: #e3f2ea;
   --error: #b3261e;
   --focus: #f2b705;
-  --radius-control: 10px;
-  --radius-panel: 16px;
+  /* Market-fabric colours, one per service group: a tint for the tile, an ink for its text. */
+  --t-indigo: #e9ecfb;
+  --c-indigo: #2d3a8c;
+  --t-kola: #fbe9e5;
+  --c-kola: #a63a27;
+  --t-palm: #e3f3ea;
+  --c-palm: #1b6e45;
+  --t-plum: #f1e8f6;
+  --c-plum: #6d3787;
+  --t-sky: #e5f0fa;
+  --c-sky: #1f5f99;
+  --t-ochre: #fbf1dc;
+  --c-ochre: #8a5a00;
+  --radius-control: 12px;
+  --radius-panel: 18px;
+  --shadow-card: 0 1px 2px rgb(16 22 63 / 0.06), 0 8px 24px -12px rgb(16 22 63 / 0.18);
+  --shadow-lift: 0 18px 40px -18px rgb(16 22 63 / 0.45);
   --space: 16px;
+  --display: 'Bricolage Grotesque', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color-scheme: light;
 }
 
@@ -53,6 +81,16 @@ a {
   text-underline-offset: 3px;
 }
 
+h1,
+h2,
+h3,
+.page-title,
+.section-title,
+.panel-title {
+  font-family: var(--display);
+  letter-spacing: -0.02em;
+}
+
 :focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
@@ -77,19 +115,25 @@ a {
 }
 
 /* ---------- Top bar ---------- */
+.topbar-band {
+  background: var(--night);
+  color: #fff;
+}
+
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   max-width: 560px;
   margin: 0 auto;
-  padding: 12px var(--space);
+  padding: 10px var(--space);
 }
 
 .wordmark {
+  font-family: var(--display);
   font-size: 22px;
   font-weight: 800;
-  color: var(--indigo);
+  color: #fff;
   text-decoration: none;
   letter-spacing: -0.02em;
   min-height: 44px;
@@ -131,10 +175,18 @@ a {
 
 .topbar-link {
   font-weight: 600;
-  min-height: 44px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
-  padding: 0 4px;
+  padding: 0 16px;
+  color: #fff;
+  text-decoration: none;
+  border: 1px solid rgb(255 255 255 / 0.35);
+  border-radius: 999px;
+}
+
+.topbar-link:hover {
+  background: rgb(255 255 255 / 0.1);
 }
 
 .topbar-nav {
@@ -1403,43 +1455,6 @@ input[type='password'] {
   margin: 2px 0 0;
 }
 
-/* ---------- Adire band: the one bold element ---------- */
-.adire {
-  background-color: var(--indigo);
-  background-image:
-    radial-gradient(circle, rgb(255 255 255 / 0.18) 0 3px, transparent 3.5px),
-    radial-gradient(
-      circle,
-      transparent 0 9px,
-      rgb(255 255 255 / 0.1) 9.5px 11px,
-      transparent 11.5px
-    );
-  background-size: 28px 28px;
-  background-position:
-    0 0,
-    14px 14px;
-  color: #fff;
-}
-
-.adire-inner {
-  max-width: 560px;
-  margin: 0 auto;
-  padding: 28px var(--space) 24px;
-}
-
-.adire h1 {
-  margin: 0 0 4px;
-  font-size: 30px;
-  line-height: 1.15;
-  font-weight: 800;
-  letter-spacing: -0.015em;
-}
-
-.adire p {
-  margin: 0 0 18px;
-  color: rgb(255 255 255 / 0.86);
-}
-
 /* ---------- Forms ---------- */
 label {
   display: block;
@@ -1525,10 +1540,6 @@ select {
   margin-top: 8px;
 }
 
-.search {
-  border-color: transparent;
-}
-
 .field {
   margin-bottom: 20px;
 }
@@ -1539,15 +1550,28 @@ select {
   justify-content: center;
   width: 100%;
   min-height: 52px;
-  padding: 0 20px;
+  padding: 0 22px;
   font: inherit;
   font-weight: 700;
-  border-radius: var(--radius-control);
+  border-radius: 14px;
   border: 2px solid var(--indigo);
   background: var(--indigo);
   color: #fff;
   cursor: pointer;
   text-decoration: none;
+  box-shadow: 0 6px 16px -10px rgb(31 42 107 / 0.8);
+  transition:
+    background-color 0.15s,
+    transform 0.1s;
+}
+
+.button:hover {
+  background: var(--indigo-deep);
+  border-color: var(--indigo-deep);
+}
+
+.button:active {
+  transform: translateY(1px);
 }
 
 .button:disabled {
@@ -1556,8 +1580,15 @@ select {
 }
 
 .button-quiet {
-  background: transparent;
+  background: var(--mist);
+  border-color: var(--mist);
   color: var(--indigo);
+  box-shadow: none;
+}
+
+.button-quiet:hover {
+  background: #dde1f4;
+  border-color: #dde1f4;
 }
 
 .choice {
@@ -1613,25 +1644,6 @@ select {
   box-shadow: inset 4px 0 0 var(--ok);
 }
 
-/* ---------- Emergency strip ---------- */
-.emergency {
-  margin: 20px 0 8px;
-  padding: 16px;
-  background: var(--warn);
-  color: var(--ink);
-  border-radius: var(--radius-panel);
-}
-
-.emergency h2 {
-  margin: 0 0 2px;
-  font-size: 19px;
-}
-
-.emergency p {
-  margin: 0 0 10px;
-  font-size: 15px;
-}
-
 /* One swipeable row, so emergency help stays compact and "All services" stays in view. */
 .chips {
   display: flex;
@@ -1670,11 +1682,6 @@ select {
 }
 
 /* ---------- Catalogue ---------- */
-.section-title {
-  font-size: 20px;
-  margin: 28px 0 8px;
-}
-
 .groups {
   border-top: 1px solid var(--line);
 }
@@ -1863,25 +1870,6 @@ h1.page-title {
     padding-bottom: 16px;
   }
 
-  .adire-inner {
-    max-width: 1120px;
-    padding-top: 56px;
-    padding-bottom: 48px;
-  }
-
-  .adire h1 {
-    font-size: 48px;
-  }
-
-  .adire p {
-    font-size: 20px;
-    margin-bottom: 24px;
-  }
-
-  .search {
-    max-width: 640px;
-  }
-
   .page-wide {
     max-width: 1120px;
   }
@@ -1894,40 +1882,6 @@ h1.page-title {
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: var(--radius-panel);
-  }
-
-  .emergency {
-    display: grid;
-    grid-template-columns: minmax(220px, 1fr) 2fr;
-    gap: 4px 24px;
-    align-items: center;
-    padding: 20px 24px;
-    margin-top: 32px;
-  }
-
-  .emergency h2 {
-    grid-column: 1;
-    align-self: end;
-  }
-
-  .emergency p {
-    grid-column: 1;
-    align-self: start;
-    margin: 0;
-  }
-
-  .emergency .chips {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    flex-wrap: wrap;
-    margin: 0;
-    padding: 0;
-    overflow: visible;
-  }
-
-  .section-title {
-    font-size: 24px;
-    margin-top: 40px;
   }
 
   /* Service groups as cards in three columns; an opened card grows in place. */
@@ -1975,5 +1929,592 @@ h1.page-title {
 
   .service:hover .service-name {
     text-decoration: underline;
+  }
+}
+
+/* ---------- Home: hero ----------
+ * The one bold element: night indigo with the Adire resist-dye rings (or a photo, when
+ * one is set in lib/images.ts), the promise, and search.
+ */
+.hero {
+  position: relative;
+  overflow: hidden;
+  background: var(--night);
+  color: #fff;
+}
+
+.hero-pattern,
+.join-pattern {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.adire-rings circle {
+  stroke: var(--dye);
+  stroke-width: 2;
+  opacity: 0.55;
+}
+
+.adire-rings .adire-stitch {
+  stroke-dasharray: 3 8;
+}
+
+.adire-rings .adire-dot {
+  fill: var(--dye);
+  stroke: none;
+}
+
+.adire-strokes path {
+  stroke: var(--dye);
+  stroke-width: 10;
+  stroke-linecap: round;
+  opacity: 0.35;
+}
+
+.hero-img,
+.join-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* A photo sits under an indigo wash so the white text always reads. */
+.hero-photo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, rgb(16 22 63 / 0.94) 30%, rgb(16 22 63 / 0.45));
+}
+
+.hero-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 28px var(--space) 52px;
+}
+
+.hero h1 {
+  margin: 0 0 12px;
+  max-width: 11ch;
+  font-size: 42px;
+  line-height: 1.02;
+  font-weight: 760;
+  letter-spacing: -0.035em;
+}
+
+.hero-lede {
+  margin: 0 0 20px;
+  max-width: 34ch;
+  color: #c6cbef;
+}
+
+.search-wrap {
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.hero .search {
+  min-height: 56px;
+  padding-left: 46px;
+  border: 0;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.55);
+}
+
+.trust {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  color: #c6cbef;
+}
+
+.trust li::before {
+  content: '✓ ';
+  color: var(--warn);
+  font-weight: 700;
+}
+
+/* ---------- Home: emergency, service tiles ---------- */
+.home {
+  padding-bottom: 8px;
+}
+
+.emergency {
+  position: relative;
+  z-index: 1;
+  margin: -30px 0 8px;
+  padding: 18px 16px 14px;
+  background: var(--warn);
+  color: var(--ink);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-lift);
+}
+
+.emergency h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 2px;
+  font-size: 22px;
+  font-weight: 750;
+}
+
+.emergency-icon {
+  width: 22px;
+  height: 22px;
+  fill: var(--ink);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.emergency-icon .emergency-mark {
+  stroke: var(--warn);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.emergency p {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.section-title {
+  font-size: 24px;
+  font-weight: 720;
+  margin: 32px 0 12px;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  min-height: 118px;
+  padding: 14px 12px 12px;
+  font: inherit;
+  text-align: left;
+  border: 2px solid transparent;
+  border-radius: var(--radius-panel);
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+
+.tile:active {
+  transform: scale(0.98);
+}
+
+.tile-icon {
+  width: 28px;
+  height: 28px;
+  margin-bottom: auto;
+}
+
+.tile-name {
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.tile-count {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.tile-open {
+  border-color: currentColor;
+}
+
+.tone-indigo {
+  background: var(--t-indigo);
+  color: var(--c-indigo);
+}
+
+.tone-kola {
+  background: var(--t-kola);
+  color: var(--c-kola);
+}
+
+.tone-palm {
+  background: var(--t-palm);
+  color: var(--c-palm);
+}
+
+.tone-plum {
+  background: var(--t-plum);
+  color: var(--c-plum);
+}
+
+.tone-sky {
+  background: var(--t-sky);
+  color: var(--c-sky);
+}
+
+.tone-ochre {
+  background: var(--t-ochre);
+  color: var(--c-ochre);
+}
+
+.group-panel {
+  margin-top: 12px;
+  padding: 4px 16px 8px;
+  border-radius: var(--radius-panel);
+}
+
+.group-panel h3 {
+  margin: 12px 0 4px;
+  font-size: 20px;
+}
+
+.group-panel .service-name {
+  color: var(--ink);
+}
+
+.group-panel .services li + li {
+  border-top: 1px solid rgb(15 22 56 / 0.1);
+}
+
+/* ---------- Home: top Pros, how it works, join, footer ---------- */
+.home-section {
+  padding-bottom: 8px;
+}
+
+.pro-strip {
+  display: flex;
+  gap: 12px;
+  margin: 0 calc(-1 * var(--space));
+  padding: 4px var(--space) 12px;
+  list-style: none;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+.pro-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.pro-strip li {
+  flex: 0 0 168px;
+  scroll-snap-align: start;
+}
+
+.pro-tile {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-card);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.pro-face {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 10px;
+  border-radius: 16px;
+  font-family: var(--display);
+  font-weight: 750;
+  font-size: 19px;
+}
+
+.pro-tile-name {
+  font-weight: 700;
+}
+
+.pro-tile-skill {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.verified {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  margin-top: 10px;
+  padding: 3px 9px 3px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ok);
+  background: var(--ok-tint);
+  border-radius: 999px;
+}
+
+.verified svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.how {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: how;
+}
+
+.how li {
+  position: relative;
+  padding: 16px 16px 16px 64px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  counter-increment: how;
+}
+
+.how li::before {
+  content: counter(how);
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--indigo);
+  color: #fff;
+  font-family: var(--display);
+  font-weight: 750;
+}
+
+.how h3 {
+  margin: 4px 0;
+  font-size: 18px;
+}
+
+.how p {
+  margin: 0;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.join {
+  position: relative;
+  overflow: hidden;
+  margin-top: 40px;
+  background: var(--indigo);
+  color: #fff;
+}
+
+.join-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 40px var(--space);
+}
+
+.join h2 {
+  margin: 0 0 8px;
+  max-width: 14ch;
+  font-size: 32px;
+  line-height: 1.05;
+  font-weight: 750;
+}
+
+.join p {
+  margin: 0 0 20px;
+  max-width: 40ch;
+  color: #d3d7f3;
+}
+
+.join-button {
+  width: auto;
+  background: var(--warn);
+  border-color: var(--warn);
+  color: var(--ink);
+}
+
+.join-button:hover {
+  background: #ffc91f;
+  border-color: #ffc91f;
+}
+
+.footer {
+  background: var(--night);
+  color: #aab0d6;
+  font-size: 14px;
+}
+
+.footer-inner {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 28px var(--space) 36px;
+}
+
+.footer p {
+  margin: 0 0 4px;
+}
+
+.footer-brand {
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.footer-small {
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+@media (min-width: 900px) {
+  .hero-inner,
+  .join-inner,
+  .footer-inner {
+    max-width: 1120px;
+  }
+
+  .hero-inner {
+    padding-top: 72px;
+    padding-bottom: 96px;
+  }
+
+  .hero h1 {
+    font-size: 72px;
+  }
+
+  .hero-lede {
+    font-size: 20px;
+  }
+
+  .search-wrap {
+    max-width: 560px;
+  }
+
+  .emergency {
+    display: grid;
+    grid-template-columns: minmax(240px, 1fr) 2fr;
+    gap: 4px 24px;
+    align-items: center;
+    margin-top: -48px;
+    padding: 22px 24px;
+  }
+
+  .emergency h2 {
+    grid-column: 1;
+    align-self: end;
+  }
+
+  .emergency p {
+    grid-column: 1;
+    align-self: start;
+    margin: 0;
+  }
+
+  .emergency .chips {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    flex-wrap: wrap;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .section-title {
+    font-size: 30px;
+    margin-top: 48px;
+  }
+
+  .tiles {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 14px;
+  }
+
+  .tile {
+    min-height: 136px;
+    padding: 18px 16px 14px;
+  }
+
+  .tile:hover {
+    border-color: currentColor;
+  }
+
+  .group-panel .services {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    column-gap: 24px;
+  }
+
+  .group-panel .services li + li {
+    border-top: 0;
+  }
+
+  .pro-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin: 0;
+    padding: 4px 0 12px;
+    overflow: visible;
+  }
+
+  .how {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  .how li {
+    padding: 72px 24px 24px;
+  }
+
+  .how li::before {
+    left: 24px;
+    top: 24px;
+  }
+
+  .join-inner {
+    padding: 72px var(--space);
+  }
+
+  .join h2 {
+    font-size: 48px;
   }
 }

@@ -6,18 +6,29 @@ test('home shows the catalogue, emergency help and search', async ({ page }) => 
   await page.goto('/');
 
   await expect(
-    page.getByRole('heading', { name: 'The right skills, within reach.' }),
+    page.getByRole('heading', { name: 'The right skills. Within reach.' }),
   ).toBeVisible();
   const emergency = page.getByRole('region', { name: /Stuck\? Get help now/ });
   await expect(emergency.getByRole('link')).toHaveCount(9);
   await expect(emergency.getByRole('link', { name: 'Electrician', exact: true })).toBeVisible();
 
-  // 12 groups; opening one shows its services with their inspection rule.
-  await expect(page.locator('details.group')).toHaveCount(12);
-  await page.getByText('Tech & digital').click();
+  // 12 group tiles; opening one shows its services with their inspection rule.
+  await expect(page.locator('.tiles button')).toHaveCount(12);
+  const tech = page.getByRole('button', { name: /Tech & digital/ });
+  await tech.click();
+  await expect(tech).toHaveAttribute('aria-expanded', 'true');
   const webDev = page.getByRole('link', { name: /Website developer/ });
   await expect(webDev).toBeVisible();
   await expect(webDev).toContainText('No inspection fee');
+  await tech.click();
+  await expect(webDev).toBeHidden();
+
+  // How it works and the invitation to Pros are always there.
+  await expect(page.getByRole('heading', { name: 'How GADMO works' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Join as a Pro' })).toHaveAttribute(
+    'href',
+    '/signin',
+  );
 
   // Search narrows to matching services.
   await page.getByRole('searchbox', { name: 'Search services' }).fill('plumb');

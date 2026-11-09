@@ -1,5 +1,5 @@
 import { Controller, Get, Inject, NotFoundException, Param, UseGuards } from '@nestjs/common';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { JwtAuthGuard } from '../auth/guards';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -44,6 +44,55 @@ export class CatalogController {
   }
 
   /**
+   * Public: a few of the best-rated verified Pros for the home page. Only a first name
+   * and initial, their skills and rating: never contact details or location.
+   */
+  @Get('pros/top')
+  async topPros() {
+    const rows = await this.db
+      .select({
+        id: users.id,
+        name: users.name,
+        ratingAvg: proProfiles.ratingAvg,
+        ratingCount: proProfiles.ratingCount,
+      })
+      .from(proProfiles)
+      .innerJoin(users, eq(users.id, proProfiles.userId))
+      .where(
+        and(
+          eq(proProfiles.verificationStatus, 'APPROVED'),
+          eq(users.status, 'ACTIVE'),
+          eq(users.role, 'PRO'),
+        ),
+      )
+      .orderBy(desc(proProfiles.ratingAvg), desc(proProfiles.ratingCount), asc(users.createdAt))
+      .limit(8);
+    if (rows.length === 0) return { pros: [] };
+    const skills = await this.db
+      .select({ proId: proCategories.proId, name: categories.name, slug: categories.slug })
+      .from(proCategories)
+      .innerJoin(categories, eq(categories.id, proCategories.categoryId))
+      .where(
+        inArray(
+          proCategories.proId,
+          rows.map((r) => r.id),
+        ),
+      )
+      .orderBy(asc(categories.name));
+    return {
+      pros: rows
+        .map((r) => ({
+          id: r.id,
+          name: shortName(r.name),
+          ratingAvg: r.ratingAvg,
+          ratingCount: r.ratingCount,
+          skills: skills.filter((s) => s.proId === r.id).map(({ name, slug }) => ({ name, slug })),
+        }))
+        .filter((p) => p.skills.length > 0),
+    };
+  }
+
+  /**
    * Another user's public profile. Contact details (phone, email) are never included —
    * customers and Pros talk only through GADMO chat.
    */
@@ -76,4 +125,11 @@ export class CatalogController {
       .orderBy(asc(categories.name));
     return { user: { ...row, skills } };
   }
+}
+
+/** "Tunde Bakare" → "Tunde B."; a missing name shows as "GADMO Pro". */
+function shortName(name: string | null): string {
+  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'GADMO Pro';
+  return parts.length === 1 ? parts[0]! : `${parts[0]} ${parts.at(-1)![0]!.toUpperCase()}.`;
 }

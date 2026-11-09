@@ -1,10 +1,10 @@
 /*
  * GADMO service worker: makes repeat visits fast and shows a friendly page offline.
- * - Built JS/CSS (/_next/static, content-hashed) and icons: cache first.
+ * - Built JS/CSS (/_next/static, content-hashed), icons, fonts and images: cache first.
  * - Pages: network first, falling back to the last copy, then to /offline.
  * - API calls (/v1/*) are NEVER cached: they carry private, changing data.
  */
-const VERSION = 'gadmo-v2';
+const VERSION = 'gadmo-v3';
 // Registered as /sw.js?dev=1 by `next dev`: alerts only, no caching (dev files change constantly).
 const DEV = new URL(self.location.href).searchParams.has('dev');
 const STATIC_CACHE = `${VERSION}-static`;
@@ -43,7 +43,7 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/v1/')) return;
 
-  if (url.pathname.startsWith('/_next/static/') || url.pathname.startsWith('/icons/')) {
+  if (/^\/(_next\/static|icons|fonts|images)\//.test(url.pathname)) {
     event.respondWith(
       caches.match(request).then(
         (hit) =>

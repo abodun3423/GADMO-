@@ -52,6 +52,10 @@ either send an identity check and approve it in /admin, or skip the review on yo
 pnpm pro:approve 0803 123 4567   # local development only; written to the audit log
 ```
 
+**Demo data:** `pnpm demo:data` adds 8 made-up, verified Pros around Ado-Ekiti (numbers
+0700 000 0001 to 0008, so you can sign in as one), so the home page and Choose a Pro aren't
+empty in a demo. `pnpm demo:data --remove` takes them out again. Local development only.
+
 **Reviewing identity checks:** create a GADMO staff account (use a number that is not a Pro),
 then sign in at http://localhost:3000/staff with the email and the password you typed, plus the
 code sent to that phone. Staff can't use the customer and Pro sign-in.

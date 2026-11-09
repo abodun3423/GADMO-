@@ -27,7 +27,8 @@
     "update:local": "pnpm install && pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api db:migrate && pnpm --filter @gadmo/api db:seed",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm test:integration",
     "test:e2e": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/web build && pnpm --filter @gadmo/web test:e2e",
-    "check-setup": "pnpm --filter @gadmo/api check-setup"
+    "check-setup": "pnpm --filter @gadmo/api check-setup",
+    "demo:data": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api demo:data"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

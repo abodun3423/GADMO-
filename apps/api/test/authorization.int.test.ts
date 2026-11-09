@@ -1767,6 +1767,53 @@ describe('quotes and the materials deposit', () => {
   });
 });
 
+describe('public top-rated Pros', () => {
+  it('lists verified Pros only, with a short name, skills and rating; no contact or location', async () => {
+    const approved = await login(ctx, { role: 'pro' });
+    const pending = await login(ctx, { role: 'pro' });
+    await ctx.db
+      .update(users)
+      .set({ name: 'Zainab Top Rated' })
+      .where(eq(users.id, approved.userId));
+    for (const [p, status] of [
+      [approved, 'APPROVED'],
+      [pending, 'PENDING'],
+    ] as const) {
+      await ctx.db
+        .insert(proProfiles)
+        .values({
+          userId: p.userId,
+          verificationStatus: status,
+          ratingAvg: 5,
+          ratingCount: 999,
+          latitude: 7.6,
+          longitude: 5.2,
+        })
+        .onConflictDoUpdate({
+          target: proProfiles.userId,
+          set: { verificationStatus: status, ratingAvg: 5, ratingCount: 999 },
+        });
+      await ctx.db
+        .insert(proCategories)
+        .values({ proId: p.userId, categoryId: electricianId })
+        .onConflictDoNothing();
+    }
+    const res = await request(ctx.app.getHttpServer()).get('/v1/pros/top').expect(200);
+    const ids = res.body.pros.map((p: { id: string }) => p.id);
+    expect(ids).toContain(approved.userId);
+    expect(ids).not.toContain(pending.userId);
+    const top = res.body.pros.find((p: { id: string }) => p.id === approved.userId);
+    expect(top).toEqual({
+      id: approved.userId,
+      name: 'Zainab R.',
+      ratingAvg: 5,
+      ratingCount: 999,
+      skills: [{ name: 'Electrician', slug: 'electrician' }],
+    });
+    expect(JSON.stringify(res.body)).not.toMatch(/phone|latitude|\+234/);
+  });
+});
+
 describe('staff: why a job reaches (or misses) Pros', () => {
   it('only staff can see it; each matching rule is shown per Pro', async () => {
     const customer = await login(ctx);
