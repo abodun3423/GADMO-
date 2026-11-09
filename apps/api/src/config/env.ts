@@ -20,6 +20,17 @@ const envSchema = z
     SMS_BASE_URL: z.string().default('https://api.ng.termii.com'),
     /** Termii route: dnd reaches numbers on Do-Not-Disturb (needed for login codes). */
     SMS_CHANNEL: z.enum(['dnd', 'generic']).default('dnd'),
+    /** Pilot only: a staff account on +234 700 000 0099, created by demo:data. */
+    DEMO_STAFF_EMAIL: z
+      .string()
+      .email()
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+    DEMO_STAFF_PASSWORD: z
+      .string()
+      .min(12, 'DEMO_STAFF_PASSWORD must be at least 12 characters')
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
     /**
      * Pilot and demos: the secret 6-digit code that signs in the reserved demo numbers
      * (+234 700 000 0001-0099) only. Real numbers always need an SMS code.
@@ -106,7 +117,10 @@ const envSchema = z
         message: 'DEV_LOGIN_CODE lets anyone sign in and only works when NODE_ENV=development',
       });
     }
-    if (env.NODE_ENV === 'production' && env.PAYMENT_PROVIDER !== 'paystack') {
+    // A pilot (SMS off, demo accounts only) may use the test checkout: nobody real can sign
+    // in, so no real customer can be shown a fake payment. Real SMS means real payments.
+    const pilot = env.SMS_PROVIDER === 'disabled';
+    if (env.NODE_ENV === 'production' && env.PAYMENT_PROVIDER !== 'paystack' && !pilot) {
       ctx.addIssue({
         code: 'custom',
         path: ['PAYMENT_PROVIDER'],
@@ -120,7 +134,11 @@ const envSchema = z
         message: 'PAYSTACK_SECRET_KEY is required when PAYMENT_PROVIDER=paystack',
       });
     }
-    if (env.NODE_ENV === 'production' && (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY)) {
+    if (
+      env.NODE_ENV === 'production' &&
+      !pilot &&
+      (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY)
+    ) {
       ctx.addIssue({
         code: 'custom',
         path: ['VAPID_PUBLIC_KEY'],

@@ -12,6 +12,7 @@
 import { eq, inArray, like } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
+import { hashPassword } from '../src/auth/password';
 import { loadEnv } from '../src/config/env';
 import { loadDotEnv } from '../src/config/load-dotenv';
 import { auditLogs, categories, proCategories, proProfiles, users } from '../src/db/schema';
@@ -168,6 +169,21 @@ async function main(): Promise<void> {
             .values(skillIds.map((categoryId) => ({ proId: user!.id, categoryId })));
         }
       });
+    }
+    // A pilot's staff account on the reserved demo number 0700 000 0099 (it signs in with
+    // the email, the password and the demo code), from DEMO_STAFF_EMAIL/DEMO_STAFF_PASSWORD.
+    if (env.DEMO_STAFF_EMAIL && env.DEMO_STAFF_PASSWORD) {
+      const staff = {
+        role: 'ADMIN' as const,
+        name: 'GADMO Staff',
+        email: env.DEMO_STAFF_EMAIL.toLowerCase(),
+        passwordHash: await hashPassword(env.DEMO_STAFF_PASSWORD),
+      };
+      await db
+        .insert(users)
+        .values({ phone: `${PREFIX}99`, ...staff })
+        .onConflictDoUpdate({ target: users.phone, set: staff });
+      console.log(`Staff account ready: ${staff.email} on 0700 000 0099 (sign in at /staff).`);
     }
     await db.insert(auditLogs).values({
       action: 'DEV_DEMO_DATA',
