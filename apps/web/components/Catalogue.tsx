@@ -73,9 +73,15 @@ export function Catalogue({ groups }: { groups: CategoryGroup[] | null }) {
 
       <div className="page page-wide home">
         {groups === null ? (
-          <p className="alert alert-error" role="alert">
-            Services could not be loaded. Check your connection and refresh the page.
-          </p>
+          <div className="alert alert-error" role="alert">
+            <p>
+              Services could not be loaded. GADMO may be waking up: wait a few seconds and try
+              again.
+            </p>
+            <a className="button button-small" href="/">
+              Try again
+            </a>
+          </div>
         ) : q ? (
           <section aria-live="polite" className="search-results">
             <h2 className="section-title">

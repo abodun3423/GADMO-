@@ -57,19 +57,29 @@ async function forward(request: NextRequest, path: string[]): Promise<Response> 
   }
 
   let upstream: Response;
-  try {
-    upstream = await fetch(target, {
-      method: request.method,
-      headers,
-      body,
-      redirect: 'manual',
-      cache: 'no-store',
-    });
-  } catch {
-    return Response.json(
-      { message: 'GADMO is having trouble right now. Please try again shortly.' },
-      { status: 502 },
-    );
+  // Reads are tried again while the API wakes up (free hosting sleeps when idle); writes
+  // are sent once, so nothing is ever done twice.
+  const read = request.method === 'GET' || request.method === 'HEAD';
+  const deadline = Date.now() + (read ? 45_000 : 0);
+  for (;;) {
+    try {
+      upstream = await fetch(target, {
+        method: request.method,
+        headers,
+        body,
+        redirect: 'manual',
+        cache: 'no-store',
+      });
+      break;
+    } catch {
+      if (Date.now() + 2000 > deadline) {
+        return Response.json(
+          { message: 'GADMO is having trouble right now. Please try again shortly.' },
+          { status: 502 },
+        );
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
   }
 
   const responseHeaders = new Headers();
