@@ -49,3 +49,48 @@ export class OutboxSmsSender implements SmsSender {
     }
   }
 }
+
+/**
+ * Pilot without SMS: nothing is sent. Sign-in is refused for real numbers before this is
+ * reached (see OtpService); alerts by SMS are simply skipped (push still works).
+ */
+@Injectable()
+export class DisabledSmsSender implements SmsSender {
+  async send(): Promise<void> {
+    // Intentionally nothing.
+  }
+}
+
+/** Real SMS through Termii (https://developers.termii.com), Nigeria's common SMS gateway. */
+export class TermiiSmsSender implements SmsSender {
+  private readonly logger = new Logger('SMS');
+
+  constructor(
+    private readonly apiKey: string,
+    private readonly senderId: string,
+    private readonly baseUrl: string,
+    private readonly channel: 'dnd' | 'generic',
+    private readonly post: typeof fetch = fetch,
+  ) {}
+
+  async send(toE164: string, text: string): Promise<void> {
+    const res = await this.post(new URL('/api/sms/send', this.baseUrl), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        api_key: this.apiKey,
+        to: toE164.replace(/^\+/, ''),
+        from: this.senderId,
+        sms: text,
+        type: 'plain',
+        channel: this.channel,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      // Never log the message (it may hold a login code) or the full number.
+      this.logger.error(`Termii refused an SMS to ${redactPhone(toE164)}: HTTP ${res.status}`);
+      throw new Error('SMS could not be sent');
+    }
+  }
+}

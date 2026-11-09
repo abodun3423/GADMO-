@@ -7,7 +7,13 @@ import { CsrfGuard, JwtAuthGuard } from './guards';
 import { OtpService } from './otp.service';
 import { StaffAuthController } from './staff-auth.controller';
 import { ENV, type Env } from '../config/env';
-import { ConsoleSmsSender, OutboxSmsSender, SMS_SENDER } from './sms';
+import {
+  ConsoleSmsSender,
+  DisabledSmsSender,
+  OutboxSmsSender,
+  SMS_SENDER,
+  TermiiSmsSender,
+} from './sms';
 import { TokenService } from './token.service';
 
 @Module({
@@ -20,14 +26,25 @@ import { TokenService } from './token.service';
     JwtAuthGuard,
     ConsoleSmsSender,
     OutboxSmsSender,
+    DisabledSmsSender,
     {
       provide: SMS_SENDER,
-      inject: [ENV, ConsoleSmsSender, OutboxSmsSender],
-      useFactory: (env: Env, consoleSms: ConsoleSmsSender, outbox: OutboxSmsSender) => {
+      inject: [ENV, ConsoleSmsSender, OutboxSmsSender, DisabledSmsSender],
+      useFactory: (
+        env: Env,
+        consoleSms: ConsoleSmsSender,
+        outbox: OutboxSmsSender,
+        disabled: DisabledSmsSender,
+      ) => {
         if (env.SMS_PROVIDER === 'outbox') return outbox;
         if (env.SMS_PROVIDER === 'console') return consoleSms;
-        // Real SMS (Termii) arrives with the SMS integration pull request.
-        throw new Error(`SMS provider "${env.SMS_PROVIDER}" is not available yet`);
+        if (env.SMS_PROVIDER === 'disabled') return disabled;
+        return new TermiiSmsSender(
+          env.SMS_API_KEY!,
+          env.SMS_SENDER_ID,
+          env.SMS_BASE_URL,
+          env.SMS_CHANNEL,
+        );
       },
     },
     { provide: APP_GUARD, useClass: CsrfGuard },

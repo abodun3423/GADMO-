@@ -23,3 +23,12 @@ export function redactPhone(e164: string): string {
   if (e164.length < 4) return '***';
   return `${e164.slice(0, 4)}*******${e164.slice(-2)}`;
 }
+
+/**
+ * Reserved demo numbers, +234 700 000 0001 to 0099. They belong to made-up accounts for
+ * demos and the pilot: no SMS is ever sent to them, and they sign in with the deployment's
+ * secret demo code (DEMO_LOGIN_CODE) instead.
+ */
+export function isDemoPhone(e164: string): boolean {
+  return /^\+23470000000\d{2}$/.test(e164) && e164 !== '+2347000000000';
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeNigerianPhone, redactPhone } from './phone';
+import { isDemoPhone, normalizeNigerianPhone, redactPhone } from './phone';
 
 describe('normalizeNigerianPhone', () => {
   it.each([
@@ -26,5 +26,15 @@ describe('normalizeNigerianPhone', () => {
 describe('redactPhone', () => {
   it('shows only the last two digits', () => {
     expect(redactPhone('+2348031234567')).toBe('+234*******67');
+  });
+});
+
+describe('isDemoPhone', () => {
+  it('is only the reserved 0700 000 0001-0099 range', () => {
+    expect(isDemoPhone('+2347000000001')).toBe(true);
+    expect(isDemoPhone('+2347000000099')).toBe(true);
+    expect(isDemoPhone('+2347000000000')).toBe(false);
+    expect(isDemoPhone('+2347000000100')).toBe(false);
+    expect(isDemoPhone('+2348031234567')).toBe(false);
   });
 });

@@ -1,0 +1,108 @@
+# GADMO on Render (https://render.com/docs/blueprint-spec).
+# Render → New → Blueprint → pick this repository. Render creates everything below and asks
+# for the values marked `sync: false`. Step-by-step: docs/DEPLOY.md.
+#
+# Layout: only the web app is public. It forwards /v1/* to the API over Render's private
+# network, so the API, database and Redis are never reachable from the internet.
+# Frankfurt is Render's closest region to Nigeria.
+
+services:
+  # The PWA (Next.js): the only public service.
+  - type: web
+    name: gadmo-web
+    runtime: node
+    region: frankfurt
+    plan: starter
+    buildCommand: >-
+      corepack enable && pnpm install --frozen-lockfile --prod=false &&
+      pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/web build
+    startCommand: pnpm --filter @gadmo/web exec next start -p $PORT
+    healthCheckPath: /offline
+    envVars:
+      - key: NODE_VERSION
+        value: '22'
+      - key: NODE_ENV
+        value: production
+      - key: API_HOSTPORT
+        fromService:
+          name: gadmo-api
+          type: pserv
+          property: hostport
+
+  # The API (NestJS): private, reached only by gadmo-web.
+  - type: pserv
+    name: gadmo-api
+    runtime: node
+    region: frankfurt
+    plan: starter
+    buildCommand: >-
+      corepack enable && pnpm install --frozen-lockfile --prod=false &&
+      pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api build
+    # Database changes and the service catalogue are applied before each new version starts.
+    preDeployCommand: pnpm --filter @gadmo/api db:migrate && pnpm --filter @gadmo/api db:seed
+    startCommand: pnpm --filter @gadmo/api start
+    envVars:
+      - key: NODE_VERSION
+        value: '22'
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gadmo-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: gadmo-redis
+          type: keyvalue
+          property: connectionString
+      # Secrets Render generates once (random 256-bit, base64) and keeps.
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: OTP_PEPPER
+        generateValue: true
+      - key: FIELD_ENCRYPTION_KEY
+        generateValue: true
+      # The public address of gadmo-web, e.g. https://gadmo-web.onrender.com
+      - key: WEB_ORIGIN
+        sync: false
+      # Pilot: SMS off, demo accounts sign in with DEMO_LOGIN_CODE. At launch: termii + SMS_API_KEY.
+      - key: SMS_PROVIDER
+        value: disabled
+      - key: SMS_API_KEY
+        sync: false
+      - key: DEMO_LOGIN_CODE
+        sync: false
+      - key: PAYMENT_PROVIDER
+        value: paystack
+      # sk_test_... for the pilot (test cards, no real money); sk_live_... at launch.
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      # From: npx web-push generate-vapid-keys
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      # Optional: a TURN server so in-app calls connect on strict mobile networks.
+      - key: TURN_URLS
+        sync: false
+      - key: TURN_USERNAME
+        sync: false
+      - key: TURN_CREDENTIAL
+        sync: false
+
+  # Redis-compatible store: sign-in codes, rate limits. Private.
+  - type: keyvalue
+    name: gadmo-redis
+    region: frankfurt
+    plan: starter
+    maxmemoryPolicy: noeviction
+    ipAllowList: []
+
+databases:
+  - name: gadmo-db
+    databaseName: gadmo
+    user: gadmo
+    region: frankfurt
+    plan: basic-256mb
+    postgresMajorVersion: '16'
+    ipAllowList: []

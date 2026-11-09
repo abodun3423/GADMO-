@@ -35,6 +35,7 @@ describe('loadEnv', () => {
         ...valid,
         NODE_ENV: 'production',
         SMS_PROVIDER: 'termii',
+        SMS_API_KEY: 'test-only-termii-key',
         WEB_ORIGIN: 'http://gadmo.ng',
       }),
     ).toThrow(/https/);
@@ -55,6 +56,7 @@ describe('loadEnv', () => {
       ...valid,
       NODE_ENV: 'production',
       SMS_PROVIDER: 'termii',
+      SMS_API_KEY: 'test-only-termii-key',
       WEB_ORIGIN: 'https://gadmo.ng',
       VAPID_PUBLIC_KEY: 'test-only-vapid-public',
       VAPID_PRIVATE_KEY: 'test-only-vapid-private',
@@ -77,6 +79,7 @@ describe('loadEnv', () => {
       ...valid,
       NODE_ENV: 'production',
       SMS_PROVIDER: 'termii',
+      SMS_API_KEY: 'test-only-termii-key',
       WEB_ORIGIN: 'https://gadmo.ng',
       PAYMENT_PROVIDER: 'paystack',
       PAYSTACK_SECRET_KEY: 'sk_live_fake_only',
@@ -97,9 +100,30 @@ describe('loadEnv', () => {
         ...valid,
         NODE_ENV: 'production',
         SMS_PROVIDER: 'termii',
+        SMS_API_KEY: 'test-only-termii-key',
         WEB_ORIGIN: 'https://gadmo.ng',
         DEV_LOGIN_CODE: '123456',
       }),
     ).toThrow(/DEV_LOGIN_CODE/);
+  });
+
+  it('allows a pilot with SMS disabled, needs a Termii key, and checks the demo code', () => {
+    const prod = {
+      ...valid,
+      NODE_ENV: 'production',
+      WEB_ORIGIN: 'https://gadmo.ng',
+      PAYMENT_PROVIDER: 'paystack',
+      PAYSTACK_SECRET_KEY: 'sk_test_fake_key',
+      VAPID_PUBLIC_KEY: 'test-only-vapid-public',
+      VAPID_PRIVATE_KEY: 'test-only-vapid-private',
+    };
+    expect(
+      loadEnv({ ...prod, SMS_PROVIDER: 'disabled', DEMO_LOGIN_CODE: '482915' }).SMS_PROVIDER,
+    ).toBe('disabled');
+    expect(() => loadEnv({ ...prod, SMS_PROVIDER: 'termii' })).toThrow(/SMS_API_KEY/);
+    expect(loadEnv({ ...prod, SMS_PROVIDER: 'termii', SMS_API_KEY: 'k' }).SMS_CHANNEL).toBe('dnd');
+    expect(() => loadEnv({ ...prod, SMS_PROVIDER: 'disabled', DEMO_LOGIN_CODE: '12' })).toThrow(
+      /6 digits/,
+    );
   });
 });

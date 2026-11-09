@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { apiBase } from '@/lib/api-base';
 
 /**
  * Same-origin bridge to the GADMO API: the browser calls /v1/* on the web app and this
@@ -12,6 +13,8 @@ const FORWARD_REQUEST_HEADERS = [
   'x-gadmo-client',
   'accept',
   'accept-language',
+  // Paystack signs its webhook; the API checks the signature against the raw body.
+  'x-paystack-signature',
 ];
 const FORWARD_RESPONSE_HEADERS = ['content-type', 'retry-after', 'cache-control'];
 const MAX_BODY_BYTES = 100 * 1024;
@@ -22,7 +25,7 @@ const MAX_VOICE_BYTES = 1024 * 1024;
 const AUDIO_TYPES = new Set(['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/aac']);
 
 async function forward(request: NextRequest, path: string[]): Promise<Response> {
-  const apiUrl = process.env.API_URL ?? 'http://localhost:4000';
+  const apiUrl = apiBase();
   const target = new URL(`/v1/${path.map(encodeURIComponent).join('/')}`, apiUrl);
   target.search = request.nextUrl.search;
 

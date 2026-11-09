@@ -9,10 +9,26 @@ const envSchema = z
     JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
     OTP_PEPPER: z.string().min(32, 'OTP_PEPPER must be at least 32 characters'),
     WEB_ORIGIN: z.string().min(1),
-    /** console = print codes (dev); outbox = store codes in Redis for browser tests; termii = real SMS. */
-    SMS_PROVIDER: z.enum(['console', 'outbox', 'termii']).default('console'),
+    /**
+     * console = print codes (dev); outbox = store codes in Redis for browser tests;
+     * termii = real SMS; disabled = no SMS at all (a pilot where only demo accounts sign in).
+     */
+    SMS_PROVIDER: z.enum(['console', 'outbox', 'termii', 'disabled']).default('console'),
     SMS_API_KEY: z.string().optional(),
     SMS_SENDER_ID: z.string().default('GADMO'),
+    /** Termii's API address for your account (shown in the Termii dashboard). */
+    SMS_BASE_URL: z.string().default('https://api.ng.termii.com'),
+    /** Termii route: dnd reaches numbers on Do-Not-Disturb (needed for login codes). */
+    SMS_CHANNEL: z.enum(['dnd', 'generic']).default('dnd'),
+    /**
+     * Pilot and demos: the secret 6-digit code that signs in the reserved demo numbers
+     * (+234 700 000 0001-0099) only. Real numbers always need an SMS code.
+     */
+    DEMO_LOGIN_CODE: z
+      .string()
+      .regex(/^\d{6}$/, 'DEMO_LOGIN_CODE must be 6 digits')
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
     /**
      * test = GADMO's own test checkout (no money moves; refused in production);
      * paystack = real Paystack checkout (test or live keys).
@@ -65,11 +81,22 @@ const envSchema = z
       .or(z.literal('').transform(() => undefined)),
   })
   .superRefine((env, ctx) => {
-    if (env.NODE_ENV === 'production' && env.SMS_PROVIDER !== 'termii') {
+    if (
+      env.NODE_ENV === 'production' &&
+      env.SMS_PROVIDER !== 'termii' &&
+      env.SMS_PROVIDER !== 'disabled'
+    ) {
       ctx.addIssue({
         code: 'custom',
         path: ['SMS_PROVIDER'],
         message: `The ${env.SMS_PROVIDER} SMS provider exposes login codes and must never run in production`,
+      });
+    }
+    if (env.SMS_PROVIDER === 'termii' && !env.SMS_API_KEY) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['SMS_API_KEY'],
+        message: 'SMS_API_KEY (your Termii API key) is required when SMS_PROVIDER=termii',
       });
     }
     if (env.DEV_LOGIN_CODE && env.NODE_ENV !== 'development') {
