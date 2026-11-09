@@ -12,6 +12,7 @@ import {
   privateFiles,
   proCategories,
   proProfiles,
+  quotes,
   users,
   verifications,
 } from '../src/db/schema';
@@ -1632,7 +1633,7 @@ describe('quotes and the materials deposit', () => {
     expect(done.body.balanceKobo).toBe(1_500_000);
   });
 
-  it('repairs: quote after arriving; a deposit is paid in the app and held until work starts', async () => {
+  it('repairs: quote after arriving; a deposit is paid in the app, straight to the Pro', async () => {
     const { customer, pro, id } = await jobFor(electricianId, {
       status: 'INSPECTION_PAID',
       inspectionFeeKobo: 200_000,
@@ -1666,15 +1667,17 @@ describe('quotes and the materials deposit', () => {
     [row] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
     expect(row!.status).toBe('QUOTE_ACCEPTED');
     const entries = await ctx.db.select().from(ledgerEntries).where(eq(ledgerEntries.jobId, id));
-    expect(entries.find((e) => e.account === `escrow:job:${id}`)!.creditKobo).toBe(800_000);
+    // Straight to the Pro, to buy materials; nothing is held for it.
+    expect(entries.find((e) => e.account === `pro:${pro.userId}`)!.creditKobo).toBe(800_000);
+    expect(entries.some((e) => e.account === `escrow:job:${id}`)).toBe(false);
     const chat = await pro.agent.get(`/v1/jobs/${id}/messages`).expect(200);
     expect(chat.body.messages.at(-1).body).toBe(
-      'Quote of ₦20,000 accepted. Materials deposit of ₦8,000 paid: GADMO holds it until work starts.',
+      'Quote of ₦20,000 accepted. Materials deposit of ₦8,000 paid to the Pro for materials.',
     );
     await act(customer, quoteId, 'accept').expect(409);
   });
 
-  it('work: only the Pro starts it (the deposit is paid to them) and marks it done', async () => {
+  it('work: only the Pro starts it and marks it done; the balance is then due', async () => {
     const { customer, pro, id } = await jobFor(electricianId, {
       status: 'INSPECTION_PAID',
       inspectionFeeKobo: 300_000,
@@ -1705,9 +1708,9 @@ describe('quotes and the materials deposit', () => {
     const begun = await work(pro, 'start-work').expect(200);
     expect(begun.body).toMatchObject({
       job: { status: 'IN_PROGRESS' },
-      depositReleasedKobo: 1_000_000,
+      depositReleasedKobo: 0, // already in the Pro's wallet since it was paid
     });
-    await work(pro, 'start-work').expect(409); // the deposit is paid once
+    await work(pro, 'start-work').expect(409);
     const entries = await ctx.db.select().from(ledgerEntries).where(eq(ledgerEntries.jobId, id));
     const sum = (account: string) =>
       entries
@@ -1736,6 +1739,31 @@ describe('quotes and the materials deposit', () => {
     expect(convo.body.conversation.job).toMatchObject({ balanceKobo: 1_200_000 });
     expect(convo.body.conversation.job.startedAt).toBeTruthy();
     await stranger.agent.get(`/v1/jobs/${id}/messages`).expect(404);
+  });
+
+  it('a deposit GADMO was still holding from before is released when work starts', async () => {
+    const { pro, id } = await jobFor(electricianId, { status: 'QUOTE_ACCEPTED' });
+    await ctx.db.insert(quotes).values({
+      jobId: id,
+      amountKobo: 2_000_000,
+      depositKobo: 600_000,
+      description: 'Old quote',
+      status: 'ACCEPTED',
+      acceptedAt: new Date(),
+    });
+    const txnId = crypto.randomUUID();
+    await ctx.db.insert(ledgerEntries).values([
+      {
+        txnId,
+        account: 'gateway:test:clearing',
+        debitKobo: 600_000,
+        jobId: id,
+        description: 'Old',
+      },
+      { txnId, account: `escrow:job:${id}`, creditKobo: 600_000, jobId: id, description: 'Old' },
+    ]);
+    const begun = await pro.agent.post(`/v1/jobs/${id}/start-work`).set(CLIENT_HEADER).expect(200);
+    expect(begun.body.depositReleasedKobo).toBe(600_000);
   });
 });
 

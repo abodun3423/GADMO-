@@ -24,8 +24,9 @@ type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 /**
  * The work itself (PRD section 5), after the customer accepts a quote: the Pro taps
- * "Start work", which pays them any materials deposit GADMO was holding, then "Job done",
- * after which the balance (quote minus inspection fee minus deposit) is due.
+ * "Start work" so the customer can follow along, then "Job done", after which the balance
+ * (quote minus inspection fee minus deposit) is due. The materials deposit already reached
+ * the Pro when the customer paid it.
  */
 @Controller('jobs/:jobId')
 @UseGuards(JwtAuthGuard)
@@ -48,7 +49,15 @@ export class WorkController {
         );
       }
       const quote = await this.acceptedQuote(tx, jobId);
-      const deposit = quote.depositKobo;
+      // Deposits now go to the Pro as soon as they are paid. One paid earlier, while GADMO
+      // still held deposits until work started, is still in the job's escrow: release it.
+      const [held] = await tx
+        .select({
+          kobo: sql<string>`coalesce(sum(${ledgerEntries.creditKobo} - ${ledgerEntries.debitKobo}), 0)`,
+        })
+        .from(ledgerEntries)
+        .where(eq(ledgerEntries.account, `escrow:job:${jobId}`));
+      const deposit = Math.min(Number(held!.kobo), quote.depositKobo);
       if (deposit > 0) {
         const txnId = randomUUID();
         await tx.insert(ledgerEntries).values([

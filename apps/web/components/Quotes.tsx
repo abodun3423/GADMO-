@@ -153,8 +153,8 @@ function QuoteForm({
         <label htmlFor="quote-deposit">
           Materials deposit (₦, optional)
           <span className="hint">
-            Paid in GADMO when the customer accepts; released to you when you start work. At most
-            half the price.
+            Paid in GADMO when the customer accepts, straight into your wallet for materials. At
+            most half the price.
           </span>
         </label>
         <input
