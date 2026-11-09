@@ -1624,6 +1624,12 @@ describe('quotes and the materials deposit', () => {
     const card = chat.body.messages.find((m: { kind: string }) => m.kind === 'QUOTE');
     expect(card.quote).toMatchObject({ id: quoteId, amountKobo: 1_500_000 });
     expect(chat.body.quotes).toEqual([{ id: quoteId, status: 'ACCEPTED' }]);
+
+    // No deposit and no inspection fee: the whole quote is the balance.
+    const begun = await pro.agent.post(`/v1/jobs/${id}/start-work`).set(CLIENT_HEADER).expect(200);
+    expect(begun.body.depositReleasedKobo).toBe(0);
+    const done = await pro.agent.post(`/v1/jobs/${id}/work-done`).set(CLIENT_HEADER).expect(200);
+    expect(done.body.balanceKobo).toBe(1_500_000);
   });
 
   it('repairs: quote after arriving; a deposit is paid in the app and held until work starts', async () => {
@@ -1666,6 +1672,70 @@ describe('quotes and the materials deposit', () => {
       'Quote of ₦20,000 accepted. Materials deposit of ₦8,000 paid: GADMO holds it until work starts.',
     );
     await act(customer, quoteId, 'accept').expect(409);
+  });
+
+  it('work: only the Pro starts it (the deposit is paid to them) and marks it done', async () => {
+    const { customer, pro, id } = await jobFor(electricianId, {
+      status: 'INSPECTION_PAID',
+      inspectionFeeKobo: 300_000,
+      arrivedAt: new Date(),
+    });
+    const stranger = await login(ctx, { role: 'pro' });
+    const work = (who: Who, step: 'start-work' | 'work-done') =>
+      who.agent.post(`/v1/jobs/${id}/${step}`).set(CLIENT_HEADER).send();
+
+    await work(pro, 'start-work').expect(409); // no accepted quote yet
+    const sent = await quote(pro, id, {
+      amountKobo: 2_500_000,
+      depositKobo: 1_000_000,
+      description: 'Replace the distribution board',
+    }).expect(201);
+    const started = await act(customer, sent.body.quote.id, 'accept').expect(200);
+    await customer.agent
+      .post(`/v1/payments/test/${started.body.payment.reference}/complete`)
+      .set(CLIENT_HEADER)
+      .send({ outcome: 'success' })
+      .expect(200);
+
+    await work(customer, 'start-work').expect(403);
+    await work(stranger, 'start-work').expect(404);
+    await pro.agent.post(`/v1/jobs/${id}/start-work`).send().expect(403); // CSRF
+    await work(pro, 'work-done').expect(409); // not started
+
+    const begun = await work(pro, 'start-work').expect(200);
+    expect(begun.body).toMatchObject({
+      job: { status: 'IN_PROGRESS' },
+      depositReleasedKobo: 1_000_000,
+    });
+    await work(pro, 'start-work').expect(409); // the deposit is paid once
+    const entries = await ctx.db.select().from(ledgerEntries).where(eq(ledgerEntries.jobId, id));
+    const sum = (account: string) =>
+      entries
+        .filter((e) => e.account === account)
+        .reduce((n, e) => n + e.creditKobo - e.debitKobo, 0);
+    expect(sum(`escrow:job:${id}`)).toBe(0);
+    expect(sum(`pro:${pro.userId}`)).toBe(1_000_000);
+
+    await work(customer, 'work-done').expect(403);
+    await work(stranger, 'work-done').expect(404);
+    const finished = await work(pro, 'work-done').expect(200);
+    // ₦25,000 quote − ₦3,000 inspection fee − ₦10,000 deposit.
+    expect(finished.body).toMatchObject({
+      job: { status: 'DONE_AWAITING_PAYMENT' },
+      balanceKobo: 1_200_000,
+    });
+    expect(finished.body.job.doneAt).toBeTruthy();
+    await work(pro, 'work-done').expect(409);
+
+    const chat = await customer.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+    expect(chat.body.work).toMatchObject({ balanceKobo: 1_200_000 });
+    expect(chat.body.messages.at(-1).body).toBe(
+      'Your Pro marked the job done. Balance to pay: ₦12,000.',
+    );
+    const convo = await customer.agent.get(`/v1/jobs/${id}/conversation`).expect(200);
+    expect(convo.body.conversation.job).toMatchObject({ balanceKobo: 1_200_000 });
+    expect(convo.body.conversation.job.startedAt).toBeTruthy();
+    await stranger.agent.get(`/v1/jobs/${id}/messages`).expect(404);
   });
 });
 

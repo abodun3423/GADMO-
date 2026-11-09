@@ -16,6 +16,7 @@ import type {
 } from '@/lib/types';
 import { InspectionPanel, OfferCard } from './InspectionFee';
 import { QuoteCard, QuotePanel } from './Quotes';
+import { WorkPanel } from './Work';
 import { useSession } from '@/lib/useSession';
 
 /** New messages are checked for every few seconds while the chat is on screen. */
@@ -99,7 +100,10 @@ export function JobChat({ jobId }: { jobId: string }) {
         (c.job.inspectionFeeKobo !== res.inspectionFeeKobo ||
           c.job.status !== res.jobStatus ||
           c.job.onTheWayAt !== res.visit.onTheWayAt ||
-          c.job.arrivedAt !== res.visit.arrivedAt)
+          c.job.arrivedAt !== res.visit.arrivedAt ||
+          c.job.startedAt !== res.work.startedAt ||
+          c.job.doneAt !== res.work.doneAt ||
+          c.job.balanceKobo !== res.work.balanceKobo)
           ? {
               ...c,
               job: {
@@ -107,6 +111,7 @@ export function JobChat({ jobId }: { jobId: string }) {
                 inspectionFeeKobo: res.inspectionFeeKobo,
                 status: res.jobStatus,
                 ...res.visit,
+                ...res.work,
                 // The code is used up once the Pro has arrived.
                 arrivalCode: res.visit.arrivedAt ? null : c.job.arrivalCode,
               },
@@ -233,6 +238,7 @@ export function JobChat({ jobId }: { jobId: string }) {
                 />
               )}
               {convo.open && <QuotePanel convo={convo} onChanged={poll} />}
+              {convo.open && <WorkPanel convo={convo} onChanged={poll} />}
 
               <p className="chat-rule">
                 Keep all messages and payments in GADMO. Phone numbers, emails and links are hidden

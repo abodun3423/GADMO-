@@ -38,7 +38,7 @@ type Agent = Awaited<ReturnType<typeof login>>;
  * earlier runs against the same database) are almost never within range of this test's job.
  */
 function somewhere() {
-  return { latitude: -20 - Math.random() * 40, longitude: -50 - Math.random() * 100 };
+  return { latitude: -20 - Math.random() * 40, longitude: -75 - Math.random() * 95 };
 }
 
 const north = (base: { latitude: number; longitude: number }, km: number) => ({

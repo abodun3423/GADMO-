@@ -193,6 +193,11 @@ export interface Conversation {
     inspectionFeeKobo: number | null;
     onTheWayAt: string | null;
     arrivedAt: string | null;
+    /** When the Pro started the work, and marked it done. */
+    startedAt: string | null;
+    doneAt: string | null;
+    /** From the accepted quote: quote − inspection fee paid − deposit. Null before a quote is accepted. */
+    balanceKobo: number | null;
     /** Customer only, after paying the inspection fee and until the Pro arrives. */
     arrivalCode: string | null;
   };
@@ -241,6 +246,7 @@ export interface MessagesResponse {
   inspectionFeeKobo: number | null;
   jobStatus: JobStatus;
   visit: { onTheWayAt: string | null; arrivedAt: string | null };
+  work: { startedAt: string | null; doneAt: string | null; balanceKobo: number | null };
   call: { id: string; status: 'RINGING' | 'ACTIVE'; you: 'CALLER' | 'CALLEE' } | null;
 }
 

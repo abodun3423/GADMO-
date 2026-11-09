@@ -57,6 +57,22 @@ test('the Pro quotes with a deposit; the customer declines, then accepts and pay
   await expect(proPage.getByText('Quote accepted.', { exact: true })).toBeVisible({
     timeout: 10_000,
   });
+
+  // The Pro starts the work (the deposit is paid to them), then marks it done.
+  await proPage.getByRole('button', { name: 'Start work' }).click();
+  await expect(proPage.locator('.chat-event').last()).toContainText(
+    'The materials deposit of ₦10,000 is now paid to the Pro.',
+  );
+  await expect(page.getByText('Work in progress.', { exact: true })).toBeVisible({
+    timeout: 10_000,
+  });
+  await proPage.getByRole('button', { name: 'Job done' }).click();
+  await expect(proPage.getByText(/pay the ₦18,000 balance/)).toBeVisible();
+  await proPage.getByRole('button', { name: 'Yes, the job is done' }).click();
+  await expect(proPage.getByText('The customer pays the ₦18,000 balance next.')).toBeVisible();
+  await expect(page.locator('.fee-panel')).toContainText('Balance to pay: ₦18,000.', {
+    timeout: 10_000,
+  });
   await proContext.close();
   noCspViolations();
 });

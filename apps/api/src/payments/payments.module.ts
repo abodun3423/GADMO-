@@ -7,6 +7,7 @@ import { PaymentsService } from './payments.service';
 import { QuotesController } from '../quotes/quotes.controller';
 import { AdminWithdrawalsController, WalletController } from '../wallet/wallet.controller';
 import { WalletService } from '../wallet/wallet.service';
+import { WorkController } from '../work/work.controller';
 
 @Module({
   imports: [AuthModule],
@@ -28,6 +29,7 @@ import { WalletService } from '../wallet/wallet.service';
     QuotesController,
     WalletController,
     AdminWithdrawalsController,
+    WorkController,
   ],
 })
 export class PaymentsModule {}
