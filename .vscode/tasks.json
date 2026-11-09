@@ -1,0 +1,45 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "GADMO: check my setup",
+      "type": "shell",
+      "command": "pnpm check-setup",
+      "problemMatcher": []
+    },
+    {
+      "label": "GADMO: start database and Redis",
+      "type": "shell",
+      "command": "pnpm services:up",
+      "problemMatcher": []
+    },
+    {
+      "label": "GADMO: update after git pull",
+      "type": "shell",
+      "command": "git pull && pnpm update:local",
+      "problemMatcher": []
+    },
+    {
+      "label": "GADMO: run (API + web)",
+      "type": "shell",
+      "command": "pnpm dev",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "group": "gadmo" }
+    },
+    {
+      "label": "GADMO: run all checks",
+      "type": "shell",
+      "command": "pnpm check",
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "GADMO: browser tests",
+      "type": "shell",
+      "command": "pnpm test:e2e",
+      "group": "test",
+      "problemMatcher": []
+    }
+  ]
+}

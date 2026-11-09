@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "pnpm --filter @gadmo/shared build && turbo run dev --filter=@gadmo/api --filter=@gadmo/web",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
@@ -21,7 +21,13 @@
     "demo": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api demo",
     "dev:web": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/web dev",
     "pro:approve": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api pro:approve",
-    "admin:grant": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api admin:grant"
+    "admin:grant": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api admin:grant",
+    "services:up": "docker compose up -d --wait",
+    "services:down": "docker compose stop",
+    "update:local": "pnpm install && pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api db:migrate && pnpm --filter @gadmo/api db:seed",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm test:integration",
+    "test:e2e": "pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/web build && pnpm --filter @gadmo/web test:e2e",
+    "check-setup": "pnpm --filter @gadmo/api check-setup"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
