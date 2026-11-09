@@ -7,8 +7,15 @@ import { ChatTools, MessageBody } from './ChatTools';
 import Link from 'next/link';
 import { type FormEvent, Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, fieldMessage, post } from '@/lib/api';
-import type { ChatMessage, Conversation, MessagesResponse, OfferStatus } from '@/lib/types';
+import type {
+  ChatMessage,
+  Conversation,
+  MessagesResponse,
+  OfferStatus,
+  QuoteStatus,
+} from '@/lib/types';
 import { InspectionPanel, OfferCard } from './InspectionFee';
+import { QuoteCard, QuotePanel } from './Quotes';
 import { useSession } from '@/lib/useSession';
 
 /** New messages are checked for every few seconds while the chat is on screen. */
@@ -52,6 +59,7 @@ export function JobChat({ jobId }: { jobId: string }) {
   const [convo, setConvo] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [offerStatus, setOfferStatus] = useState<Record<string, OfferStatus>>({});
+  const [quoteStatus, setQuoteStatus] = useState<Record<string, QuoteStatus>>({});
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -84,6 +92,7 @@ export function JobChat({ jobId }: { jobId: string }) {
         lastSeq.current = newest;
       }
       setOfferStatus(Object.fromEntries(res.offers.map((o) => [o.id, o.status])));
+      setQuoteStatus(Object.fromEntries(res.quotes.map((q) => [q.id, q.status])));
       setLiveCall(res.call);
       setConvo((c) =>
         c &&
@@ -223,6 +232,7 @@ export function JobChat({ jobId }: { jobId: string }) {
                   onChanged={poll}
                 />
               )}
+              {convo.open && <QuotePanel convo={convo} onChanged={poll} />}
 
               <p className="chat-rule">
                 Keep all messages and payments in GADMO. Phone numbers, emails and links are hidden
@@ -248,6 +258,14 @@ export function JobChat({ jobId }: { jobId: string }) {
                         message={m}
                         status={offerStatus[m.offer.id] ?? m.offer.status}
                         canAnswer={!m.mine && convo.open && convo.job.inspectionFeeKobo === null}
+                        onChanged={poll}
+                      />
+                    ) : m.kind === 'QUOTE' && m.quote ? (
+                      <QuoteCard
+                        message={m}
+                        quote={m.quote}
+                        status={quoteStatus[m.quote.id] ?? m.quote.status}
+                        convo={convo}
                         onChanged={poll}
                       />
                     ) : m.kind === 'EVENT' ? (

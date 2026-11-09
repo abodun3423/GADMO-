@@ -241,3 +241,33 @@ export const withdrawalSchema = z
   })
   .strict();
 export type WithdrawalInput = z.infer<typeof withdrawalSchema>;
+
+/** The largest quote GADMO takes in the app (₦10,000,000). */
+export const MAX_QUOTE_KOBO = 1_000_000_000;
+
+/**
+ * A Pro's quote: the whole job price (the inspection fee already paid counts toward it), an
+ * optional materials deposit of at most half, and what it covers. Whole naira only.
+ */
+export const quoteSchema = z
+  .object({
+    amountKobo: z
+      .number()
+      .int()
+      .min(100, 'Enter the price in naira.')
+      .max(MAX_QUOTE_KOBO, 'Quotes above ₦10,000,000 can’t be paid in GADMO yet.')
+      .refine((v) => v % 100 === 0, 'Use whole naira.'),
+    depositKobo: z
+      .number()
+      .int()
+      .min(0)
+      .refine((v) => v % 100 === 0, 'Use whole naira.')
+      .default(0),
+    description: z.string().trim().min(5, 'Say what the price covers.').max(1000),
+  })
+  .strict()
+  .refine((q) => q.depositKobo * 2 <= q.amountKobo, {
+    message: 'The deposit can be at most half the quote.',
+    path: ['depositKobo'],
+  });
+export type QuoteInput = z.infer<typeof quoteSchema>;

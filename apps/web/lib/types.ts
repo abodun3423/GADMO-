@@ -210,7 +210,7 @@ export interface ChatMessage {
    * TEXT, OFFER (an inspection-fee offer card), EVENT (e.g. "fee agreed"), PHOTO or VOICE
    * (fileId), or LOCATION (latitude, longitude).
    */
-  kind: 'TEXT' | 'OFFER' | 'EVENT' | 'PHOTO' | 'VOICE' | 'LOCATION';
+  kind: 'TEXT' | 'OFFER' | 'EVENT' | 'PHOTO' | 'VOICE' | 'LOCATION' | 'QUOTE';
   body: string;
   /** Order of arrival (a database counter): the chat is sorted by this, never by the clock. */
   seq: number;
@@ -221,11 +221,23 @@ export interface ChatMessage {
   createdAt: string;
   mine: boolean;
   offer: { id: string; amountKobo: number; note: string | null; status: OfferStatus } | null;
+  quote: Quote | null;
+}
+
+export type QuoteStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'WITHDRAWN';
+
+export interface Quote {
+  id: string;
+  amountKobo: number;
+  depositKobo: number;
+  description: string;
+  status: QuoteStatus;
 }
 
 export interface MessagesResponse {
   messages: ChatMessage[];
   offers: { id: string; status: OfferStatus }[];
+  quotes: { id: string; status: QuoteStatus }[];
   inspectionFeeKobo: number | null;
   jobStatus: JobStatus;
   visit: { onTheWayAt: string | null; arrivedAt: string | null };

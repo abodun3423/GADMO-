@@ -124,6 +124,7 @@ export function InspectionPanel({
 }) {
   const { job, you } = convo;
   if (job.inspectionPolicy === 'NONE') {
+    if (job.status !== 'ACCEPTED') return null;
     return (
       <p className="fee-panel">
         No inspection fee for this service.{' '}
@@ -146,6 +147,8 @@ export function InspectionPanel({
     }
     return <PayInspectionFee jobId={job.id} fee={fee} />;
   }
+  // Quoted without an inspection: nothing more to agree here.
+  if (job.status !== 'ACCEPTED') return null;
   if (pending) {
     return <p className="fee-panel">An inspection-fee offer is waiting for an answer below.</p>;
   }

@@ -127,6 +127,13 @@
       "when": 1793891360425,
       "tag": "0017_drop_unused_payouts",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794213276729,
+      "tag": "0018_quotes",
+      "breakpoints": true
     }
   ]
 }

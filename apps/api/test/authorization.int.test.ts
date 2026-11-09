@@ -1557,6 +1557,118 @@ describe('paying the inspection fee (test checkout)', () => {
   });
 });
 
+describe('quotes and the materials deposit', () => {
+  type Who = Awaited<ReturnType<typeof login>>;
+  async function jobFor(categoryId: string, patch: Partial<typeof jobs.$inferInsert> = {}) {
+    const customer = await login(ctx);
+    const pro = await login(ctx, { role: 'pro' });
+    const created = await customer.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(
+        newJob(categoryId, {
+          type: 'SCHEDULED',
+          scheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
+          latitude: 2 + Math.random(),
+          longitude: 2 + Math.random(),
+        }),
+      )
+      .expect(201);
+    const id = created.body.job.id as string;
+    await ctx.db
+      .update(jobs)
+      .set({ proId: pro.userId, status: 'ACCEPTED', ...patch })
+      .where(eq(jobs.id, id));
+    return { customer, pro, id };
+  }
+  const quote = (who: Who, id: string, body: object) =>
+    who.agent.post(`/v1/jobs/${id}/quotes`).set(CLIENT_HEADER).send(body);
+  const act = (who: Who, quoteId: string, action: 'accept' | 'decline' | 'withdraw') =>
+    who.agent.post(`/v1/quotes/${quoteId}/${action}`).set(CLIENT_HEADER).send();
+
+  it('services without an inspection: the Pro quotes, the customer accepts; nobody else can', async () => {
+    const [none] = await ctx.db
+      .select()
+      .from(categories)
+      .where(and(eq(categories.inspectionPolicy, 'NONE'), isNotNull(categories.parentId)))
+      .limit(1);
+    const { customer, pro, id } = await jobFor(none!.id);
+    const body = { amountKobo: 1_500_000, description: 'Wedding cake, 3 tiers. Call 08031234567' };
+    await quote(customer, id, body).expect(403);
+    const stranger = await login(ctx, { role: 'pro' });
+    await quote(stranger, id, body).expect(404);
+    await quote(pro, id, { ...body, depositKobo: 800_000 }).expect(400); // over half
+    await quote(pro, id, { ...body, amountKobo: 1_500_050 }).expect(400); // whole naira
+    await pro.agent.post(`/v1/jobs/${id}/quotes`).send(body).expect(403); // CSRF
+
+    const sent = await quote(pro, id, body).expect(201);
+    expect(sent.body.quote).toMatchObject({
+      amountKobo: 1_500_000,
+      depositKobo: 0,
+      status: 'PENDING',
+    });
+    expect(sent.body.quote.description).not.toContain('08031234567');
+    await quote(pro, id, body).expect(409); // one at a time
+    const quoteId = sent.body.quote.id as string;
+
+    await act(pro, quoteId, 'accept').expect(403);
+    await act(stranger, quoteId, 'accept').expect(404);
+    await act(customer, quoteId, 'withdraw').expect(403);
+    const accepted = await act(customer, quoteId, 'accept').expect(200);
+    expect(accepted.body.quote.status).toBe('ACCEPTED');
+    await act(customer, quoteId, 'decline').expect(409);
+    const [row] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(row!.status).toBe('QUOTE_ACCEPTED');
+
+    const chat = await customer.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+    const card = chat.body.messages.find((m: { kind: string }) => m.kind === 'QUOTE');
+    expect(card.quote).toMatchObject({ id: quoteId, amountKobo: 1_500_000 });
+    expect(chat.body.quotes).toEqual([{ id: quoteId, status: 'ACCEPTED' }]);
+  });
+
+  it('repairs: quote after arriving; a deposit is paid in the app and held until work starts', async () => {
+    const { customer, pro, id } = await jobFor(electricianId, {
+      status: 'INSPECTION_PAID',
+      inspectionFeeKobo: 200_000,
+    });
+    const body = { amountKobo: 2_000_000, depositKobo: 800_000, description: 'Rewire the kitchen' };
+    await quote(pro, id, body).expect(409); // not arrived yet
+    await ctx.db.update(jobs).set({ arrivedAt: new Date() }).where(eq(jobs.id, id));
+    await quote(pro, id, { ...body, amountKobo: 100_000, depositKobo: 0 }).expect(422); // below the fee
+
+    // Declined, then a new quote; the Pro can also withdraw one.
+    const first = await quote(pro, id, body).expect(201);
+    await act(customer, first.body.quote.id, 'decline').expect(200);
+    let [row] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(row!.status).toBe('INSPECTION_PAID');
+    const second = await quote(pro, id, body).expect(201);
+    await act(pro, second.body.quote.id, 'withdraw').expect(200);
+    const third = await quote(pro, id, body).expect(201);
+    const quoteId = third.body.quote.id as string;
+
+    const started = await act(customer, quoteId, 'accept').expect(200);
+    const ref = started.body.payment.reference as string;
+    expect(started.body.payment.authorizationUrl).toContain('/pay/test?reference=');
+    [row] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(row!.status).toBe('QUOTED'); // accepted only once the deposit is paid
+
+    await customer.agent
+      .post(`/v1/payments/test/${ref}/complete`)
+      .set(CLIENT_HEADER)
+      .send({ outcome: 'success' })
+      .expect(200);
+    [row] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(row!.status).toBe('QUOTE_ACCEPTED');
+    const entries = await ctx.db.select().from(ledgerEntries).where(eq(ledgerEntries.jobId, id));
+    expect(entries.find((e) => e.account === `escrow:job:${id}`)!.creditKobo).toBe(800_000);
+    const chat = await pro.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+    expect(chat.body.messages.at(-1).body).toBe(
+      'Quote of ₦20,000 accepted. Materials deposit of ₦8,000 paid: GADMO holds it until work starts.',
+    );
+    await act(customer, quoteId, 'accept').expect(409);
+  });
+});
+
 describe('staff: why a job reaches (or misses) Pros', () => {
   it('only staff can see it; each matching rule is shown per Pro', async () => {
     const customer = await login(ctx);

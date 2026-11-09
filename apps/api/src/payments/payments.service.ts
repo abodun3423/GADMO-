@@ -11,7 +11,7 @@ import { formatNaira } from '@gadmo/shared';
 import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import { AlertsService } from '../alerts/alerts.service';
 import { ENV, type Env } from '../config/env';
-import { categories, jobs, ledgerEntries, messages, payments } from '../db/schema';
+import { categories, jobs, ledgerEntries, messages, payments, quotes } from '../db/schema';
 import type { FieldCrypto } from '../common/field-crypto';
 import { DB, type Db, FIELD_CRYPTO } from '../infra/infra.module';
 import { PAYMENT_GATEWAY, type PaymentGateway } from './gateway';
@@ -20,6 +20,8 @@ import { PAYMENT_GATEWAY, type PaymentGateway } from './gateway';
 const CHECKOUT_REUSE_MINUTES = 30;
 
 export const REFERENCE_PATTERN = /^gadmo_[0-9a-f]{32}$/;
+
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 export interface PaymentView {
   reference: string;
@@ -56,7 +58,7 @@ export class PaymentsService {
 
   /** The customer starts paying the agreed inspection fee. Returns the checkout page. */
   async startInspectionFee(customerId: string, jobId: string) {
-    const prepared = await this.db.transaction(async (tx) => {
+    return this.checkout(customerId, jobId, 'INSPECTION_FEE', async (tx) => {
       const [job] = await tx
         .select({
           status: jobs.status,
@@ -80,18 +82,61 @@ export class PaymentsService {
       if (job.status !== 'ACCEPTED') {
         throw new ConflictException('The inspection fee can’t be paid at this stage.');
       }
-      const amountKobo = job.inspectionFeeKobo;
+      return { amountKobo: job.inspectionFeeKobo, quoteId: null };
+    });
+  }
 
+  /** The customer accepts a quote by paying its materials deposit. */
+  async startDeposit(customerId: string, quoteId: string) {
+    const [found] = await this.db
+      .select({ jobId: quotes.jobId })
+      .from(quotes)
+      .innerJoin(jobs, eq(jobs.id, quotes.jobId))
+      .where(and(eq(quotes.id, quoteId), eq(jobs.customerId, customerId)));
+    if (!found) throw new NotFoundException();
+    return this.checkout(customerId, found.jobId, 'DEPOSIT', async (tx) => {
+      const [job] = await tx
+        .select({ status: jobs.status })
+        .from(jobs)
+        .where(eq(jobs.id, found.jobId))
+        .for('update');
+      const [quote] = await tx
+        .select({ status: quotes.status, depositKobo: quotes.depositKobo })
+        .from(quotes)
+        .where(eq(quotes.id, quoteId));
+      if (quote!.status !== 'PENDING' || job!.status !== 'QUOTED') {
+        throw new ConflictException('This quote can no longer be accepted.');
+      }
+      if (quote!.depositKobo <= 0) {
+        throw new ConflictException('This quote has no deposit to pay.');
+      }
+      return { amountKobo: quote!.depositKobo, quoteId };
+    });
+  }
+
+  /**
+   * Creates (or reuses, within CHECKOUT_REUSE_MINUTES) a pending payment and its checkout
+   * page. `prepare` checks the job inside the transaction and says how much to charge.
+   */
+  private async checkout(
+    customerId: string,
+    jobId: string,
+    type: 'INSPECTION_FEE' | 'DEPOSIT',
+    prepare: (tx: Tx) => Promise<{ amountKobo: number; quoteId: string | null }>,
+  ) {
+    const prepared = await this.db.transaction(async (tx) => {
+      const { amountKobo, quoteId } = await prepare(tx);
       const [recent] = await tx
         .select({ reference: payments.paystackReference, checkoutUrl: payments.checkoutUrl })
         .from(payments)
         .where(
           and(
             eq(payments.jobId, jobId),
-            eq(payments.type, 'INSPECTION_FEE'),
+            eq(payments.type, type),
             eq(payments.status, 'PENDING'),
             eq(payments.amountKobo, amountKobo),
             eq(payments.gateway, this.gateway.name),
+            quoteId ? eq(payments.quoteId, quoteId) : undefined,
             gt(payments.createdAt, sql`now() - make_interval(mins => ${CHECKOUT_REUSE_MINUTES})`),
           ),
         )
@@ -104,10 +149,11 @@ export class PaymentsService {
       const reference = `gadmo_${randomUUID().replace(/-/g, '')}`;
       await tx.insert(payments).values({
         jobId,
-        type: 'INSPECTION_FEE',
+        type,
         method: 'APP',
         paystackReference: reference,
         amountKobo,
+        quoteId,
         gateway: this.gateway.name,
       });
       return { reference, amountKobo, reuse: false };
@@ -125,7 +171,7 @@ export class PaymentsService {
         // so it sends a private alias instead.
         email: `customer-${customerId}@pay.gadmo.ng`,
         callbackUrl: new URL('/pay/return', this.env.WEB_ORIGIN).toString(),
-        metadata: { jobId, type: 'INSPECTION_FEE' },
+        metadata: { jobId, type },
       });
       await this.db
         .update(payments)
@@ -160,13 +206,19 @@ export class PaymentsService {
    */
   async confirm(reference: string): Promise<PaymentView | null> {
     const check = await this.gateway.verify(reference);
-    let paidJob: { id: string; proId: string | null; amount: number } | null = null;
+    let paidJob: {
+      id: string;
+      proId: string | null;
+      amount: number;
+      type: 'INSPECTION_FEE' | 'DEPOSIT';
+    } | null = null;
     const result = await this.db.transaction(async (tx) => {
       const [payment] = await tx
         .select({
           id: payments.id,
           ...paymentView,
           gateway: payments.gateway,
+          quoteId: payments.quoteId,
         })
         .from(payments)
         .where(eq(payments.paystackReference, reference))
@@ -213,7 +265,29 @@ export class PaymentsService {
         .from(jobs)
         .where(eq(jobs.id, payment.jobId))
         .for('update');
-      const counts = payment.type === 'INSPECTION_FEE' && job!.status === 'ACCEPTED';
+      // Does the payment still do what it was for? If not (paid twice, the quote was
+      // withdrawn, the job moved on) it is owed back to the customer.
+      let quote:
+        { id: string; status: string; depositKobo: number; amountKobo: number } | undefined;
+      if (payment.type === 'DEPOSIT' && payment.quoteId) {
+        [quote] = await tx
+          .select({
+            id: quotes.id,
+            status: quotes.status,
+            depositKobo: quotes.depositKobo,
+            amountKobo: quotes.amountKobo,
+          })
+          .from(quotes)
+          .where(eq(quotes.id, payment.quoteId))
+          .for('update');
+      }
+      const counts =
+        payment.type === 'INSPECTION_FEE'
+          ? job!.status === 'ACCEPTED'
+          : payment.type === 'DEPOSIT' &&
+            job!.status === 'QUOTED' &&
+            quote?.status === 'PENDING' &&
+            quote.depositKobo === payment.amountKobo;
       const txnId = randomUUID();
       const amount = payment.amountKobo;
       await tx.insert(ledgerEntries).values([
@@ -226,17 +300,17 @@ export class PaymentsService {
         },
         {
           txnId,
-          // Held by GADMO until the Pro arrives; a payment that no longer applies
-          // (paid twice, or the job moved on) is owed back to the customer.
           account: counts ? `escrow:job:${job!.id}` : `refund-due:customer:${job!.customerId}`,
           creditKobo: amount,
           jobId: job!.id,
-          description: counts
-            ? 'Inspection fee held until the Pro arrives'
-            : 'Refund: a payment that was no longer needed',
+          description: !counts
+            ? 'Refund: a payment that was no longer needed'
+            : payment.type === 'DEPOSIT'
+              ? 'Materials deposit held until work starts'
+              : 'Inspection fee held until the Pro arrives',
         },
       ]);
-      if (counts) {
+      if (counts && payment.type === 'INSPECTION_FEE') {
         // The customer gives this code to the Pro on arrival; it releases the fee.
         const arrivalCode = String(randomInt(0, 10_000)).padStart(4, '0');
         await tx
@@ -252,26 +326,55 @@ export class PaymentsService {
           kind: 'EVENT',
           body: `Inspection fee paid: ${naira(amount)}. GADMO holds it until the Pro arrives and enters the customer’s arrival code.`,
         });
-        paidJob = { id: job!.id, proId: job!.proId, amount };
+        paidJob = { id: job!.id, proId: job!.proId, amount, type: 'INSPECTION_FEE' };
+      } else if (counts && quote) {
+        await tx
+          .update(quotes)
+          .set({ status: 'ACCEPTED', acceptedAt: sql`now()`, respondedAt: sql`now()` })
+          .where(eq(quotes.id, quote.id));
+        await tx.update(jobs).set({ status: 'QUOTE_ACCEPTED' }).where(eq(jobs.id, job!.id));
+        await tx.insert(messages).values({
+          jobId: job!.id,
+          senderId: job!.customerId,
+          kind: 'EVENT',
+          body: `Quote of ${naira(quote.amountKobo)} accepted. Materials deposit of ${naira(amount)} paid: GADMO holds it until work starts.`,
+        });
+        paidJob = { id: job!.id, proId: job!.proId, amount, type: 'DEPOSIT' };
       } else {
         this.log.warn(`Payment ${reference} no longer applies to job ${job!.id}; refund due`);
         await tx.insert(messages).values({
           jobId: job!.id,
           senderId: job!.customerId,
           kind: 'EVENT',
-          body: `A second payment of ${naira(amount)} was received. GADMO will refund it.`,
+          body: `A payment of ${naira(amount)} was no longer needed. It has been added to your GADMO wallet as a refund.`,
         });
       }
       return view();
     });
-    const paid = paidJob as { id: string; proId: string | null; amount: number } | null;
+    const paid = paidJob as {
+      id: string;
+      proId: string | null;
+      amount: number;
+      type: 'INSPECTION_FEE' | 'DEPOSIT';
+    } | null;
     if (paid?.proId) {
-      this.alerts.send(paid.proId, {
-        title: 'Inspection fee paid',
-        body: `The customer paid the inspection fee (${naira(paid.amount)}). Tap “I’m on my way” in the job chat when you set off.`,
-        url: `/jobs/${paid.id}`,
-        tag: `job-${paid.id}`,
-      });
+      this.alerts.send(
+        paid.proId,
+        paid.type === 'DEPOSIT'
+          ? {
+              title: 'Quote accepted',
+              body: `The customer accepted your quote and paid the ${naira(paid.amount)} materials deposit. It’s released to you when you start work.`,
+              url: `/jobs/${paid.id}`,
+              tag: `job-${paid.id}`,
+            }
+          : {
+              title: 'Inspection fee paid',
+              body: `The customer paid the inspection fee (${naira(paid.amount)}). Tap “I’m on my way” in the job chat when you set off.`,
+              url: `/jobs/${paid.id}`,
+              tag: `job-${paid.id}`,
+            },
+        { sms: paid.type === 'DEPOSIT' },
+      );
     }
     return result;
   }
