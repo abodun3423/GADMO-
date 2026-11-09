@@ -41,11 +41,14 @@ services:
     buildCommand: >-
       corepack enable && pnpm install --frozen-lockfile --prod=false &&
       pnpm --filter @gadmo/shared build && pnpm --filter @gadmo/api build
-    # Free plans have no pre-deploy step, so database changes, the service catalogue and the
-    # demo people are applied each time the API starts (all safe to repeat).
+    # Free plans have no pre-deploy step, so database changes run each time the API starts.
+    # To wake quickly from sleep, the API then starts straight away while the service
+    # catalogue and demo people are refreshed in the background (all safe to repeat).
     startCommand: >-
-      pnpm --filter @gadmo/api db:migrate && pnpm --filter @gadmo/api db:seed &&
-      (pnpm --filter @gadmo/api demo:data || true) && pnpm --filter @gadmo/api start
+      cd apps/api && ./node_modules/.bin/tsx src/db/migrate.ts &&
+      { (./node_modules/.bin/tsx src/db/seed.ts &&
+      node -r @swc-node/register scripts/demo-data.ts || true) & } &&
+      exec node dist/main.js
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION

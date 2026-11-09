@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
 import { serviceNote } from '@/lib/catalogue';
 import { HERO_PHOTOS } from '@/lib/images';
 import type { Category, CategoryGroup } from '@/lib/types';
@@ -17,6 +18,44 @@ function ServiceLink({ category }: { category: Category }) {
         <span className="service-note">{serviceNote(category)}</span>
       </Link>
     </li>
+  );
+}
+
+/** How long the page keeps asking for the services before showing an error. */
+const WAKE_TRIES = 12;
+
+/**
+ * Shown while the services can't be loaded. On free hosting GADMO sleeps when idle and can
+ * take a minute or two to wake, so the page asks again by itself before giving up.
+ */
+function Waking() {
+  const router = useRouter();
+  const [tries, setTries] = useState(0);
+  const givenUp = tries >= WAKE_TRIES;
+
+  useEffect(() => {
+    if (givenUp) return;
+    const timer = setTimeout(() => {
+      setTries((n) => n + 1);
+      router.refresh();
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [tries, givenUp, router]);
+
+  if (!givenUp) {
+    return (
+      <div className="alert alert-info" role="status">
+        <p>GADMO is waking up. Your services will appear here in a moment…</p>
+      </div>
+    );
+  }
+  return (
+    <div className="alert alert-error" role="alert">
+      <p>Services could not be loaded. Check your connection, then try again.</p>
+      <a className="button button-small" href="/">
+        Try again
+      </a>
+    </div>
   );
 }
 
@@ -73,15 +112,7 @@ export function Catalogue({ groups }: { groups: CategoryGroup[] | null }) {
 
       <div className="page page-wide home">
         {groups === null ? (
-          <div className="alert alert-error" role="alert">
-            <p>
-              Services could not be loaded. GADMO may be waking up: wait a few seconds and try
-              again.
-            </p>
-            <a className="button button-small" href="/">
-              Try again
-            </a>
-          </div>
+          <Waking />
         ) : q ? (
           <section aria-live="polite" className="search-results">
             <h2 className="section-title">
