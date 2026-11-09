@@ -33,8 +33,12 @@ beforeEach(async () => {
 type Agent = Awaited<ReturnType<typeof login>>;
 
 /** A random spot in Nigeria for each test, so Pros from other tests are never nearby. */
+/**
+ * A random spot in a wide area no other test file uses, so Pros made by other tests (or
+ * earlier runs against the same database) are almost never within range of this test's job.
+ */
 function somewhere() {
-  return { latitude: 5 + Math.random() * 7, longitude: 4 + Math.random() * 8 };
+  return { latitude: -20 - Math.random() * 40, longitude: -50 - Math.random() * 100 };
 }
 
 const north = (base: { latitude: number; longitude: number }, km: number) => ({
