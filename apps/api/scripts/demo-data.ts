@@ -6,8 +6,8 @@
  *   pnpm demo:data --remove remove them again
  *
  * Demo Pros use the reserved numbers +234 700 000 0001–0099 (no real person has them)
- * and can sign in like anyone else, so you can show the Pro side too. Refuses to run
- * unless NODE_ENV=development.
+ * and can sign in like anyone else, so you can show the Pro side too (on a pilot
+ * deployment, with its DEMO_LOGIN_CODE). Runs in development, or where DEMO_LOGIN_CODE is set.
  */
 import { eq, inArray, like } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -106,8 +106,11 @@ const PROS: {
 async function main(): Promise<void> {
   loadDotEnv();
   const env = loadEnv();
-  if (env.NODE_ENV !== 'development') {
-    console.error('demo:data only works on your own computer (NODE_ENV=development).');
+  // On your computer, or on a pilot/demo deployment (one with a demo sign-in code).
+  if (env.NODE_ENV !== 'development' && !env.DEMO_LOGIN_CODE) {
+    console.error(
+      'demo:data runs on your own computer, or on a pilot deployment that has DEMO_LOGIN_CODE set.',
+    );
     process.exit(1);
   }
   const pool = new Pool({ connectionString: env.DATABASE_URL, max: 1 });

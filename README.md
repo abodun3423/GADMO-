@@ -13,6 +13,11 @@ Product requirements: [GADMO PRD v1.0](https://claude.ai/artifact/N4HEkdBtJKrYrZ
 | `packages/shared` | Rules shared by API and web app: phone numbers, contact masking, money in kobo, request schemas |
 | `apps/web`        | Next.js PWA: sign-in, service catalogue, job requests, My jobs                                  |
 
+## Put it online
+
+[docs/DEPLOY.md](docs/DEPLOY.md): one Render Blueprint (`render.yaml`) creates the web app, private
+API, database and Redis, starting in pilot mode (demo accounts, Paystack test mode).
+
 ## Run it locally
 
 **On Windows with VS Code and Ubuntu (WSL)**, follow [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md). In short:

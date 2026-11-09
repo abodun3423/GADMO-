@@ -1,5 +1,5 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { redactPhone } from '@gadmo/shared';
+import { Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { isDemoPhone, redactPhone } from '@gadmo/shared';
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import type Redis from 'ioredis';
 import { ENV, type Env } from '../config/env';
@@ -39,6 +39,14 @@ export class OtpService {
       { key: `otp:ip:${ip}`, max: this.env.OTP_IP_HOURLY_LIMIT, windowSeconds: 60 * 60 },
     ]);
 
+    // Demo numbers never get an SMS: they sign in with the deployment's demo code.
+    if (isDemoPhone(phone) && this.env.DEMO_LOGIN_CODE) return;
+    if (this.env.SMS_PROVIDER === 'disabled') {
+      throw new ServiceUnavailableException(
+        'Sign-in by SMS opens at launch. During the GADMO pilot, use a demo account.',
+      );
+    }
+
     const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
     await this.redis
       .multi()
@@ -76,6 +84,12 @@ export class OtpService {
       return 'locked';
     }
 
+    // After the attempt count, so the demo code can't be guessed faster than a real one.
+    if (this.isDemoLoginCode(phone, code)) {
+      await this.redis.del(this.attemptsKey(phone));
+      return 'ok';
+    }
+
     const stored = await this.redis.get(this.codeKey(phone));
     if (!stored) {
       this.devLog(phone, 'refused: no active code (expired after 5 minutes, or already used)');
@@ -104,6 +118,13 @@ export class OtpService {
     await this.redis.del(this.attemptsKey(phone));
     this.devLog(phone, deleted === 1 ? 'accepted: signed in' : 'refused: code was just used');
     return deleted === 1 ? 'ok' : 'invalid';
+  }
+
+  /** The pilot's demo code, for the reserved demo numbers only. */
+  private isDemoLoginCode(phone: string, code: string): boolean {
+    const demo = this.env.DEMO_LOGIN_CODE;
+    if (!demo || !isDemoPhone(phone)) return false;
+    return demo.length === code.length && timingSafeEqual(Buffer.from(demo), Buffer.from(code));
   }
 
   /** Development only (env.ts refuses DEV_LOGIN_CODE anywhere else). */

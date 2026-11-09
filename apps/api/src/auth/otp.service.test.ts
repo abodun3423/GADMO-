@@ -41,3 +41,41 @@ describe('OtpService DEV_LOGIN_CODE', () => {
     await expect(otp.verify('+2348031234567', '123456')).resolves.toBe('invalid');
   });
 });
+
+describe('OtpService pilot (demo accounts, SMS disabled)', () => {
+  const pilot = env({
+    NODE_ENV: 'production',
+    SMS_PROVIDER: 'disabled',
+    DEMO_LOGIN_CODE: '482915',
+  });
+
+  it('signs in demo numbers only, with the demo code only', async () => {
+    const otp = new OtpService(emptyRedis(), sms, pilot);
+    await expect(otp.verify('+2347000000001', '482915')).resolves.toBe('ok');
+    await expect(otp.verify('+2347000000001', '000000')).resolves.toBe('invalid');
+    await expect(otp.verify('+2348031234567', '482915')).resolves.toBe('invalid');
+  });
+
+  it('sends no SMS to demo numbers and refuses real numbers while SMS is off', async () => {
+    const sent: string[] = [];
+    const recorder: SmsSender = { send: async (to) => void sent.push(to) };
+    const redis = {
+      ...emptyRedis(),
+      multi: () => {
+        const chain = {
+          incr: () => chain,
+          expire: () => chain,
+          set: () => chain,
+          del: () => chain,
+          ttl: () => chain,
+          exec: async () => [[null, 1]],
+        };
+        return chain;
+      },
+    } as unknown as Redis;
+    const otp = new OtpService(redis, recorder, pilot);
+    await expect(otp.request('+2347000000001', '1.2.3.4')).resolves.toBeUndefined();
+    await expect(otp.request('+2348031234567', '1.2.3.4')).rejects.toThrow(/pilot/);
+    expect(sent).toEqual([]);
+  });
+});
