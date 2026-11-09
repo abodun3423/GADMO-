@@ -277,6 +277,9 @@ export const jobs = pgTable(
     paymentMethod: paymentMethodEnum('payment_method'),
     cashAgreementVersion: text('cash_agreement_version'),
     cashAgreementAcceptedAt: timestamp('cash_agreement_accepted_at', { withTimezone: true }),
+    /** When the Pro tapped "Start work" (any materials deposit is released to them then). */
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    /** When the Pro marked the job done; the balance is due from then. */
     doneAt: timestamp('done_at', { withTimezone: true }),
     /** Agreed in chat (Pro offers, customer accepts or counters); never above ₦5,000. */
     inspectionFeeKobo: kobo('inspection_fee_kobo'),

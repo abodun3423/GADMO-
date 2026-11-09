@@ -14,6 +14,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  balanceDue,
   maskContactInfo,
   type SendMessage,
   sendMessageSchema,
@@ -22,7 +23,7 @@ import {
 } from '@gadmo/shared';
 import type { Request, Response } from 'express';
 import { randomInt } from 'node:crypto';
-import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type Redis from 'ioredis';
 import { z } from 'zod';
 import { AlertsService } from '../alerts/alerts.service';
@@ -101,6 +102,7 @@ export class ChatController {
           inspectionFeeKobo: job.inspectionFeeKobo,
           onTheWayAt: job.onTheWayAt,
           arrivedAt: job.arrivedAt,
+          ...(await this.work(job)),
           // Only the customer sees the code, and only until the Pro has used it.
           arrivalCode: job.customerId === user.id ? await this.arrivalCode(job) : null,
         },
@@ -179,6 +181,7 @@ export class ChatController {
       inspectionFeeKobo: job.inspectionFeeKobo,
       jobStatus: job.status,
       visit: { onTheWayAt: job.onTheWayAt, arrivedAt: job.arrivedAt },
+      work: await this.work(job),
       // A call ringing or in progress, so the chat can show it (details: /calls/current).
       call: await this.liveCall(jobId, user),
     };
@@ -451,6 +454,8 @@ export class ChatController {
         arrivalCodeEncrypted: jobs.arrivalCodeEncrypted,
         onTheWayAt: jobs.onTheWayAt,
         arrivedAt: jobs.arrivedAt,
+        startedAt: jobs.startedAt,
+        doneAt: jobs.doneAt,
         serviceName: categories.name,
         inspectionPolicy: categories.inspectionPolicy,
       })
@@ -460,6 +465,36 @@ export class ChatController {
       .limit(1);
     if (!job) throw new NotFoundException();
     return job;
+  }
+
+  /**
+   * Where the work stands: when it started and was marked done, and the balance from the
+   * accepted quote (quote minus the inspection fee paid minus the deposit), if there is one.
+   */
+  private async work(job: {
+    id: string;
+    startedAt: Date | null;
+    doneAt: Date | null;
+    inspectionFeeKobo: number | null;
+    arrivedAt: Date | null;
+  }) {
+    const [quote] = await this.db
+      .select({ amountKobo: quotes.amountKobo, depositKobo: quotes.depositKobo })
+      .from(quotes)
+      .where(and(eq(quotes.jobId, job.id), eq(quotes.status, 'ACCEPTED')))
+      .orderBy(desc(quotes.acceptedAt))
+      .limit(1);
+    return {
+      startedAt: job.startedAt,
+      doneAt: job.doneAt,
+      balanceKobo: quote
+        ? balanceDue({
+            quoteKobo: quote.amountKobo,
+            inspectionFeeKobo: job.arrivedAt ? (job.inspectionFeeKobo ?? 0) : 0,
+            depositKobo: quote.depositKobo,
+          })
+        : null,
+    };
   }
 
   private isOpen(job: { proId: string | null; status: string }): boolean {

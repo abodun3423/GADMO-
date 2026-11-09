@@ -42,16 +42,6 @@ export function QuotePanel({
   onChanged: () => Promise<void>;
 }) {
   const { job, you } = convo;
-  if (job.status === 'QUOTE_ACCEPTED') {
-    return (
-      <p className="fee-panel fee-agreed">
-        <strong>Quote accepted.</strong>{' '}
-        {you === 'PRO'
-          ? 'Start the work when you’re ready. Any deposit is released to you when you start.'
-          : 'Your Pro starts the work next. You pay the balance in GADMO when it’s done.'}
-      </p>
-    );
-  }
   if (job.status === 'QUOTED') {
     return (
       <p className="fee-panel">
