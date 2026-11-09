@@ -3,7 +3,10 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { serviceNote } from '@/lib/catalogue';
+import { HERO_IMAGE } from '@/lib/images';
 import type { Category, CategoryGroup } from '@/lib/types';
+import { AdirePattern } from './home/AdirePattern';
+import { GroupIcon, groupLook } from './home/groupLook';
 
 function ServiceLink({ category }: { category: Category }) {
   return (
@@ -16,42 +19,63 @@ function ServiceLink({ category }: { category: Category }) {
   );
 }
 
-/** Home screen: search, the emergency strip, and every service group. */
+/** Home screen: the Adire hero with search, emergency help, and the service groups as tiles. */
 export function Catalogue({ groups }: { groups: CategoryGroup[] | null }) {
   const [query, setQuery] = useState('');
+  const [openSlug, setOpenSlug] = useState<string | null>(null);
   const all = useMemo(() => (groups ?? []).flatMap((g) => g.categories), [groups]);
   const emergency = all.filter((c) => c.emergencyEnabled);
   const q = query.trim().toLowerCase();
   const matches = q ? all.filter((c) => c.name.toLowerCase().includes(q)) : [];
+  const open = groups?.find((g) => g.slug === openSlug) ?? null;
 
   return (
     <>
-      <section className="adire">
-        <div className="adire-inner">
-          <h1>The right skills, within reach.</h1>
-          <p>Verified skilled people across Ekiti. Book now or for later.</p>
+      <section className={`hero${HERO_IMAGE ? ' hero-photo' : ''}`}>
+        {HERO_IMAGE ? (
+          <img className="hero-img" src={HERO_IMAGE} alt="" fetchPriority="high" />
+        ) : (
+          <AdirePattern className="hero-pattern" />
+        )}
+        <div className="hero-inner">
+          <h1>The right skills. Within reach.</h1>
+          <p className="hero-lede">
+            Verified electricians, mechanics, tutors and more across Ado-Ekiti. Book now or for
+            later.
+          </p>
           <label htmlFor="search" className="sr-only">
             Search services
           </label>
-          <input
-            id="search"
-            className="search"
-            type="search"
-            placeholder="What do you need? e.g. plumber, baker"
-            autoComplete="off"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
+          <div className="search-wrap">
+            <svg className="search-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <input
+              id="search"
+              className="search"
+              type="search"
+              placeholder="What do you need done? e.g. plumber"
+              autoComplete="off"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <ul className="trust">
+            <li>NIN-verified Pros</li>
+            <li>Payments protected by GADMO</li>
+            <li>Your number stays private</li>
+          </ul>
         </div>
       </section>
 
-      <div className="page page-wide">
+      <div className="page page-wide home">
         {groups === null ? (
           <p className="alert alert-error" role="alert">
             Services could not be loaded. Check your connection and refresh the page.
           </p>
         ) : q ? (
-          <section aria-live="polite">
+          <section aria-live="polite" className="search-results">
             <h2 className="section-title">
               {matches.length === 0
                 ? `No service matches “${query.trim()}”`
@@ -70,7 +94,13 @@ export function Catalogue({ groups }: { groups: CategoryGroup[] | null }) {
         ) : (
           <>
             <section className="emergency" aria-labelledby="emergency-title">
-              <h2 id="emergency-title">⚠ Stuck? Get help now</h2>
+              <h2 id="emergency-title">
+                <svg className="emergency-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 3 2 20h20z" />
+                  <path className="emergency-mark" d="M12 9v5M12 16.5v.5" />
+                </svg>
+                Stuck? Get help now
+              </h2>
               <p>Power, water, lock or roadside trouble. We alert the nearest available Pros.</p>
               <ul className="chips">
                 {emergency.map((c) => (
@@ -84,20 +114,38 @@ export function Catalogue({ groups }: { groups: CategoryGroup[] | null }) {
             </section>
 
             <h2 className="section-title">All services</h2>
-            <div className="groups">
-              {groups.map((g) => (
-                <details key={g.id} className="group">
-                  <summary>
-                    {g.name}
-                    <span className="count">{g.categories.length}</span>
-                  </summary>
+            <ul className="tiles">
+              {groups.map((g) => {
+                const look = groupLook(g.slug);
+                const isOpen = g.slug === openSlug;
+                return (
+                  <li key={g.id}>
+                    <button
+                      type="button"
+                      className={`tile tone-${look.tone}${isOpen ? ' tile-open' : ''}`}
+                      aria-expanded={isOpen}
+                      aria-controls="group-services"
+                      onClick={() => setOpenSlug(isOpen ? null : g.slug)}
+                    >
+                      <GroupIcon name={look.icon} className="tile-icon" />
+                      <span className="tile-name">{g.name}</span>
+                      <span className="tile-count">{g.categories.length} services</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            <div id="group-services" aria-live="polite">
+              {open && (
+                <section className={`group-panel tone-${groupLook(open.slug).tone}`}>
+                  <h3>{open.name}</h3>
                   <ul className="services">
-                    {g.categories.map((c) => (
+                    {open.categories.map((c) => (
                       <ServiceLink key={c.id} category={c} />
                     ))}
                   </ul>
-                </details>
-              ))}
+                </section>
+              )}
             </div>
           </>
         )}

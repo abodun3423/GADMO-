@@ -1,5 +1,5 @@
 import 'server-only';
-import type { CategoryGroup } from './types';
+import type { CategoryGroup, TopPro } from './types';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:4000';
 
@@ -15,5 +15,16 @@ export async function getCatalogue(): Promise<CategoryGroup[] | null> {
     return ((await res.json()) as { groups: CategoryGroup[] }).groups;
   } catch {
     return null;
+  }
+}
+
+/** A few top-rated verified Pros for the home page; empty if none or the API is down. */
+export async function getTopPros(): Promise<TopPro[]> {
+  try {
+    const res = await fetch(`${API_URL}/v1/pros/top`, { cache: 'no-store' });
+    if (!res.ok) return [];
+    return ((await res.json()) as { pros: TopPro[] }).pros;
+  } catch {
+    return [];
   }
 }

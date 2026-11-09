@@ -37,7 +37,8 @@ export const config = {
   matcher: [
     {
       // Pages only: not the API proxy, static files, the service worker, manifest or icons.
-      source: '/((?!v1|_next/static|_next/image|sw.js|manifest.webmanifest|icons|favicon.ico).*)',
+      source:
+        '/((?!v1|_next/static|_next/image|sw.js|manifest.webmanifest|icons|fonts|images|favicon.ico).*)',
       missing: [
         { type: 'header', key: 'next-router-prefetch' },
         { type: 'header', key: 'purpose', value: 'prefetch' },

@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#1f2a6b',
+  themeColor: '#10163f',
   width: 'device-width',
   initialScale: 1,
 };
@@ -33,13 +33,24 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   await connection();
   return (
     <html lang="en">
+      <head>
+        <link
+          rel="preload"
+          href="/fonts/bricolage-grotesque.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin=""
+        />
+      </head>
       <body>
-        <header className="topbar">
-          <Link href="/" className="wordmark" aria-label="GADMO home">
-            <Logo />
-          </Link>
-          <AccountLink />
-        </header>
+        <div className="topbar-band">
+          <header className="topbar">
+            <Link href="/" className="wordmark" aria-label="GADMO home">
+              <Logo />
+            </Link>
+            <AccountLink />
+          </header>
+        </div>
         {children}
         <ServiceWorker />
       </body>

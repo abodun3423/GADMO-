@@ -16,6 +16,15 @@ export interface CategoryGroup {
   categories: Category[];
 }
 
+/** GET /v1/pros/top: public, first name and initial only. */
+export interface TopPro {
+  id: string;
+  name: string;
+  ratingAvg: number;
+  ratingCount: number;
+  skills: { name: string; slug: string }[];
+}
+
 export type Role = 'CUSTOMER' | 'PRO' | 'ADMIN' | 'SUPER_ADMIN';
 
 export interface Me {
