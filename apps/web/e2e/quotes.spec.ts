@@ -58,10 +58,13 @@ test('the Pro quotes with a deposit; the customer declines, then accepts and pay
     timeout: 10_000,
   });
 
-  // The Pro starts the work (the deposit is paid to them), then marks it done.
+  // The deposit went straight to the Pro. They start the work, then mark it done.
+  await expect(proPage.locator('.chat-event', { hasText: 'Materials deposit' })).toContainText(
+    'Materials deposit of ₦10,000 paid to the Pro for materials.',
+  );
   await proPage.getByRole('button', { name: 'Start work' }).click();
-  await expect(proPage.locator('.chat-event').last()).toContainText(
-    'The materials deposit of ₦10,000 is now paid to the Pro.',
+  await expect(proPage.locator('.chat-event').last()).toHaveText(
+    /^Your Pro has started the work\./,
   );
   await expect(page.getByText('Work in progress.', { exact: true })).toBeVisible({
     timeout: 10_000,

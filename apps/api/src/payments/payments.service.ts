@@ -300,13 +300,19 @@ export class PaymentsService {
         },
         {
           txnId,
-          account: counts ? `escrow:job:${job!.id}` : `refund-due:customer:${job!.customerId}`,
+          // A materials deposit goes straight to the Pro, so they can buy what the job
+          // needs (decided by the founder); the inspection fee is held until they arrive.
+          account: !counts
+            ? `refund-due:customer:${job!.customerId}`
+            : payment.type === 'DEPOSIT'
+              ? `pro:${job!.proId}`
+              : `escrow:job:${job!.id}`,
           creditKobo: amount,
           jobId: job!.id,
           description: !counts
             ? 'Refund: a payment that was no longer needed'
             : payment.type === 'DEPOSIT'
-              ? 'Materials deposit held until work starts'
+              ? 'Materials deposit, paid to the Pro'
               : 'Inspection fee held until the Pro arrives',
         },
       ]);
@@ -337,7 +343,7 @@ export class PaymentsService {
           jobId: job!.id,
           senderId: job!.customerId,
           kind: 'EVENT',
-          body: `Quote of ${naira(quote.amountKobo)} accepted. Materials deposit of ${naira(amount)} paid: GADMO holds it until work starts.`,
+          body: `Quote of ${naira(quote.amountKobo)} accepted. Materials deposit of ${naira(amount)} paid to the Pro for materials.`,
         });
         paidJob = { id: job!.id, proId: job!.proId, amount, type: 'DEPOSIT' };
       } else {
@@ -363,7 +369,7 @@ export class PaymentsService {
         paid.type === 'DEPOSIT'
           ? {
               title: 'Quote accepted',
-              body: `The customer accepted your quote and paid the ${naira(paid.amount)} materials deposit. It’s released to you when you start work.`,
+              body: `The customer accepted your quote and paid the ${naira(paid.amount)} materials deposit. It’s in your GADMO wallet now.`,
               url: `/jobs/${paid.id}`,
               tag: `job-${paid.id}`,
             }

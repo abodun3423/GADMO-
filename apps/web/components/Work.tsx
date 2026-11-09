@@ -50,7 +50,7 @@ export function WorkPanel({
         <p>
           <strong>Quote accepted.</strong>{' '}
           {you === 'PRO'
-            ? 'Tap “Start work” when you begin. Any materials deposit the customer paid is released to you then.'
+            ? 'Tap “Start work” when you begin, so the customer can follow along.'
             : 'Your Pro starts the work next. You pay the balance in GADMO when it’s done.'}
         </p>
         {you === 'PRO' && (
