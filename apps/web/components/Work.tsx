@@ -99,7 +99,10 @@ export function WorkPanel({
               className="button button-quiet"
               type="button"
               disabled={busy}
-              onClick={() => setConfirming(false)}
+              onClick={() => {
+                setConfirming(false);
+                setError(null);
+              }}
             >
               Not yet
             </button>
