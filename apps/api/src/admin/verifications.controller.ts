@@ -29,6 +29,7 @@ import {
   privateFiles,
   proCategories,
   proProfiles,
+  skillChecks,
   users,
   verifications,
 } from '../db/schema';
@@ -187,7 +188,11 @@ export class AdminVerificationsController {
       .send(this.crypto.decrypt(file.data));
   }
 
-  /** Approve, reject or ask for more. Only a check that is still pending can be decided. */
+  /**
+   * Approve, reject or ask for more. Only a check that is still pending can be decided.
+   * Approved documents do not make the Pro verified yet: they move on to the in-person
+   * skill check (founder decision), and only a pass there lets them go online.
+   */
   @Post(':id/decision')
   @HttpCode(200)
   async decide(
@@ -217,13 +222,14 @@ export class AdminVerificationsController {
           reviewNote: note,
         })
         .where(eq(verifications.id, id));
+      const approved = body.decision === 'APPROVED';
       await tx
         .update(proProfiles)
-        .set({
-          verificationStatus: body.decision,
-          ...(body.decision === 'APPROVED' ? {} : { isOnline: false }),
-        })
+        .set({ verificationStatus: approved ? 'SKILL_CHECK' : body.decision, isOnline: false })
         .where(eq(proProfiles.userId, check.proId));
+      if (approved) {
+        await tx.insert(skillChecks).values({ proId: check.proId, verificationId: id });
+      }
       await tx.insert(auditLogs).values({
         actorId: staff.id,
         action: 'VERIFICATION_DECISION',

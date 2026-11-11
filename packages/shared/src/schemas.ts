@@ -159,6 +159,27 @@ export const verificationDecisionSchema = z
   });
 export type VerificationDecision = z.infer<typeof verificationDecisionSchema>;
 
+/** Staff book the in-person skill check: when, and where the agent will go. */
+export const scheduleSkillCheckSchema = z
+  .object({
+    scheduledAt: z.iso.datetime({ offset: true }),
+    visitPlace: z.string().trim().min(3, 'Say where the agent will go').max(200),
+  })
+  .strict();
+export type ScheduleSkillCheck = z.infer<typeof scheduleSkillCheckSchema>;
+
+/**
+ * The agent's finding after the visit. A note is always required: what they saw, so the
+ * record is useful later, and so a Pro who did not pass knows why.
+ */
+export const skillCheckResultSchema = z
+  .object({
+    result: z.enum(['PASSED', 'FAILED']),
+    note: z.string().trim().min(5, 'Say what you saw (at least a few words)').max(1000),
+  })
+  .strict();
+export type SkillCheckResult = z.infer<typeof skillCheckResultSchema>;
+
 /** GADMO staff sign in with email + password, then a code sent to their phone. */
 export const staffLoginSchema = z
   .object({

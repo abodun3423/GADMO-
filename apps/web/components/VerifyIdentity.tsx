@@ -19,6 +19,14 @@ const NO_PHOTOS: Record<Kind, PhotoState> = {
 type PhotoState = { status: 'empty' | 'uploading' | 'done' | 'error'; preview?: string };
 
 const dateFormat = new Intl.DateTimeFormat('en-NG', { day: 'numeric', month: 'long' });
+const visitFormat = new Intl.DateTimeFormat('en-NG', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  hour: 'numeric',
+  minute: '2-digit',
+  timeZone: 'Africa/Lagos',
+});
 
 export function VerifyIdentity() {
   const { me, loading } = useSession();
@@ -165,6 +173,29 @@ export function VerifyIdentity() {
           <h2>You’re verified</h2>
           <p>Customers see your verified badge.</p>
           <Link className="button" href="/pro">
+            Go to Pro home
+          </Link>
+        </div>
+      )}
+
+      {state?.status === 'SKILL_CHECK' && (
+        <div className="status" role="status">
+          <h2>Documents approved: skill check next</h2>
+          {state.skillCheck?.scheduledAt ? (
+            <p>
+              A GADMO agent will visit you on{' '}
+              <strong>{visitFormat.format(new Date(state.skillCheck.scheduledAt))}</strong>
+              {state.skillCheck.visitPlace ? ` at ${state.skillCheck.visitPlace}` : ''}. Have your
+              tools ready: they’ll ask for a short demonstration and to see some of your past work.
+            </p>
+          ) : (
+            <p>
+              A GADMO agent will contact you to book a visit. They’ll see your tools, a short
+              demonstration and some of your past work. After you pass, you get the verified badge
+              and can go online.
+            </p>
+          )}
+          <Link className="button button-quiet" href="/pro">
             Go to Pro home
           </Link>
         </div>

@@ -148,6 +148,13 @@
       "when": 1794392454022,
       "tag": "0020_skill_proof",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1794393757985,
+      "tag": "0021_skill_check",
+      "breakpoints": true
     }
   ]
 }

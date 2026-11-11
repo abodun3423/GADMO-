@@ -15,6 +15,8 @@ import {
   staffLoginSchema,
   staffPasswordSchema,
   staffVerifySchema,
+  scheduleSkillCheckSchema,
+  skillCheckResultSchema,
   submitVerificationSchema,
   techLinksSchema,
   updateProfileSchema,
@@ -144,6 +146,30 @@ describe('identity check', () => {
     expect(techLinksSchema.safeParse({ github: 'https://gitlab.com/ada' }).success).toBe(false);
     expect(techLinksSchema.safeParse({ portfolio: 'http://ada.dev' }).success).toBe(false);
     expect(techLinksSchema.safeParse({ portfolio: 'javascript:alert(1)' }).success).toBe(false);
+  });
+
+  it('books a skill check with a time and a place, and records it with a note', () => {
+    expect(
+      scheduleSkillCheckSchema.safeParse({
+        scheduledAt: '2026-11-20T10:00:00+01:00',
+        visitPlace: 'His workshop, Ajilosun, Ado-Ekiti',
+      }).success,
+    ).toBe(true);
+    expect(
+      scheduleSkillCheckSchema.safeParse({ scheduledAt: 'tomorrow', visitPlace: 'Workshop' })
+        .success,
+    ).toBe(false);
+    expect(
+      scheduleSkillCheckSchema.safeParse({ scheduledAt: '2026-11-20T10:00:00Z' }).success,
+    ).toBe(false);
+    expect(
+      skillCheckResultSchema.safeParse({ result: 'PASSED', note: 'Good tools, neat wiring.' })
+        .success,
+    ).toBe(true);
+    expect(skillCheckResultSchema.safeParse({ result: 'PASSED' }).success).toBe(false);
+    expect(skillCheckResultSchema.safeParse({ result: 'PENDING', note: 'Not yet' }).success).toBe(
+      false,
+    );
   });
 
   it('needs a note unless the check is approved', () => {

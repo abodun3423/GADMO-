@@ -31,6 +31,7 @@ import {
   privateFiles,
   proCategories,
   proProfiles,
+  skillChecks,
   verifications,
 } from '../db/schema';
 import { DB, type Db, FIELD_CRYPTO, REDIS } from '../infra/infra.module';
@@ -83,6 +84,26 @@ export class VerificationController {
       .where(eq(verifications.proId, pro.id))
       .orderBy(desc(verifications.createdAt))
       .limit(1);
+    // Stage 2: the in-person skill check, once the documents are approved.
+    const [visit] = await this.db
+      .select({
+        result: skillChecks.result,
+        scheduledAt: skillChecks.scheduledAt,
+        visitPlace: skillChecks.visitPlace,
+        note: skillChecks.note,
+        checkedAt: skillChecks.checkedAt,
+      })
+      .from(skillChecks)
+      .where(eq(skillChecks.proId, pro.id))
+      .orderBy(desc(skillChecks.createdAt))
+      .limit(1);
+    // A Pro who did not pass the skill check sees the agent's note, not the old document note.
+    const failedVisit =
+      status === 'REJECTED' &&
+      visit?.result === 'FAILED' &&
+      latest !== undefined &&
+      visit.checkedAt !== null &&
+      visit.checkedAt > latest.createdAt;
     const drafts = await this.db
       .select({ purpose: privateFiles.purpose })
       .from(privateFiles)
@@ -92,8 +113,16 @@ export class VerificationController {
         status,
         canSubmit: CAN_SUBMIT.has(status),
         submittedAt: latest?.createdAt ?? null,
-        note:
-          status === 'REJECTED' || status === 'NEEDS_INFO' ? (latest?.reviewNote ?? null) : null,
+        note: failedVisit
+          ? visit.note
+          : status === 'REJECTED' || status === 'NEEDS_INFO'
+            ? (latest?.reviewNote ?? null)
+            : null,
+        /** Set while the Pro waits for the agent's visit. */
+        skillCheck:
+          status === 'SKILL_CHECK' && visit?.result === 'PENDING'
+            ? { scheduledAt: visit.scheduledAt, visitPlace: visit.visitPlace }
+            : null,
         photos: {
           idDocument: drafts.some((d) => d.purpose === 'ID_DOCUMENT'),
           selfie: drafts.some((d) => d.purpose === 'SELFIE'),
@@ -250,7 +279,9 @@ export class VerificationController {
       throw new ConflictException(
         status === 'APPROVED'
           ? 'Your identity is already verified.'
-          : 'Your identity check is being reviewed. We’ll let you know.',
+          : status === 'SKILL_CHECK'
+            ? 'Your documents are approved. A GADMO agent will visit you to see your work.'
+            : 'Your identity check is being reviewed. We’ll let you know.',
       );
     }
   }
