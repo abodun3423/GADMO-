@@ -58,7 +58,7 @@ test('a Pro sends their NIN, ID photo, selfie and proof of skill for review', as
   noCspViolations();
 });
 
-test('GADMO staff ask for a better photo, then approve; the Pro can go online', async ({
+test('staff ask for a better photo, approve, then pass the skill check; the Pro can go online', async ({
   page,
   browser,
 }) => {
@@ -134,7 +134,48 @@ test('GADMO staff ask for a better photo, then approve; the Pro can go online', 
   await expect(staffPage.getByText('Earlier checks')).toBeVisible();
   await staffPage.getByRole('radio', { name: /Approve/ }).check();
   await staffPage.getByRole('button', { name: 'Save decision' }).click();
-  await expect(staffPage.getByRole('status')).toHaveText('Approved. The Pro can now go online.');
+  await expect(staffPage.getByRole('status')).toHaveText(
+    'Documents approved. Next: book the Pro’s skill check visit.',
+  );
+
+  // Documents approved is not enough: the Pro waits for the skill check visit.
+  await page.goto('/pro');
+  await expect(page.getByText('A GADMO agent will visit to see your work.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Go online' })).toBeDisabled();
+
+  // Staff book the visit; the Pro sees when and where.
+  await staffPage
+    .getByRole('navigation', { name: 'Staff sections' })
+    .getByRole('link', { name: 'Skill checks' })
+    .click();
+  await staffPage
+    .getByRole('link', { name: /Kemi Adeyemi/ })
+    .first()
+    .click();
+  await expect(staffPage.getByText('Bisi Plumbing Works, Ikere')).toBeVisible();
+  await staffPage.getByLabel('Date and time').fill('2030-01-15T10:30');
+  await staffPage.getByLabel('Where').fill('Her workshop, Okesa, Ado-Ekiti');
+  await staffPage.getByRole('button', { name: 'Save visit' }).click();
+  await expect(staffPage.getByRole('status')).toHaveText(
+    'Visit booked. The Pro sees the time and place.',
+  );
+  await page.goto('/pro/verify');
+  await expect(
+    page.getByRole('heading', { name: 'Documents approved: skill check next' }),
+  ).toBeVisible();
+  await expect(page.getByText(/15 January.*10:30.*Her workshop, Okesa, Ado-Ekiti/)).toBeVisible();
+
+  // After the visit, the agent records a pass.
+  await staffPage.getByRole('radio', { name: /^Passed/ }).check();
+  await staffPage.getByRole('button', { name: 'Save result' }).click();
+  await expect(staffPage.locator('p[role="alert"]')).toContainText('Say what you saw');
+  await staffPage
+    .getByLabel(/What you saw/)
+    .fill('Fixed a leaking tap in front of me; good tools.');
+  await staffPage.getByRole('button', { name: 'Save result' }).click();
+  await expect(staffPage.getByRole('status')).toHaveText(
+    'Passed. The Pro is verified and can now go online.',
+  );
   await staffPage.close();
 
   await page.goto('/pro');

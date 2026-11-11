@@ -131,7 +131,8 @@ export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
   CANCELLED: 'Cancelled',
 };
 
-export type VerificationStatus = 'NOT_STARTED' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'NEEDS_INFO';
+export type VerificationStatus =
+  'NOT_STARTED' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'NEEDS_INFO' | 'SKILL_CHECK';
 
 /** The signed-in Pro's own profile (GET /v1/pro/profile). */
 export interface ProProfile {
@@ -164,6 +165,37 @@ export interface VerificationState {
   photos: { idDocument: boolean; selfie: boolean; attestation: boolean; certificate: boolean };
   /** True when the Pro has a tech skill and can add LinkedIn, GitHub and portfolio links. */
   techLinks: boolean;
+  /** Set while the Pro waits for the agent's skill check visit. */
+  skillCheck: { scheduledAt: string | null; visitPlace: string | null } | null;
+}
+
+export type SkillCheckResult = 'PENDING' | 'PASSED' | 'FAILED';
+
+/** A row in the staff skill check list (GET /v1/admin/skill-checks). */
+export interface SkillCheckItem {
+  id: string;
+  proId: string;
+  proName: string | null;
+  result: SkillCheckResult;
+  scheduledAt: string | null;
+  visitPlace: string | null;
+  checkedAt: string | null;
+  createdAt: string;
+}
+
+/** One skill check for staff (GET /v1/admin/skill-checks/:id). */
+export interface SkillCheckDetail extends SkillCheckItem {
+  proPhone: string;
+  note: string | null;
+  trainedAt: string | null;
+  trainedBy: string | null;
+  skills: string[];
+  history: {
+    id: string;
+    result: SkillCheckResult;
+    checkedAt: string | null;
+    note: string | null;
+  }[];
 }
 
 /** A tech Pro's links, for GADMO staff only. */

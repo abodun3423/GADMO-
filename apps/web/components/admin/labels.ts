@@ -19,6 +19,7 @@ export const CHECK_LABEL: Record<VerificationStatus, string> = {
   APPROVED: 'Verified',
   REJECTED: 'Check rejected',
   NEEDS_INFO: 'Check sent back',
+  SKILL_CHECK: 'Skill check to do',
 };
 
 /** Short job statuses for staff lists. */

@@ -39,7 +39,10 @@ export const verificationStatusEnum = pgEnum('verification_status', [
   'APPROVED',
   'REJECTED',
   'NEEDS_INFO',
+  /** Documents approved; waiting for the in-person skill check (founder decision). */
+  'SKILL_CHECK',
 ]);
+export const skillCheckResultEnum = pgEnum('skill_check_result', ['PENDING', 'PASSED', 'FAILED']);
 export const jobTypeEnum = pgEnum('job_type', ['EMERGENCY', 'SCHEDULED']);
 export const jobStatusEnum = pgEnum('job_status', [
   'REQUESTED',
@@ -236,6 +239,45 @@ export const verifications = pgTable(
     index('verifications_pro_idx').on(t.proId),
     index('verifications_result_idx').on(t.result),
     index('verifications_nin_hash_idx').on(t.ninHash),
+  ],
+);
+
+/**
+ * Stage 2 of Pro verification (founder decision): once the documents are approved, a GADMO
+ * field agent visits the Pro's workshop or a past job site, checks their tools, sees a short
+ * demonstration and past work, and records pass or fail. Only a pass makes the Pro verified.
+ */
+export const skillChecks = pgTable(
+  'skill_checks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    proId: uuid('pro_id')
+      .notNull()
+      .references(() => proProfiles.userId, { onDelete: 'cascade' }),
+    /** The approved documents this check follows. */
+    verificationId: uuid('verification_id')
+      .notNull()
+      .references(() => verifications.id, { onDelete: 'cascade' }),
+    result: skillCheckResultEnum('result').notNull().default('PENDING'),
+    /** When the agent will visit; set by staff. */
+    scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
+    /** Where the agent will go (the Pro's workshop or a past job site). */
+    visitPlace: text('visit_place'),
+    /** The staff member who booked the visit. */
+    scheduledById: uuid('scheduled_by_id').references(() => users.id),
+    checkedById: uuid('checked_by_id').references(() => users.id),
+    checkedAt: timestamp('checked_at', { withTimezone: true }),
+    /** What the agent saw. Shown to the Pro when the check is not passed. */
+    note: text('note'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('skill_checks_pro_idx').on(t.proId),
+    index('skill_checks_result_idx').on(t.result),
+    // One open check per Pro at a time.
+    uniqueIndex('skill_checks_open_uq')
+      .on(t.proId)
+      .where(sql`${t.result} = 'PENDING'`),
   ],
 );
 

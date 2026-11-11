@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AccountController } from './account/account.controller';
 import { AdminJobMatchingController } from './admin/job-matching.controller';
+import { AdminSkillChecksController } from './admin/skill-checks.controller';
 import { AdminUsersController } from './admin/users.controller';
 import { AdminVerificationsController } from './admin/verifications.controller';
 import { AlertsModule } from './alerts/alerts.module';
@@ -26,6 +27,7 @@ import { VerificationController } from './verification/verification.controller';
     AdminJobMatchingController,
     AdminUsersController,
     AdminVerificationsController,
+    AdminSkillChecksController,
     HealthController,
     CallsController,
     CatalogController,

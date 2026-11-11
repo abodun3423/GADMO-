@@ -15,7 +15,7 @@ const TABS: { status: ReviewResult; label: string }[] = [
 ];
 
 const DONE_TEXT: Record<string, string> = {
-  APPROVED: 'Approved. The Pro can now go online.',
+  APPROVED: 'Documents approved. Next: book the Pro’s skill check visit.',
   NEEDS_INFO: 'Sent back to the Pro with your note.',
   REJECTED: 'Rejected. The Pro sees your note.',
 };
@@ -51,7 +51,10 @@ function Queue({ status, done }: { status: ReviewResult; done?: string }) {
     <>
       <AdminNav />
       <h1 className="page-title">Identity checks</h1>
-      <p className="lede">Check that the selfie matches the ID photo and the name looks right.</p>
+      <p className="lede">
+        Check that the selfie matches the ID photo, the letter or certificate looks genuine, and the
+        trainer confirms. Approved Pros move on to a skill check visit.
+      </p>
 
       {done && DONE_TEXT[done] && (
         <p className="alert alert-info" role="status">

@@ -13,6 +13,7 @@ import {
   proCategories,
   proProfiles,
   quotes,
+  skillChecks,
   users,
   verifications,
 } from '../src/db/schema';
@@ -980,7 +981,7 @@ describe('staff review of identity checks', () => {
     expect(log!.metadata).toMatchObject({ decision: 'NEEDS_INFO', proId: pro.userId });
   });
 
-  it('approving lets the Pro go online; rejecting takes them offline', async () => {
+  it('approved documents lead to a skill check; only a pass lets the Pro go online', async () => {
     const { pro, checkId } = await submittedPro();
     await pro.agent
       .put('/v1/pro/profile')
@@ -1000,7 +1001,38 @@ describe('staff review of identity checks', () => {
       .set(CLIENT_HEADER)
       .send({ decision: 'APPROVED' })
       .expect(200);
+    // Documents approved, but not verified until the in-person skill check is passed.
+    await pro.agent.post('/v1/pro/online').set(CLIENT_HEADER).send({ online: true }).expect(409);
+    const waiting = await pro.agent.get('/v1/pro/verification').expect(200);
+    expect(waiting.body.verification).toMatchObject({
+      status: 'SKILL_CHECK',
+      canSubmit: false,
+      skillCheck: { scheduledAt: null, visitPlace: null },
+    });
+    const [visit] = await ctx.db
+      .select()
+      .from(skillChecks)
+      .where(eq(skillChecks.proId, pro.userId));
+    expect(visit).toMatchObject({ verificationId: checkId, result: 'PENDING' });
+
+    await reviewer.agent
+      .post(`/v1/admin/skill-checks/${visit!.id}/schedule`)
+      .set(CLIENT_HEADER)
+      .send({
+        scheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
+        visitPlace: 'Workshop at Okesa, Ado-Ekiti',
+      })
+      .expect(200);
+    const booked = await pro.agent.get('/v1/pro/verification').expect(200);
+    expect(booked.body.verification.skillCheck.visitPlace).toBe('Workshop at Okesa, Ado-Ekiti');
+    await reviewer.agent
+      .post(`/v1/admin/skill-checks/${visit!.id}/result`)
+      .set(CLIENT_HEADER)
+      .send({ result: 'PASSED', note: 'Neat wiring, all the right tools, good past work.' })
+      .expect(200);
     await pro.agent.post('/v1/pro/online').set(CLIENT_HEADER).send({ online: true }).expect(200);
+    const done = await pro.agent.get('/v1/pro/verification').expect(200);
+    expect(done.body.verification).toMatchObject({ status: 'APPROVED', skillCheck: null });
 
     const second = await submittedPro();
     await reviewer.agent
@@ -1013,6 +1045,160 @@ describe('staff review of identity checks', () => {
       .from(proProfiles)
       .where(eq(proProfiles.userId, second.pro.userId));
     expect(profile).toMatchObject({ verificationStatus: 'REJECTED', isOnline: false });
+  });
+});
+
+describe('skill checks: staff book a visit and record the result', () => {
+  const jpeg = (fill: number) =>
+    Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(1500, fill)]);
+
+  /** A Pro whose documents staff have approved, waiting for the skill check. */
+  async function waitingPro() {
+    const pro = await login(ctx, { role: 'pro' });
+    for (const kind of ['id-document', 'selfie', 'certificate']) {
+      await pro.agent
+        .put(`/v1/pro/verification/photos/${kind}`)
+        .set(CLIENT_HEADER)
+        .set('content-type', 'image/jpeg')
+        .send(jpeg(4))
+        .expect(204);
+    }
+    await pro.agent
+      .post('/v1/pro/verification')
+      .set(CLIENT_HEADER)
+      .send({ nin: '33344455566', ...TRAINING })
+      .expect(200);
+    const [check] = await ctx.db
+      .select({ id: verifications.id })
+      .from(verifications)
+      .where(eq(verifications.proId, pro.userId));
+    const reviewer = await login(ctx);
+    await ctx.db.update(users).set({ role: 'ADMIN' }).where(eq(users.id, reviewer.userId));
+    await reviewer.agent
+      .post(`/v1/admin/verifications/${check!.id}/decision`)
+      .set(CLIENT_HEADER)
+      .send({ decision: 'APPROVED' })
+      .expect(200);
+    const [visit] = await ctx.db
+      .select({ id: skillChecks.id })
+      .from(skillChecks)
+      .where(eq(skillChecks.proId, pro.userId));
+    return { pro, reviewer, visitId: visit!.id };
+  }
+
+  const tomorrow = () => new Date(Date.now() + 86_400_000).toISOString();
+
+  it('only staff can see, book or record a skill check', async () => {
+    const { pro, visitId } = await waitingPro();
+    const customer = await login(ctx);
+    const otherPro = await login(ctx, { role: 'pro' });
+    for (const who of [customer, pro, otherPro]) {
+      await who.agent.get('/v1/admin/skill-checks').expect(403);
+      await who.agent.get(`/v1/admin/skill-checks/${visitId}`).expect(403);
+      await who.agent
+        .post(`/v1/admin/skill-checks/${visitId}/schedule`)
+        .set(CLIENT_HEADER)
+        .send({ scheduledAt: tomorrow(), visitPlace: 'Workshop' })
+        .expect(403);
+      await who.agent
+        .post(`/v1/admin/skill-checks/${visitId}/result`)
+        .set(CLIENT_HEADER)
+        .send({ result: 'PASSED', note: 'Looks good to me.' })
+        .expect(403);
+    }
+    await request(ctx.server).get('/v1/admin/skill-checks').expect(401);
+    const [row] = await ctx.db.select().from(skillChecks).where(eq(skillChecks.id, visitId));
+    expect(row!.result).toBe('PENDING');
+  });
+
+  it('staff see the queue and what the agent needs for the visit', async () => {
+    const { pro, reviewer, visitId } = await waitingPro();
+    const queue = await reviewer.agent.get('/v1/admin/skill-checks').expect(200);
+    expect(queue.body.skillChecks.map((c: { id: string }) => c.id)).toContain(visitId);
+    const detail = await reviewer.agent.get(`/v1/admin/skill-checks/${visitId}`).expect(200);
+    expect(detail.body.skillCheck).toMatchObject({
+      proId: pro.userId,
+      proPhone: pro.phone.e164,
+      result: 'PENDING',
+      ...TRAINING,
+    });
+    await reviewer.agent.get('/v1/admin/skill-checks?status=bad').expect(400);
+    await reviewer.agent
+      .get('/v1/admin/skill-checks/00000000-0000-4000-8000-000000000000')
+      .expect(404);
+  });
+
+  it('validates the booking and the result, and needs the client header', async () => {
+    const { reviewer, visitId } = await waitingPro();
+    const book = (body: Record<string, unknown>) =>
+      reviewer.agent
+        .post(`/v1/admin/skill-checks/${visitId}/schedule`)
+        .set(CLIENT_HEADER)
+        .send(body);
+    await book({ scheduledAt: 'tomorrow', visitPlace: 'Workshop' }).expect(400);
+    await book({ scheduledAt: tomorrow() }).expect(400);
+    await book({
+      scheduledAt: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+      visitPlace: 'Workshop',
+    }).expect(422);
+    await reviewer.agent
+      .post(`/v1/admin/skill-checks/${visitId}/schedule`)
+      .send({ scheduledAt: tomorrow(), visitPlace: 'Workshop' })
+      .expect(403); // CSRF
+    await book({ scheduledAt: tomorrow(), visitPlace: 'Workshop, call me on 08031234567' }).expect(
+      200,
+    );
+    const [row] = await ctx.db.select().from(skillChecks).where(eq(skillChecks.id, visitId));
+    expect(row!.visitPlace).not.toContain('08031234567');
+    expect(row!.scheduledById).toBe(reviewer.userId);
+
+    await reviewer.agent
+      .post(`/v1/admin/skill-checks/${visitId}/result`)
+      .set(CLIENT_HEADER)
+      .send({ result: 'PASSED' })
+      .expect(400); // a note is required
+  });
+
+  it('a failed check sends the Pro back with the agent’s note; it can be recorded once', async () => {
+    const { pro, reviewer, visitId } = await waitingPro();
+    const record = (body: Record<string, unknown>) =>
+      reviewer.agent.post(`/v1/admin/skill-checks/${visitId}/result`).set(CLIENT_HEADER).send(body);
+    await record({
+      result: 'FAILED',
+      note: 'Could not show a working repair; tools were borrowed.',
+    }).expect(200);
+    await record({ result: 'PASSED', note: 'Changed my mind.' }).expect(409);
+    await reviewer.agent
+      .post(`/v1/admin/skill-checks/${visitId}/schedule`)
+      .set(CLIENT_HEADER)
+      .send({ scheduledAt: tomorrow(), visitPlace: 'Workshop' })
+      .expect(409);
+
+    const seen = await pro.agent.get('/v1/pro/verification').expect(200);
+    expect(seen.body.verification).toMatchObject({
+      status: 'REJECTED',
+      canSubmit: true,
+      note: 'Could not show a working repair; tools were borrowed.',
+      skillCheck: null,
+    });
+    await pro.agent.post('/v1/pro/online').set(CLIENT_HEADER).send({ online: true }).expect(409);
+    const [log] = await ctx.db
+      .select()
+      .from(auditLogs)
+      .where(
+        and(eq(auditLogs.actorId, reviewer.userId), eq(auditLogs.action, 'SKILL_CHECK_RESULT')),
+      );
+    expect(log!.metadata).toMatchObject({ result: 'FAILED', proId: pro.userId });
+  });
+
+  it('staff cannot check themselves', async () => {
+    const { pro, visitId } = await waitingPro();
+    await ctx.db.update(users).set({ role: 'ADMIN' }).where(eq(users.id, pro.userId));
+    await pro.agent
+      .post(`/v1/admin/skill-checks/${visitId}/result`)
+      .set(CLIENT_HEADER)
+      .send({ result: 'PASSED', note: 'I am great at this.' })
+      .expect(409);
   });
 });
 
