@@ -27,6 +27,8 @@ export function WorkPanel({
   const { job, you } = convo;
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   async function payBalance() {
@@ -39,6 +41,27 @@ export function WorkPanel({
       window.location.assign(authorizationUrl);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not start the payment. Try again.');
+      setBusy(false);
+    }
+  }
+
+  async function sendReport() {
+    if (reason.trim().length < 10) {
+      setError('Tell us what is wrong (at least a few words).');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await post(`/v1/jobs/${job.id}/report-problem`, { reason });
+      setReporting(false);
+      setReason('');
+      await onChanged();
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : 'Not sent. Check your connection and try again.',
+      );
+    } finally {
       setBusy(false);
     }
   }
@@ -204,13 +227,68 @@ export function WorkPanel({
               Not yet
             </button>
           </div>
+        ) : reporting ? (
+          <div className="field">
+            <label htmlFor="problem">
+              What is wrong with the work?
+              <span className="hint">
+                GADMO keeps the payment on hold and reviews the chat, the quote and any photos. Add
+                photos in the chat if they help.
+              </span>
+            </label>
+            <textarea
+              id="problem"
+              maxLength={1000}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+            <div className="fee-actions">
+              <button className="button" type="button" disabled={busy} onClick={sendReport}>
+                {busy ? 'Sending…' : 'Send report'}
+              </button>
+              <button
+                className="button button-quiet"
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setReporting(false);
+                  setError(null);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         ) : (
-          <button className="button" type="button" onClick={() => setConfirming(true)}>
-            All good: pay my Pro
-          </button>
+          <div className="fee-actions">
+            <button className="button" type="button" onClick={() => setConfirming(true)}>
+              All good: pay my Pro
+            </button>
+            <button
+              className="button button-quiet"
+              type="button"
+              onClick={() => {
+                setReporting(true);
+                setError(null);
+              }}
+            >
+              Report a problem
+            </button>
+          </div>
         )}
         {failed}
       </div>
+    );
+  }
+
+  if (job.status === 'DISPUTED') {
+    return (
+      <p className="fee-panel fee-agreed">
+        <strong>Problem reported.</strong>{' '}
+        {you === 'PRO'
+          ? 'The customer reported a problem with the work. GADMO holds the payment while staff review the chat, the quote and the photos. You’ll be told the outcome here.'
+          : 'GADMO holds the payment while staff review the chat, the quote and the photos. You’ll be told the outcome here.'}
+      </p>
     );
   }
 
@@ -218,9 +296,7 @@ export function WorkPanel({
     return (
       <p className="fee-panel fee-agreed">
         <strong>Job complete.</strong>{' '}
-        {you === 'PRO'
-          ? 'GADMO has paid you. See it in your wallet.'
-          : 'Your Pro has been paid. Thank you for using GADMO.'}
+        {you === 'PRO' ? 'See your wallet for what GADMO paid you.' : 'Thank you for using GADMO.'}
       </p>
     );
   }

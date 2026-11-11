@@ -9,6 +9,7 @@ const SECTIONS = [
   { href: '/admin/skill-checks', label: 'Skill checks' },
   { href: '/admin/users', label: 'Users' },
   { href: '/admin/jobs', label: 'Jobs' },
+  { href: '/admin/disputes', label: 'Reports' },
   { href: '/admin/withdrawals', label: 'Withdrawals' },
 ];
 
