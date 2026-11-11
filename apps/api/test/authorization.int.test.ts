@@ -20,6 +20,7 @@ import {
 } from '../src/db/schema';
 import { FIELD_CRYPTO } from '../src/infra/infra.module';
 import { BalanceService } from '../src/work/balance.service';
+import { CASH_AGREEMENT_VERSION } from '@gadmo/shared';
 import type { FieldCrypto } from '../src/common/field-crypto';
 import { CLIENT_HEADER, createTestApp, login, randomPhone, type TestContext } from './helpers';
 
@@ -2376,6 +2377,85 @@ describe('the balance: paid in the app, held 12 hours, then released with commis
     expect(chat.body.messages.at(-1).body).toContain('marked the job done again');
     await confirm(customer, id).expect(200);
     expect(await sum(`pro:${pro.userId}`)).toBe(1_950_000);
+  });
+
+  const chooseCash = (who: Who, id: string, body: Record<string, unknown> = {}) =>
+    who.agent
+      .post(`/v1/jobs/${id}/cash`)
+      .set(CLIENT_HEADER)
+      .send({ accept: true, version: CASH_AGREEMENT_VERSION, ...body });
+  const cashReceived = (who: Who, id: string, amountKobo = 1_200_000) =>
+    who.agent.post(`/v1/jobs/${id}/cash/received`).set(CLIENT_HEADER).send({ amountKobo });
+
+  it('cash: the customer accepts the agreement; the Pro confirms; no commission, nothing held', async () => {
+    const { customer, pro, id } = await finishedJob();
+    const stranger = await login(ctx);
+    await cashReceived(pro, id).expect(409); // cash not chosen yet
+    await chooseCash(pro, id).expect(403);
+    await chooseCash(stranger, id).expect(404);
+    await chooseCash(customer, id, { accept: false }).expect(400);
+    await chooseCash(customer, id, { version: '2020-01-v0' }).expect(400);
+    await customer.agent
+      .post(`/v1/jobs/${id}/cash`)
+      .send({ accept: true, version: CASH_AGREEMENT_VERSION })
+      .expect(403); // CSRF
+    await chooseCash(customer, id).expect(200);
+    await chooseCash(customer, id).expect(409);
+
+    const [chosen] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(chosen).toMatchObject({
+      status: 'DONE_AWAITING_PAYMENT',
+      paymentMethod: 'CASH',
+      cashAgreementVersion: CASH_AGREEMENT_VERSION,
+    });
+    expect(chosen!.cashAgreementAcceptedAt).toBeTruthy();
+    const [agreed] = await ctx.db
+      .select()
+      .from(auditLogs)
+      .where(
+        and(
+          eq(auditLogs.actorId, customer.userId),
+          eq(auditLogs.action, 'CASH_AGREEMENT_ACCEPTED'),
+        ),
+      );
+    expect(agreed!.metadata).toMatchObject({
+      version: CASH_AGREEMENT_VERSION,
+      balanceKobo: 1_200_000,
+    });
+    const convo = await pro.agent.get(`/v1/jobs/${id}/conversation`).expect(200);
+    expect(convo.body.conversation.job.paymentMethod).toBe('CASH');
+
+    await cashReceived(customer, id).expect(403);
+    await cashReceived(stranger, id).expect(404);
+    await cashReceived(pro, id, 1_200_050).expect(400);
+    await cashReceived(pro, id, 1_200_000).expect(200);
+    await cashReceived(pro, id).expect(409);
+    const [done] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(done!.status).toBe('CASH_COMPLETED');
+    const [cash] = await ctx.db
+      .select()
+      .from(payments)
+      .where(and(eq(payments.jobId, id), eq(payments.method, 'CASH')));
+    expect(cash).toMatchObject({ type: 'BALANCE', amountKobo: 1_200_000, status: 'SUCCEEDED' });
+    // GADMO holds nothing and takes no commission on cash.
+    expect(await sum(`escrow:job:${id}`)).toBe(0);
+    expect(await sum(`pro:${pro.userId}`)).toBe(1_000_000);
+    const commission = await ctx.db
+      .select()
+      .from(ledgerEntries)
+      .where(and(eq(ledgerEntries.account, 'gadmo:commission'), eq(ledgerEntries.jobId, id)));
+    expect(commission).toHaveLength(0);
+    await report(customer, id).expect(409); // no GADMO Guarantee on cash
+  });
+
+  it('after choosing cash the customer can still pay in the app; then cash can’t be confirmed', async () => {
+    const { customer, pro, id } = await finishedJob();
+    await chooseCash(customer, id).expect(200);
+    const started = await pay(customer, id).expect(200);
+    await complete(customer, started.body.reference);
+    const [job] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(job).toMatchObject({ status: 'BALANCE_HELD', paymentMethod: 'APP' });
+    await cashReceived(pro, id).expect(409);
   });
 
   it('nothing left to pay: held for the same 12 hours; commission comes from the Pro’s wallet', async () => {
