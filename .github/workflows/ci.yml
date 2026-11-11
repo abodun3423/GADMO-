@@ -94,7 +94,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - name: Install Chromium for Playwright
-        run: pnpm --filter @gadmo/web exec playwright install --with-deps chromium
+        # GitHub's Ubuntu images already have Chromium's system libraries. If Ubuntu's package
+        # servers can't be reached, install the browser alone rather than fail the run.
+        run: |
+          pnpm --filter @gadmo/web exec playwright install --with-deps chromium \
+            || pnpm --filter @gadmo/web exec playwright install chromium
       - name: Browser tests on a phone-sized screen (real API, Postgres, Redis)
         run: pnpm --filter @gadmo/web test:e2e
       - name: First-load JavaScript under 200 KB per page
