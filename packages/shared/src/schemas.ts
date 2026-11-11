@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { normalizeNigerianPhone } from './phone';
+import { CASH_AGREEMENT_VERSION } from './cash';
 import { MAX_INSPECTION_FEE_KOBO } from './money';
 
 export const ROLES = ['customer', 'pro', 'admin', 'super_admin'] as const;
@@ -367,3 +368,26 @@ export const resolveDisputeSchema = z
     path: ['proShareKobo'],
   });
 export type ResolveDispute = z.infer<typeof resolveDisputeSchema>;
+
+export const cashAgreementSchema = z
+  .object({
+    accept: z.literal(true, { message: 'Tick the box to accept the cash agreement' }),
+    version: z.literal(CASH_AGREEMENT_VERSION, {
+      message: 'The cash agreement has changed. Refresh the page and read it again.',
+    }),
+  })
+  .strict();
+export type CashAgreement = z.infer<typeof cashAgreementSchema>;
+
+/** The Pro confirms how much cash they received for the balance. */
+export const cashReceivedSchema = z
+  .object({
+    amountKobo: z
+      .number()
+      .int()
+      .positive('Enter the amount you received')
+      .max(100_000_000_00, 'That amount is too large')
+      .refine((k) => k % 100 === 0, 'Use whole naira'),
+  })
+  .strict();
+export type CashReceived = z.infer<typeof cashReceivedSchema>;

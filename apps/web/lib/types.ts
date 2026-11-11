@@ -255,6 +255,8 @@ export interface Conversation {
     balanceKobo: number | null;
     /** While the balance is held: when GADMO pays the Pro if no problem is reported. */
     releaseAt: string | null;
+    /** 'CASH' once the customer accepted the cash agreement for the balance. */
+    paymentMethod: 'APP' | 'CASH' | null;
     /** Customer only, after paying the inspection fee and until the Pro arrives. */
     arrivalCode: string | null;
   };
@@ -308,6 +310,7 @@ export interface MessagesResponse {
     doneAt: string | null;
     balanceKobo: number | null;
     releaseAt: string | null;
+    paymentMethod: 'APP' | 'CASH' | null;
   };
   call: { id: string; status: 'RINGING' | 'ACTIVE'; you: 'CALLER' | 'CALLEE' } | null;
 }

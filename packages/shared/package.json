@@ -27,6 +27,10 @@
       "types": "./dist/phone.d.ts",
       "default": "./dist/phone.js"
     },
+    "./cash": {
+      "types": "./dist/cash.d.ts",
+      "default": "./dist/cash.js"
+    },
     "./money": {
       "types": "./dist/money.d.ts",
       "default": "./dist/money.js"

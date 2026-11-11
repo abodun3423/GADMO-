@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { CASH_AGREEMENT_TEXT, CASH_AGREEMENT_VERSION } from '@gadmo/shared/cash';
 import { ApiError, post } from '@/lib/api';
 import { money } from '@/lib/money';
 import type { Conversation } from '@/lib/types';
@@ -29,6 +30,9 @@ export function WorkPanel({
   const [confirming, setConfirming] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [reason, setReason] = useState('');
+  const [choosingCash, setChoosingCash] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+  const [received, setReceived] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   async function payBalance() {
@@ -60,6 +64,22 @@ export function WorkPanel({
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : 'Not sent. Check your connection and try again.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function send(path: string, body: unknown) {
+    setBusy(true);
+    setError(null);
+    try {
+      await post(`/v1/jobs/${job.id}/${path}`, body);
+      setChoosingCash(false);
+      await onChanged();
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : 'Not saved. Check your connection and try again.',
       );
     } finally {
       setBusy(false);
@@ -163,14 +183,77 @@ export function WorkPanel({
   }
 
   if (job.status === 'DONE_AWAITING_PAYMENT') {
-    if (you === 'PRO' || balance === 0) {
+    const cash = job.paymentMethod === 'CASH';
+    if (you === 'PRO') {
+      if (!cash) {
+        return (
+          <p className="fee-panel fee-agreed">
+            <strong>Job done.</strong> The customer pays the {money(balance)} balance next.
+          </p>
+        );
+      }
+      const amount = received === '' ? balance / 100 : Number(received);
+      return (
+        <div className="fee-panel fee-agreed">
+          <p>
+            <strong>The customer is paying the {money(balance)} balance in cash.</strong> Confirm
+            here once you receive it. GADMO takes no commission on cash.
+          </p>
+          <div className="field">
+            <label htmlFor="cash-received">Cash you received (₦)</label>
+            <input
+              id="cash-received"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              step={1}
+              value={received === '' ? String(balance / 100) : received}
+              onChange={(e) => setReceived(e.target.value)}
+            />
+          </div>
+          <button
+            className="button"
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (!(amount > 0) || !Number.isInteger(amount)) {
+                setError('Enter the amount in whole naira.');
+                return;
+              }
+              void send('cash/received', { amountKobo: amount * 100 });
+            }}
+          >
+            {busy ? 'Saving…' : 'Confirm cash received'}
+          </button>
+          {failed}
+        </div>
+      );
+    }
+    if (balance === 0) {
       return (
         <p className="fee-panel fee-agreed">
-          <strong>Job done.</strong>{' '}
-          {you === 'PRO'
-            ? `The customer pays the ${money(balance)} balance next.`
-            : 'Check the work. There is nothing more to pay.'}
+          <strong>Job done.</strong> Check the work. There is nothing more to pay.
         </p>
+      );
+    }
+    if (cash) {
+      return (
+        <div className="fee-panel fee-agreed">
+          <p>
+            <strong>Paying {money(balance)} in cash.</strong> Give the cash to your Pro; they
+            confirm here when they receive it. GADMO doesn’t hold cash and can’t refund it. Changed
+            your mind? You can still pay in the app, where GADMO protects your payment.
+          </p>
+          <button
+            className="button button-quiet"
+            type="button"
+            disabled={busy}
+            onClick={payBalance}
+          >
+            {busy ? 'Opening payment…' : `Pay ${money(balance)} in the app instead`}
+          </button>
+          {failed}
+        </div>
       );
     }
     return (
@@ -179,11 +262,72 @@ export function WorkPanel({
           <strong>Job done. Balance to pay: {money(balance)}.</strong> Check the work first. GADMO
           holds your payment for 12 hours before paying your Pro, so you can report a problem.
         </p>
-        <button className="button" type="button" disabled={busy} onClick={payBalance}>
-          {busy ? 'Opening payment…' : `Pay ${money(balance)}`}
-        </button>
+        {choosingCash ? (
+          <div className="cash-agreement">
+            <p className="alert alert-error">
+              <strong>Cash is not protected.</strong> If the work turns out to be faulty, even
+              within 12 hours, GADMO can’t refund cash.
+            </p>
+            <label className="choice">
+              <input
+                type="checkbox"
+                checked={agreed}
+                onChange={(e) => setAgreed(e.target.checked)}
+              />
+              <span>{CASH_AGREEMENT_TEXT}</span>
+            </label>
+            <div className="fee-actions">
+              <button
+                className="button"
+                type="button"
+                disabled={busy || !agreed}
+                onClick={() => send('cash', { accept: true, version: CASH_AGREEMENT_VERSION })}
+              >
+                {busy ? 'Saving…' : `Pay ${money(balance)} in cash`}
+              </button>
+              <button
+                className="button button-quiet"
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setChoosingCash(false);
+                  setAgreed(false);
+                  setError(null);
+                }}
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="fee-actions">
+            <button className="button" type="button" disabled={busy} onClick={payBalance}>
+              {busy ? 'Opening payment…' : `Pay ${money(balance)}`}
+            </button>
+            <button
+              className="button button-quiet"
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setChoosingCash(true);
+                setError(null);
+              }}
+            >
+              Pay in cash instead
+            </button>
+          </div>
+        )}
         {failed}
       </div>
+    );
+  }
+
+  if (job.status === 'CASH_COMPLETED') {
+    return (
+      <p className="fee-panel fee-agreed">
+        <strong>Job complete. Paid in cash.</strong>{' '}
+        {you === 'PRO' ? 'Thanks for confirming.' : 'Thank you for using GADMO.'}
+      </p>
     );
   }
 
