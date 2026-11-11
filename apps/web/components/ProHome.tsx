@@ -192,9 +192,9 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
   const profileDone = !!profile && profile.categoryIds.length > 0 && profile.latitude !== null;
   const verified = profile?.verificationStatus === 'APPROVED';
 
-  const active = (mine ?? []).filter(
-    (j) => j.status !== 'COMPLETED' && j.status !== 'CASH_COMPLETED',
-  );
+  const isPast = (j: Job) => j.status === 'COMPLETED' || j.status === 'CASH_COMPLETED';
+  const active = (mine ?? []).filter((j) => !isPast(j));
+  const past = (mine ?? []).filter(isPast);
   const pendingOffers = offers.filter((o) => o.job.type !== 'EMERGENCY' || online).length;
 
   return (
@@ -400,6 +400,24 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
                 ))}
               </div>
             </section>
+          )}
+
+          {past.length > 0 && (
+            <details className="past-jobs">
+              <summary className="section-title">Past jobs ({past.length})</summary>
+              <p className="meta">Open a job to read your chat with the customer.</p>
+              <div className="job-grid">
+                {past.map((job) => (
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    serviceName={serviceNames[job.categoryId] ?? 'Service'}
+                    href={`/jobs/${job.id}`}
+                    status={JOB_STATUS_LABEL[job.status]}
+                  />
+                ))}
+              </div>
+            </details>
           )}
 
           {online && (

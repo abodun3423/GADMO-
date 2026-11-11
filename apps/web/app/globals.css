@@ -3035,6 +3035,16 @@ h1.page-title {
 }
 
 /* ---------- Job cards with a progress bar ---------- */
+.past-jobs {
+  margin-top: 1.5rem;
+}
+.past-jobs > summary {
+  cursor: pointer;
+}
+.past-jobs[open] > summary {
+  margin-bottom: 0.5rem;
+}
+
 .job-grid {
   display: grid;
   gap: 12px;

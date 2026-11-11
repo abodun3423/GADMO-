@@ -189,3 +189,21 @@ export async function signIn(
   await expect(page).not.toHaveURL(/\/signin/);
   return phone;
 }
+
+/** Stands in for a whole job: assigns it to the Pro, adds a chat message from the customer, and marks it completed. */
+export async function finishJob(
+  jobId: string,
+  proE164: string,
+  customerMessage: string,
+): Promise<void> {
+  await db.query(
+    `UPDATE jobs SET pro_id = (SELECT id FROM users WHERE phone = $2), status = 'COMPLETED'
+     WHERE id = $1`,
+    [jobId, proE164],
+  );
+  await db.query(
+    `INSERT INTO messages (job_id, sender_id, body)
+     SELECT j.id, j.customer_id, $2 FROM jobs j WHERE j.id = $1`,
+    [jobId, customerMessage],
+  );
+}
