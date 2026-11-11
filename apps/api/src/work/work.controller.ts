@@ -18,7 +18,7 @@ import { type AuthUser, CurrentUser, JwtAuthGuard } from '../auth/guards';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { jobs, ledgerEntries, messages, quotes } from '../db/schema';
 import { DB, type Db } from '../infra/infra.module';
-import { BalanceService } from './balance.service';
+import { accountBalance, BalanceService } from './balance.service';
 
 const idPipe = new ZodValidationPipe(z.uuid());
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -125,24 +125,29 @@ export class WorkController {
         .update(jobs)
         .set({ status: 'DONE_AWAITING_PAYMENT', doneAt: sql`now()` })
         .where(eq(jobs.id, jobId));
-      // Nothing left to pay: the customer still gets the same window to report a problem.
-      if (balance === 0) await this.balances.hold(tx, jobId);
+      // Nothing left to pay, or the Pro fixed the work after a report (the balance is still
+      // held): the customer gets a new window to report a problem.
+      const alreadyPaid =
+        balance > 0 && (await accountBalance(tx, `escrow:job:${jobId}`)) >= balance;
+      if (balance === 0 || alreadyPaid) await this.balances.hold(tx, jobId);
       await this.event(
         tx,
         jobId,
         user.id,
-        balance > 0
-          ? `Your Pro marked the job done. Balance to pay: ${naira(balance)}.`
-          : `Your Pro marked the job done. Nothing more to pay. If something is wrong with the work, report it within ${BALANCE_HOLD_HOURS} hours.`,
+        alreadyPaid
+          ? `Your Pro marked the job done again. GADMO still holds your payment: check the work, and report a problem within ${BALANCE_HOLD_HOURS} hours if it’s not right.`
+          : balance > 0
+            ? `Your Pro marked the job done. Balance to pay: ${naira(balance)}.`
+            : `Your Pro marked the job done. Nothing more to pay. If something is wrong with the work, report it within ${BALANCE_HOLD_HOURS} hours.`,
       );
-      return { customerId: job.customerId, balance };
+      return { customerId: job.customerId, balance, alreadyPaid };
     });
     this.alerts.send(
       done.customerId,
       {
         title: 'Job done',
         body:
-          done.balance > 0
+          done.balance > 0 && !done.alreadyPaid
             ? `Your Pro marked the job done. Check the work, then pay the ${naira(done.balance)} balance in GADMO.`
             : 'Your Pro marked the job done. Check the work in GADMO.',
         url: `/jobs/${jobId}`,

@@ -341,3 +341,29 @@ export const quoteSchema = z
     path: ['depositKobo'],
   });
 export type QuoteInput = z.infer<typeof quoteSchema>;
+
+/** The customer reports poor or unfinished work while GADMO holds the balance. */
+export const reportProblemSchema = z
+  .object({
+    reason: z.string().trim().min(10, 'Tell us what is wrong (at least a few words)').max(1000),
+  })
+  .strict();
+export type ReportProblem = z.infer<typeof reportProblemSchema>;
+
+/**
+ * Staff settle a poor-work report (PRD: GADMO Guarantee): pay the Pro, refund the customer,
+ * split the held balance, or send the Pro back to fix the work. A split says how much of the
+ * held balance goes to the Pro; the rest is refunded to the customer's GADMO wallet.
+ */
+export const resolveDisputeSchema = z
+  .object({
+    outcome: z.enum(['PAY_PRO', 'REFUND', 'SPLIT', 'SEND_BACK']),
+    proShareKobo: z.number().int().positive().optional(),
+    note: z.string().trim().min(5, 'Explain the decision (at least a few words)').max(1000),
+  })
+  .strict()
+  .refine((v) => (v.outcome === 'SPLIT') === (v.proShareKobo !== undefined), {
+    message: 'Give the Pro’s share for a split, and only for a split',
+    path: ['proShareKobo'],
+  });
+export type ResolveDispute = z.infer<typeof resolveDisputeSchema>;

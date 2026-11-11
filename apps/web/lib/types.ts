@@ -420,3 +420,38 @@ export interface AdminUserDetail extends Omit<AdminUserRow, 'verificationStatus'
     createdAt: string;
   }[];
 }
+
+export type DisputeStatus =
+  'OPEN' | 'RESOLVED_PRO_PAID' | 'RESOLVED_REFUNDED' | 'RESOLVED_SPLIT' | 'RESOLVED_REWORK';
+
+/** A row in the staff list of poor-work reports (GET /v1/admin/disputes). */
+export interface DisputeItem {
+  id: string;
+  jobId: string;
+  status: DisputeStatus;
+  reason: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  customerName: string | null;
+  serviceName: string;
+}
+
+/** One report for staff (GET /v1/admin/disputes/:id). */
+export interface DisputeDetail extends Omit<DisputeItem, 'customerName'> {
+  resolution: string | null;
+  jobStatus: JobStatus;
+  description: string;
+  customerName: string | null;
+  proName: string | null;
+  quote: { amountKobo: number; depositKobo: number } | null;
+  inspectionFeeKobo: number | null;
+  heldKobo: number;
+  messages: {
+    id: string;
+    from: 'CUSTOMER' | 'PRO' | 'GADMO';
+    kind: string;
+    body: string;
+    fileId: string | null;
+    createdAt: string;
+  }[];
+}

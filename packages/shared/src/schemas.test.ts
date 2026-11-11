@@ -15,6 +15,8 @@ import {
   staffLoginSchema,
   staffPasswordSchema,
   staffVerifySchema,
+  reportProblemSchema,
+  resolveDisputeSchema,
   scheduleSkillCheckSchema,
   skillCheckResultSchema,
   submitVerificationSchema,
@@ -271,5 +273,27 @@ describe('quotes', () => {
       quoteSchema.safeParse({ amountKobo: 3_000_000, depositKobo: 50, description: 'A big cake' })
         .success,
     ).toBe(false);
+  });
+});
+
+describe('poor-work reports', () => {
+  it('needs a real reason', () => {
+    expect(reportProblemSchema.safeParse({ reason: 'bad' }).success).toBe(false);
+    expect(
+      reportProblemSchema.safeParse({ reason: 'The tap still leaks after the repair.' }).success,
+    ).toBe(true);
+  });
+
+  it('a split needs the Pro’s share; other outcomes must not have one', () => {
+    const note = 'Half the work was done well.';
+    expect(resolveDisputeSchema.safeParse({ outcome: 'SPLIT', note }).success).toBe(false);
+    expect(
+      resolveDisputeSchema.safeParse({ outcome: 'SPLIT', proShareKobo: 500_000, note }).success,
+    ).toBe(true);
+    expect(
+      resolveDisputeSchema.safeParse({ outcome: 'REFUND', proShareKobo: 1, note }).success,
+    ).toBe(false);
+    expect(resolveDisputeSchema.safeParse({ outcome: 'PAY_PRO', note }).success).toBe(true);
+    expect(resolveDisputeSchema.safeParse({ outcome: 'PAY_PRO', note: 'ok' }).success).toBe(false);
   });
 });

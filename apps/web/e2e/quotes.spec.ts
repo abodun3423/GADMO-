@@ -86,8 +86,10 @@ test('the Pro quotes with a deposit; the customer accepts, pays the deposit, the
   await expect(proPage.getByText('Payment held by GADMO.')).toBeVisible({ timeout: 10_000 });
   await page.getByRole('button', { name: 'All good: pay my Pro' }).click();
   await page.getByRole('button', { name: 'Yes, pay my Pro now' }).click();
-  await expect(page.locator('.fee-panel')).toContainText('Your Pro has been paid.');
-  await expect(proPage.getByText('GADMO has paid you. See it in your wallet.')).toBeVisible({
+  await expect(page.locator('.fee-panel')).toContainText(
+    'Job complete. Thank you for using GADMO.',
+  );
+  await expect(proPage.getByText('See your wallet for what GADMO paid you.')).toBeVisible({
     timeout: 10_000,
   });
   await proContext.close();

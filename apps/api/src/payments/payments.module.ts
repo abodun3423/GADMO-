@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AdminDisputesController } from '../admin/disputes.controller';
 import { AuthModule } from '../auth/auth.module';
 import { ENV, type Env } from '../config/env';
 import { PAYMENT_GATEWAY, PaystackGateway, TestGateway } from './gateway';
@@ -35,6 +36,7 @@ import { WorkController } from '../work/work.controller';
     AdminWithdrawalsController,
     WorkController,
     BalanceController,
+    AdminDisputesController,
   ],
 })
 export class PaymentsModule {}

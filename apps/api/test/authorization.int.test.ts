@@ -5,6 +5,7 @@ import {
   auditLogs,
   calls,
   categories,
+  disputes,
   jobs,
   ledgerEntries,
   messages,
@@ -2210,6 +2211,171 @@ describe('the balance: paid in the app, held 12 hours, then released with commis
     await balances.tick();
     const [stillHeld] = await ctx.db.select().from(jobs).where(eq(jobs.id, c.id));
     expect(stillHeld!.status).toBe('BALANCE_HELD');
+  });
+
+  /** A finished job whose customer has paid the balance (₦12,000 held). */
+  async function heldJob() {
+    const job = await finishedJob();
+    const started = await pay(job.customer, job.id).expect(200);
+    await complete(job.customer, started.body.reference);
+    return job;
+  }
+  const report = (who: Who, id: string, reason = 'The tap still leaks after the repair.') =>
+    who.agent.post(`/v1/jobs/${id}/report-problem`).set(CLIENT_HEADER).send({ reason });
+  async function staffMember() {
+    const s = await login(ctx);
+    await ctx.db.update(users).set({ role: 'ADMIN' }).where(eq(users.id, s.userId));
+    return s;
+  }
+  async function disputeOf(jobId: string) {
+    const [d] = await ctx.db.select().from(disputes).where(eq(disputes.jobId, jobId));
+    return d!;
+  }
+  const resolve = (who: Who, disputeId: string, body: Record<string, unknown>) =>
+    who.agent.post(`/v1/admin/disputes/${disputeId}/resolve`).set(CLIENT_HEADER).send(body);
+
+  it('only the customer reports a problem, while the payment is held; it stays held', async () => {
+    const { customer, pro, id } = await finishedJob();
+    const stranger = await login(ctx);
+    await report(customer, id).expect(409); // not paid yet
+    const started = await pay(customer, id).expect(200);
+    await complete(customer, started.body.reference);
+
+    await report(pro, id).expect(403);
+    await report(stranger, id).expect(404);
+    await report(customer, id, 'bad').expect(400);
+    await customer.agent
+      .post(`/v1/jobs/${id}/report-problem`)
+      .send({ reason: 'The tap still leaks after the repair.' })
+      .expect(403); // CSRF
+    await report(customer, id, 'Still leaking. Call me on 08031234567 to discuss.').expect(200);
+    await report(customer, id).expect(409);
+
+    const [job] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(job!.status).toBe('DISPUTED');
+    const dispute = await disputeOf(id);
+    expect(dispute).toMatchObject({ status: 'OPEN', openedById: customer.userId });
+    expect(dispute.reason).not.toContain('08031234567');
+    await confirm(customer, id).expect(409);
+
+    // Even when the 12 hours are up, a disputed job is not paid out.
+    await ctx.db
+      .update(jobs)
+      .set({ balanceReleaseAt: new Date(Date.now() - 1000) })
+      .where(eq(jobs.id, id));
+    await ctx.app.get(BalanceService).tick();
+    expect(await sum(`escrow:job:${id}`)).toBe(1_200_000);
+
+    // After the 12 hours, a held job can no longer be reported.
+    const late = await heldJob();
+    await ctx.db
+      .update(jobs)
+      .set({ balanceReleaseAt: new Date(Date.now() - 1000) })
+      .where(eq(jobs.id, late.id));
+    await report(late.customer, late.id).expect(409);
+  });
+
+  it('only staff see and settle reports; they see the chat and the money held', async () => {
+    const { customer, pro, id } = await heldJob();
+    await report(customer, id).expect(200);
+    const dispute = await disputeOf(id);
+    for (const who of [customer, pro, await login(ctx, { role: 'pro' })]) {
+      await who.agent.get('/v1/admin/disputes').expect(403);
+      await who.agent.get(`/v1/admin/disputes/${dispute.id}`).expect(403);
+      await resolve(who, dispute.id, { outcome: 'PAY_PRO', note: 'Work looks fine.' }).expect(403);
+    }
+    await request(ctx.server).get('/v1/admin/disputes').expect(401);
+
+    const reviewer = await staffMember();
+    const list = await reviewer.agent.get('/v1/admin/disputes').expect(200);
+    expect(list.body.disputes.map((d: { id: string }) => d.id)).toContain(dispute.id);
+    const detail = await reviewer.agent.get(`/v1/admin/disputes/${dispute.id}`).expect(200);
+    expect(detail.body.dispute).toMatchObject({
+      jobId: id,
+      status: 'OPEN',
+      heldKobo: 1_200_000,
+      quote: { amountKobo: 2_500_000, depositKobo: 1_000_000 },
+      inspectionFeeKobo: 300_000,
+    });
+    expect(
+      detail.body.dispute.messages.some((m: { body: string }) =>
+        m.body.includes('reported a problem'),
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(detail.body)).not.toContain(customer.phone.e164);
+    await resolve(reviewer, dispute.id, { outcome: 'SPLIT', note: 'Half done.' }).expect(400);
+    await reviewer.agent
+      .post(`/v1/admin/disputes/${dispute.id}/resolve`)
+      .send({ outcome: 'PAY_PRO', note: 'Work looks fine.' })
+      .expect(403); // CSRF
+  });
+
+  it('pay the Pro: 10% of the quote; refund: all to the customer’s wallet, no commission', async () => {
+    const reviewer = await staffMember();
+    const a = await heldJob();
+    await report(a.customer, a.id).expect(200);
+    const da = await disputeOf(a.id);
+    await resolve(reviewer, da.id, {
+      outcome: 'PAY_PRO',
+      note: 'Photos show the work is fine.',
+    }).expect(200);
+    expect(await sum(`pro:${a.pro.userId}`)).toBe(1_950_000); // ₦10,000 + ₦12,000 − ₦2,500
+    await resolve(reviewer, da.id, { outcome: 'REFUND', note: 'Changed my mind.' }).expect(409);
+
+    const b = await heldJob();
+    await report(b.customer, b.id).expect(200);
+    const db = await disputeOf(b.id);
+    await resolve(reviewer, db.id, { outcome: 'REFUND', note: 'Nothing was fixed.' }).expect(200);
+    expect(await sum(`escrow:job:${b.id}`)).toBe(0);
+    expect(await sum(`refund-due:customer:${b.customer.userId}`)).toBe(1_200_000);
+    expect(await sum(`pro:${b.pro.userId}`)).toBe(1_000_000); // deposit only, no commission
+    const [job] = await ctx.db.select().from(jobs).where(eq(jobs.id, b.id));
+    expect(job!.status).toBe('COMPLETED');
+    expect((await disputeOf(b.id)).status).toBe('RESOLVED_REFUNDED');
+  });
+
+  it('split: commission only on the Pro’s share; the rest refunded', async () => {
+    const reviewer = await staffMember();
+    const { customer, pro, id } = await heldJob();
+    await report(customer, id).expect(200);
+    const d = await disputeOf(id);
+    await resolve(reviewer, d.id, {
+      outcome: 'SPLIT',
+      proShareKobo: 1_200_000,
+      note: 'Share must be less than the total.',
+    }).expect(422);
+    const res = await resolve(reviewer, d.id, {
+      outcome: 'SPLIT',
+      proShareKobo: 500_000,
+      note: 'Only half of the job was done properly.',
+    }).expect(200);
+    expect(res.body).toMatchObject({ toProKobo: 500_000, refundKobo: 700_000 });
+    expect(await sum(`pro:${pro.userId}`)).toBe(1_450_000); // ₦10,000 + ₦5,000 − ₦500
+    expect(await sum(`refund-due:customer:${customer.userId}`)).toBe(700_000);
+    expect(await sum('gadmo:commission')).toBeGreaterThanOrEqual(50_000);
+  });
+
+  it('send back: the money stays held; the Pro fixes it and the customer gets a new 12 hours', async () => {
+    const reviewer = await staffMember();
+    const { customer, pro, id } = await heldJob();
+    await report(customer, id).expect(200);
+    const d = await disputeOf(id);
+    await resolve(reviewer, d.id, {
+      outcome: 'SEND_BACK',
+      note: 'Please replace the washer.',
+    }).expect(200);
+    let [job] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(job!.status).toBe('IN_PROGRESS');
+    expect(await sum(`escrow:job:${id}`)).toBe(1_200_000);
+
+    await pro.agent.post(`/v1/jobs/${id}/work-done`).set(CLIENT_HEADER).expect(200);
+    [job] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(job!.status).toBe('BALANCE_HELD'); // no second payment
+    await pay(customer, id).expect(409);
+    const chat = await customer.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+    expect(chat.body.messages.at(-1).body).toContain('marked the job done again');
+    await confirm(customer, id).expect(200);
+    expect(await sum(`pro:${pro.userId}`)).toBe(1_950_000);
   });
 
   it('nothing left to pay: held for the same 12 hours; commission comes from the Pro’s wallet', async () => {

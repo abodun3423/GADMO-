@@ -3035,6 +3035,20 @@ h1.page-title {
 }
 
 /* ---------- Job cards with a progress bar ---------- */
+.dispute-chat {
+  list-style: none;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.dispute-msg {
+  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, #dcdfeb);
+}
+
 .past-jobs {
   margin-top: 1.5rem;
 }

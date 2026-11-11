@@ -151,40 +151,13 @@ export class BalanceService implements OnModuleInit, OnModuleDestroy {
       const quote = await acceptedQuote(tx, jobId);
       const held = await accountBalance(tx, `escrow:job:${jobId}`);
       const commission = quote ? percentOf(quote.amountKobo, COMMISSION_BPS) : 0;
-      const pro = `pro:${job.proId}`;
-      const txnId = randomUUID();
-      const entries: (typeof ledgerEntries.$inferInsert)[] = [];
-      if (held > 0) {
-        entries.push(
-          {
-            txnId,
-            account: `escrow:job:${jobId}`,
-            debitKobo: held,
-            jobId,
-            description: 'Balance released to the Pro',
-          },
-          { txnId, account: pro, creditKobo: held, jobId, description: 'Job balance' },
-        );
-      }
-      if (commission > 0) {
-        entries.push(
-          {
-            txnId,
-            account: pro,
-            debitKobo: commission,
-            jobId,
-            description: 'GADMO commission (10% of the quote)',
-          },
-          {
-            txnId,
-            account: COMMISSION_ACCOUNT,
-            creditKobo: commission,
-            jobId,
-            description: 'Commission',
-          },
-        );
-      }
-      if (entries.length > 0) await tx.insert(ledgerEntries).values(entries);
+      await settle(tx, {
+        jobId,
+        proId: job.proId,
+        customerId: job.customerId,
+        toProKobo: held,
+        commissionKobo: commission,
+      });
       await tx.update(jobs).set({ status: 'COMPLETED' }).where(eq(jobs.id, jobId));
       await tx.insert(messages).values({
         jobId,
@@ -195,7 +168,7 @@ export class BalanceService implements OnModuleInit, OnModuleDestroy {
             ? 'The customer confirmed the work is good. GADMO has paid the Pro. Job complete.'
             : `No problem was reported within ${BALANCE_HOLD_HOURS} hours, so GADMO has paid the Pro. Job complete.`,
       });
-      return { proId: job.proId, net: held - commission, held, commission };
+      return { proId: job.proId, held, commission };
     });
     if (!done) return false;
     this.alerts.send(done.proId, {
@@ -209,6 +182,75 @@ export class BalanceService implements OnModuleInit, OnModuleDestroy {
     });
     return true;
   }
+}
+
+/**
+ * Moves a job's held money out of escrow, in one balanced ledger transaction: `toProKobo`
+ * to the Pro, the rest of the escrow to the customer's GADMO wallet, and GADMO's commission
+ * from the Pro (from their wallet if their share doesn't cover it).
+ */
+export async function settle(
+  tx: Tx,
+  s: {
+    jobId: string;
+    proId: string;
+    customerId: string;
+    toProKobo: number;
+    commissionKobo: number;
+  },
+): Promise<{ toProKobo: number; refundKobo: number }> {
+  const escrow = `escrow:job:${s.jobId}`;
+  const held = await accountBalance(tx, escrow);
+  const toPro = Math.min(Math.max(0, s.toProKobo), held);
+  const refund = held - toPro;
+  const pro = `pro:${s.proId}`;
+  const txnId = randomUUID();
+  const entries: (typeof ledgerEntries.$inferInsert)[] = [];
+  const jobId = s.jobId;
+  if (toPro > 0) {
+    entries.push(
+      {
+        txnId,
+        account: escrow,
+        debitKobo: toPro,
+        jobId,
+        description: 'Balance released to the Pro',
+      },
+      { txnId, account: pro, creditKobo: toPro, jobId, description: 'Job balance' },
+    );
+  }
+  if (refund > 0) {
+    entries.push(
+      { txnId, account: escrow, debitKobo: refund, jobId, description: 'Refund to the customer' },
+      {
+        txnId,
+        account: `refund-due:customer:${s.customerId}`,
+        creditKobo: refund,
+        jobId,
+        description: 'Refund for the job',
+      },
+    );
+  }
+  if (s.commissionKobo > 0) {
+    entries.push(
+      {
+        txnId,
+        account: pro,
+        debitKobo: s.commissionKobo,
+        jobId,
+        description: 'GADMO commission (10%)',
+      },
+      {
+        txnId,
+        account: COMMISSION_ACCOUNT,
+        creditKobo: s.commissionKobo,
+        jobId,
+        description: 'Commission',
+      },
+    );
+  }
+  if (entries.length > 0) await tx.insert(ledgerEntries).values(entries);
+  return { toProKobo: toPro, refundKobo: refund };
 }
 
 function naira(kobo: number): string {

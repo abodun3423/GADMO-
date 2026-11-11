@@ -207,3 +207,27 @@ export async function finishJob(
     [jobId, customerMessage],
   );
 }
+
+/** Stands in for a job the Pro has finished: a ₦20,000 quote with no deposit, waiting for the balance. */
+export async function doneJob(
+  customerE164: string,
+  proE164: string,
+  description: string,
+): Promise<string> {
+  const res = await db.query(
+    `INSERT INTO jobs (customer_id, pro_id, category_id, type, description, latitude, longitude,
+                       scheduled_at, status, started_at, done_at)
+     SELECT c.id, p.id, cat.id, 'SCHEDULED', $3, 7.63, 5.221, now(), 'DONE_AWAITING_PAYMENT', now(), now()
+     FROM users c, users p, categories cat
+     WHERE c.phone = $1 AND p.phone = $2 AND cat.slug = 'plumber'
+     RETURNING id`,
+    [customerE164, proE164, description],
+  );
+  const jobId = (res.rows[0] as { id: string }).id;
+  await db.query(
+    `INSERT INTO quotes (job_id, amount_kobo, deposit_kobo, description, status, accepted_at)
+     VALUES ($1, 2000000, 0, 'Fix the leaking pipe', 'ACCEPTED', now())`,
+    [jobId],
+  );
+  return jobId;
+}
