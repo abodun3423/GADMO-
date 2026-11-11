@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { acceptedJob, signIn, watchCsp } from './helpers';
 
-test('the Pro quotes with a deposit; the customer declines, then accepts and pays the deposit', async ({
+test('the Pro quotes with a deposit; the customer accepts, pays the deposit, then the balance', async ({
   page,
   browser,
 }) => {
@@ -74,6 +74,20 @@ test('the Pro quotes with a deposit; the customer declines, then accepts and pay
   await proPage.getByRole('button', { name: 'Yes, the job is done' }).click();
   await expect(proPage.getByText('The customer pays the ₦18,000 balance next.')).toBeVisible();
   await expect(page.locator('.fee-panel')).toContainText('Balance to pay: ₦18,000.', {
+    timeout: 10_000,
+  });
+
+  // The customer pays the balance in the app; GADMO holds it, then the customer confirms.
+  await page.getByRole('button', { name: 'Pay ₦18,000' }).click();
+  await page.getByRole('button', { name: 'Pay ₦18,000 (test)' }).click();
+  await expect(page.getByRole('status')).toContainText('balance paid. GADMO holds it for 12 hours');
+  await page.getByRole('link', { name: 'Back to the job chat' }).click();
+  await expect(page.getByText('GADMO is holding the payment.')).toBeVisible();
+  await expect(proPage.getByText('Payment held by GADMO.')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: 'All good: pay my Pro' }).click();
+  await page.getByRole('button', { name: 'Yes, pay my Pro now' }).click();
+  await expect(page.locator('.fee-panel')).toContainText('Your Pro has been paid.');
+  await expect(proPage.getByText('GADMO has paid you. See it in your wallet.')).toBeVisible({
     timeout: 10_000,
   });
   await proContext.close();

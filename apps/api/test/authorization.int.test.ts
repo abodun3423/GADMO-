@@ -18,6 +18,7 @@ import {
   verifications,
 } from '../src/db/schema';
 import { FIELD_CRYPTO } from '../src/infra/infra.module';
+import { BalanceService } from '../src/work/balance.service';
 import type { FieldCrypto } from '../src/common/field-crypto';
 import { CLIENT_HEADER, createTestApp, login, randomPhone, type TestContext } from './helpers';
 
@@ -2051,6 +2052,175 @@ describe('quotes and the materials deposit', () => {
     ]);
     const begun = await pro.agent.post(`/v1/jobs/${id}/start-work`).set(CLIENT_HEADER).expect(200);
     expect(begun.body.depositReleasedKobo).toBe(600_000);
+  });
+});
+
+describe('the balance: paid in the app, held 12 hours, then released with commission', () => {
+  type Who = Awaited<ReturnType<typeof login>>;
+
+  /** A job whose Pro has finished the work: a ₦25,000 quote, ₦3,000 inspection fee, ₦10,000 deposit. */
+  async function finishedJob(quoteKobo = 2_500_000, depositKobo = 1_000_000, feeKobo = 300_000) {
+    const customer = await login(ctx);
+    const pro = await login(ctx, { role: 'pro' });
+    const created = await customer.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(
+        newJob(electricianId, {
+          type: 'SCHEDULED',
+          scheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
+          latitude: 2 + Math.random(),
+          longitude: 2 + Math.random(),
+        }),
+      )
+      .expect(201);
+    const id = created.body.job.id as string;
+    await ctx.db
+      .update(jobs)
+      .set({
+        proId: pro.userId,
+        status: 'IN_PROGRESS',
+        inspectionFeeKobo: feeKobo,
+        arrivedAt: new Date(),
+        startedAt: new Date(),
+      })
+      .where(eq(jobs.id, id));
+    await ctx.db.insert(quotes).values({
+      jobId: id,
+      amountKobo: quoteKobo,
+      depositKobo,
+      description: 'Replace the distribution board',
+      status: 'ACCEPTED',
+      acceptedAt: new Date(),
+    });
+    // The deposit was paid straight to the Pro when the quote was accepted.
+    if (depositKobo > 0) {
+      const txnId = crypto.randomUUID();
+      await ctx.db.insert(ledgerEntries).values([
+        {
+          txnId,
+          account: 'gateway:test:clearing',
+          debitKobo: depositKobo,
+          jobId: id,
+          description: 'Deposit',
+        },
+        {
+          txnId,
+          account: `pro:${pro.userId}`,
+          creditKobo: depositKobo,
+          jobId: id,
+          description: 'Deposit',
+        },
+      ]);
+    }
+    await pro.agent.post(`/v1/jobs/${id}/work-done`).set(CLIENT_HEADER).expect(200);
+    return { customer, pro, id };
+  }
+
+  const sum = async (account: string) => {
+    const rows = await ctx.db
+      .select()
+      .from(ledgerEntries)
+      .where(eq(ledgerEntries.account, account));
+    return rows.reduce((n, e) => n + e.creditKobo - e.debitKobo, 0);
+  };
+  const pay = (who: Who, id: string) =>
+    who.agent.post(`/v1/jobs/${id}/balance/pay`).set(CLIENT_HEADER).send();
+  const confirm = (who: Who, id: string) =>
+    who.agent.post(`/v1/jobs/${id}/confirm`).set(CLIENT_HEADER).send();
+  const complete = (who: Who, reference: string) =>
+    who.agent
+      .post(`/v1/payments/test/${reference}/complete`)
+      .set(CLIENT_HEADER)
+      .send({ outcome: 'success' })
+      .expect(200);
+
+  it('only the customer pays and confirms; the balance is held, then paid to the Pro less 10%', async () => {
+    const { customer, pro, id } = await finishedJob();
+    const stranger = await login(ctx);
+    await pay(pro, id).expect(403);
+    await pay(stranger, id).expect(404);
+    await customer.agent.post(`/v1/jobs/${id}/balance/pay`).send().expect(403); // CSRF
+    await confirm(customer, id).expect(409); // not paid yet
+
+    const started = await pay(customer, id).expect(200);
+    const [payment] = await ctx.db
+      .select()
+      .from(payments)
+      .where(eq(payments.paystackReference, started.body.reference));
+    expect(payment).toMatchObject({ type: 'BALANCE', amountKobo: 1_200_000, status: 'PENDING' });
+    await complete(customer, started.body.reference);
+
+    const [held] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(held!.status).toBe('BALANCE_HELD');
+    const hours = (held!.balanceReleaseAt!.getTime() - Date.now()) / 3_600_000;
+    expect(hours).toBeGreaterThan(11.9);
+    expect(hours).toBeLessThanOrEqual(12);
+    expect(await sum(`escrow:job:${id}`)).toBe(1_200_000);
+    expect(await sum(`pro:${pro.userId}`)).toBe(1_000_000); // only the deposit so far
+    const chat = await customer.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+    expect(chat.body.work.releaseAt).toBeTruthy();
+    expect(chat.body.messages.at(-1).body).toContain('GADMO holds it for 12 hours');
+    await pay(customer, id).expect(409); // already paid
+
+    await confirm(pro, id).expect(403);
+    await confirm(stranger, id).expect(404);
+    await confirm(customer, id).expect(200);
+    const [done] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(done!.status).toBe('COMPLETED');
+    expect(await sum(`escrow:job:${id}`)).toBe(0);
+    // Deposit ₦10,000 + balance ₦12,000 − commission ₦2,500 (10% of the ₦25,000 quote).
+    expect(await sum(`pro:${pro.userId}`)).toBe(1_950_000);
+    const commission = await ctx.db
+      .select()
+      .from(ledgerEntries)
+      .where(and(eq(ledgerEntries.account, 'gadmo:commission'), eq(ledgerEntries.jobId, id)));
+    expect(commission.reduce((n, e) => n + e.creditKobo, 0)).toBe(250_000);
+    await confirm(customer, id).expect(409); // paid once only
+  });
+
+  it('pays the Pro automatically after 12 hours, but never a job under dispute', async () => {
+    const balances = ctx.app.get(BalanceService);
+    const a = await finishedJob();
+    const b = await finishedJob();
+    for (const { customer, id } of [a, b]) {
+      const started = await pay(customer, id).expect(200);
+      await complete(customer, started.body.reference);
+    }
+    const past = new Date(Date.now() - 60_000);
+    await ctx.db.update(jobs).set({ balanceReleaseAt: past }).where(eq(jobs.id, a.id));
+    await ctx.db
+      .update(jobs)
+      .set({ balanceReleaseAt: past, status: 'DISPUTED' })
+      .where(eq(jobs.id, b.id));
+
+    await balances.tick();
+    const [released] = await ctx.db.select().from(jobs).where(eq(jobs.id, a.id));
+    const [disputed] = await ctx.db.select().from(jobs).where(eq(jobs.id, b.id));
+    expect(released!.status).toBe('COMPLETED');
+    expect(await sum(`pro:${a.pro.userId}`)).toBe(1_950_000);
+    expect(disputed!.status).toBe('DISPUTED');
+    expect(await sum(`escrow:job:${b.id}`)).toBe(1_200_000);
+    expect(await sum(`pro:${b.pro.userId}`)).toBe(1_000_000);
+
+    // A job not yet due stays held.
+    const c = await finishedJob();
+    const started = await pay(c.customer, c.id).expect(200);
+    await complete(c.customer, started.body.reference);
+    await balances.tick();
+    const [stillHeld] = await ctx.db.select().from(jobs).where(eq(jobs.id, c.id));
+    expect(stillHeld!.status).toBe('BALANCE_HELD');
+  });
+
+  it('nothing left to pay: held for the same 12 hours; commission comes from the Pro’s wallet', async () => {
+    // ₦10,000 quote, ₦5,000 deposit, ₦5,000 inspection fee: no balance.
+    const { customer, pro, id } = await finishedJob(1_000_000, 500_000, 500_000);
+    const [held] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(held!.status).toBe('BALANCE_HELD');
+    await pay(customer, id).expect(409);
+    await confirm(customer, id).expect(200);
+    // ₦5,000 deposit − ₦1,000 commission.
+    expect(await sum(`pro:${pro.userId}`)).toBe(400_000);
   });
 });
 

@@ -5,9 +5,17 @@ import { ApiError, post } from '@/lib/api';
 import { money } from '@/lib/money';
 import type { Conversation } from '@/lib/types';
 
+const releaseFormat = new Intl.DateTimeFormat('en-NG', {
+  weekday: 'short',
+  hour: 'numeric',
+  minute: '2-digit',
+  timeZone: 'Africa/Lagos',
+});
+
 /**
  * The work after a quote is accepted: the Pro starts it (which pays them any materials
- * deposit) and marks it done; the customer sees where it stands and the balance due.
+ * deposit) and marks it done. The customer then pays the balance in the app; GADMO holds it
+ * for 12 hours (or until the customer confirms the work is good), then pays the Pro.
  */
 export function WorkPanel({
   convo,
@@ -21,7 +29,21 @@ export function WorkPanel({
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function step(path: 'start-work' | 'work-done') {
+  async function payBalance() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { authorizationUrl } = await post<{ authorizationUrl: string }>(
+        `/v1/jobs/${job.id}/balance/pay`,
+      );
+      window.location.assign(authorizationUrl);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not start the payment. Try again.');
+      setBusy(false);
+    }
+  }
+
+  async function step(path: 'start-work' | 'work-done' | 'confirm') {
     setBusy(true);
     setError(null);
     try {
@@ -118,16 +140,87 @@ export function WorkPanel({
   }
 
   if (job.status === 'DONE_AWAITING_PAYMENT') {
+    if (you === 'PRO' || balance === 0) {
+      return (
+        <p className="fee-panel fee-agreed">
+          <strong>Job done.</strong>{' '}
+          {you === 'PRO'
+            ? `The customer pays the ${money(balance)} balance next.`
+            : 'Check the work. There is nothing more to pay.'}
+        </p>
+      );
+    }
+    return (
+      <div className="fee-panel fee-agreed">
+        <p>
+          <strong>Job done. Balance to pay: {money(balance)}.</strong> Check the work first. GADMO
+          holds your payment for 12 hours before paying your Pro, so you can report a problem.
+        </p>
+        <button className="button" type="button" disabled={busy} onClick={payBalance}>
+          {busy ? 'Opening payment…' : `Pay ${money(balance)}`}
+        </button>
+        {failed}
+      </div>
+    );
+  }
+
+  if (job.status === 'BALANCE_HELD') {
+    const until = job.releaseAt ? releaseFormat.format(new Date(job.releaseAt)) : null;
+    if (you === 'PRO') {
+      return (
+        <p className="fee-panel fee-agreed">
+          <strong>Payment held by GADMO.</strong> It goes into your wallet
+          {until ? ` by ${until}` : ' within 12 hours'}, less GADMO’s 10% commission, unless the
+          customer reports a problem. It can arrive sooner if they confirm the work is good.
+        </p>
+      );
+    }
+    return (
+      <div className="fee-panel fee-agreed">
+        <p>
+          <strong>GADMO is holding the payment.</strong> Your Pro is paid
+          {until ? ` at ${until}` : ' in 12 hours'} unless you report a problem with the work.
+          {confirming ? ' Pay your Pro now? This can’t be undone.' : ' Happy with the job?'}
+        </p>
+        {confirming ? (
+          <div className="fee-actions">
+            <button
+              className="button"
+              type="button"
+              disabled={busy}
+              onClick={() => step('confirm')}
+            >
+              {busy ? 'Paying…' : 'Yes, pay my Pro now'}
+            </button>
+            <button
+              className="button button-quiet"
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setConfirming(false);
+                setError(null);
+              }}
+            >
+              Not yet
+            </button>
+          </div>
+        ) : (
+          <button className="button" type="button" onClick={() => setConfirming(true)}>
+            All good: pay my Pro
+          </button>
+        )}
+        {failed}
+      </div>
+    );
+  }
+
+  if (job.status === 'COMPLETED') {
     return (
       <p className="fee-panel fee-agreed">
-        <strong>Job done.</strong>{' '}
+        <strong>Job complete.</strong>{' '}
         {you === 'PRO'
-          ? balance > 0
-            ? `The customer pays the ${money(balance)} balance next.`
-            : 'There is no balance left to pay.'
-          : balance > 0
-            ? `Check the work. Balance to pay: ${money(balance)}.`
-            : 'Check the work. There is nothing more to pay.'}
+          ? 'GADMO has paid you. See it in your wallet.'
+          : 'Your Pro has been paid. Thank you for using GADMO.'}
       </p>
     );
   }

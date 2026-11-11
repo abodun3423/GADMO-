@@ -7,13 +7,14 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { formatNaira } from '@gadmo/shared';
+import { BALANCE_HOLD_HOURS, formatNaira } from '@gadmo/shared';
 import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import { AlertsService } from '../alerts/alerts.service';
 import { ENV, type Env } from '../config/env';
 import { categories, jobs, ledgerEntries, messages, payments, quotes } from '../db/schema';
 import type { FieldCrypto } from '../common/field-crypto';
 import { DB, type Db, FIELD_CRYPTO } from '../infra/infra.module';
+import { BalanceService, jobBalanceKobo } from '../work/balance.service';
 import { PAYMENT_GATEWAY, type PaymentGateway } from './gateway';
 
 /** A checkout page is reused if the customer taps Pay again within this time. */
@@ -54,6 +55,7 @@ export class PaymentsService {
     @Inject(PAYMENT_GATEWAY) readonly gateway: PaymentGateway,
     @Inject(FIELD_CRYPTO) private readonly crypto: FieldCrypto,
     private readonly alerts: AlertsService,
+    private readonly balances: BalanceService,
   ) {}
 
   /** The customer starts paying the agreed inspection fee. Returns the checkout page. */
@@ -114,6 +116,33 @@ export class PaymentsService {
     });
   }
 
+  /** After the Pro marks the job done, the customer pays the balance in the app. */
+  async startBalance(customerId: string, jobId: string) {
+    return this.checkout(customerId, jobId, 'BALANCE', async (tx) => {
+      const [job] = await tx
+        .select({
+          id: jobs.id,
+          status: jobs.status,
+          inspectionFeeKobo: jobs.inspectionFeeKobo,
+          arrivedAt: jobs.arrivedAt,
+        })
+        .from(jobs)
+        .where(and(eq(jobs.id, jobId), eq(jobs.customerId, customerId)))
+        .for('update');
+      if (!job) throw new NotFoundException();
+      if (job.status !== 'DONE_AWAITING_PAYMENT') {
+        throw new ConflictException(
+          job.status === 'BALANCE_HELD' || job.status === 'COMPLETED'
+            ? 'The balance is already paid.'
+            : 'The balance is due once your Pro marks the job done.',
+        );
+      }
+      const amountKobo = await jobBalanceKobo(tx, job);
+      if (!amountKobo) throw new ConflictException('There is no balance to pay.');
+      return { amountKobo, quoteId: null };
+    });
+  }
+
   /**
    * Creates (or reuses, within CHECKOUT_REUSE_MINUTES) a pending payment and its checkout
    * page. `prepare` checks the job inside the transaction and says how much to charge.
@@ -121,7 +150,7 @@ export class PaymentsService {
   private async checkout(
     customerId: string,
     jobId: string,
-    type: 'INSPECTION_FEE' | 'DEPOSIT',
+    type: 'INSPECTION_FEE' | 'DEPOSIT' | 'BALANCE',
     prepare: (tx: Tx) => Promise<{ amountKobo: number; quoteId: string | null }>,
   ) {
     const prepared = await this.db.transaction(async (tx) => {
@@ -210,7 +239,8 @@ export class PaymentsService {
       id: string;
       proId: string | null;
       amount: number;
-      type: 'INSPECTION_FEE' | 'DEPOSIT';
+      type: 'INSPECTION_FEE' | 'DEPOSIT' | 'BALANCE';
+      releaseAt?: Date;
     } | null = null;
     const result = await this.db.transaction(async (tx) => {
       const [payment] = await tx
@@ -261,6 +291,8 @@ export class PaymentsService {
           status: jobs.status,
           customerId: jobs.customerId,
           proId: jobs.proId,
+          inspectionFeeKobo: jobs.inspectionFeeKobo,
+          arrivedAt: jobs.arrivedAt,
         })
         .from(jobs)
         .where(eq(jobs.id, payment.jobId))
@@ -284,10 +316,13 @@ export class PaymentsService {
       const counts =
         payment.type === 'INSPECTION_FEE'
           ? job!.status === 'ACCEPTED'
-          : payment.type === 'DEPOSIT' &&
-            job!.status === 'QUOTED' &&
-            quote?.status === 'PENDING' &&
-            quote.depositKobo === payment.amountKobo;
+          : payment.type === 'BALANCE'
+            ? job!.status === 'DONE_AWAITING_PAYMENT' &&
+              (await jobBalanceKobo(tx, job!)) === payment.amountKobo
+            : payment.type === 'DEPOSIT' &&
+              job!.status === 'QUOTED' &&
+              quote?.status === 'PENDING' &&
+              quote.depositKobo === payment.amountKobo;
       const txnId = randomUUID();
       const amount = payment.amountKobo;
       await tx.insert(ledgerEntries).values([
@@ -313,7 +348,9 @@ export class PaymentsService {
             ? 'Refund: a payment that was no longer needed'
             : payment.type === 'DEPOSIT'
               ? 'Materials deposit, paid to the Pro'
-              : 'Inspection fee held until the Pro arrives',
+              : payment.type === 'BALANCE'
+                ? `Balance held for ${BALANCE_HOLD_HOURS} hours`
+                : 'Inspection fee held until the Pro arrives',
         },
       ]);
       if (counts && payment.type === 'INSPECTION_FEE') {
@@ -333,6 +370,15 @@ export class PaymentsService {
           body: `Inspection fee paid: ${naira(amount)}. GADMO holds it until the Pro arrives and enters the customer’s arrival code.`,
         });
         paidJob = { id: job!.id, proId: job!.proId, amount, type: 'INSPECTION_FEE' };
+      } else if (counts && payment.type === 'BALANCE') {
+        await this.balances.hold(tx, job!.id);
+        await tx.insert(messages).values({
+          jobId: job!.id,
+          senderId: job!.customerId,
+          kind: 'EVENT',
+          body: `Balance paid: ${naira(amount)}. GADMO holds it for ${BALANCE_HOLD_HOURS} hours, then pays the Pro. If something is wrong with the work, report it before then; if all is good, you can confirm sooner.`,
+        });
+        paidJob = { id: job!.id, proId: job!.proId, amount, type: 'BALANCE' };
       } else if (counts && quote) {
         await tx
           .update(quotes)
@@ -361,24 +407,31 @@ export class PaymentsService {
       id: string;
       proId: string | null;
       amount: number;
-      type: 'INSPECTION_FEE' | 'DEPOSIT';
+      type: 'INSPECTION_FEE' | 'DEPOSIT' | 'BALANCE';
     } | null;
     if (paid?.proId) {
       this.alerts.send(
         paid.proId,
-        paid.type === 'DEPOSIT'
+        paid.type === 'BALANCE'
           ? {
-              title: 'Quote accepted',
-              body: `The customer accepted your quote and paid the ${naira(paid.amount)} materials deposit. It’s in your GADMO wallet now.`,
+              title: 'Balance paid',
+              body: `The customer paid the ${naira(paid.amount)} balance. GADMO pays it into your wallet within ${BALANCE_HOLD_HOURS} hours, unless they report a problem.`,
               url: `/jobs/${paid.id}`,
               tag: `job-${paid.id}`,
             }
-          : {
-              title: 'Inspection fee paid',
-              body: `The customer paid the inspection fee (${naira(paid.amount)}). Tap “I’m on my way” in the job chat when you set off.`,
-              url: `/jobs/${paid.id}`,
-              tag: `job-${paid.id}`,
-            },
+          : paid.type === 'DEPOSIT'
+            ? {
+                title: 'Quote accepted',
+                body: `The customer accepted your quote and paid the ${naira(paid.amount)} materials deposit. It’s in your GADMO wallet now.`,
+                url: `/jobs/${paid.id}`,
+                tag: `job-${paid.id}`,
+              }
+            : {
+                title: 'Inspection fee paid',
+                body: `The customer paid the inspection fee (${naira(paid.amount)}). Tap “I’m on my way” in the job chat when you set off.`,
+                url: `/jobs/${paid.id}`,
+                tag: `job-${paid.id}`,
+              },
         { sms: paid.type === 'DEPOSIT' },
       );
     }
