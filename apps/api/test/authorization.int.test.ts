@@ -607,6 +607,8 @@ describe('emergency offers and cancelling: object-level authorization', () => {
   });
 });
 
+const TRAINING = { trainedAt: 'Adeyemi Auto Workshop, Ado-Ekiti', trainedBy: 'Mr Adeyemi' };
+
 describe('identity verification: Pros submit, nobody reads it back', () => {
   const jpeg = (size = 2000) =>
     Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(size, 9)]);
@@ -625,7 +627,7 @@ describe('identity verification: Pros submit, nobody reads it back', () => {
     await customer.agent
       .post('/v1/pro/verification')
       .set(CLIENT_HEADER)
-      .send({ nin: '12345678901' })
+      .send({ nin: '12345678901', ...TRAINING })
       .expect(403);
   });
 
@@ -635,7 +637,8 @@ describe('identity verification: Pros submit, nobody reads it back', () => {
     expect(start.body.verification).toMatchObject({
       status: 'NOT_STARTED',
       canSubmit: true,
-      photos: { idDocument: false, selfie: false },
+      photos: { idDocument: false, selfie: false, attestation: false, certificate: false },
+      techLinks: false,
     });
 
     // Not a photo, whatever the header says.
@@ -657,10 +660,21 @@ describe('identity verification: Pros submit, nobody reads it back', () => {
     await pro.agent
       .post('/v1/pro/verification')
       .set(CLIENT_HEADER)
-      .send({ nin: '12345678901' })
+      .send({ nin: '12345678901', ...TRAINING })
       .expect(422); // no ID photo yet
     await upload(pro.agent, 'id-document', jpeg(3000)).expect(204);
     await upload(pro.agent, 'id-document', jpeg(3100)).expect(204); // replaces the draft
+    await pro.agent
+      .post('/v1/pro/verification')
+      .set(CLIENT_HEADER)
+      .send({ nin: '12345678901', ...TRAINING })
+      .expect(422); // no attestation letter or certificate yet
+    await upload(pro.agent, 'attestation', jpeg(2500)).expect(204);
+    await pro.agent
+      .post('/v1/pro/verification')
+      .set(CLIENT_HEADER)
+      .send({ nin: '12345678901' })
+      .expect(400); // where and with whom they trained is required
     await pro.agent
       .post('/v1/pro/verification')
       .set(CLIENT_HEADER)
@@ -670,7 +684,7 @@ describe('identity verification: Pros submit, nobody reads it back', () => {
     const res = await pro.agent
       .post('/v1/pro/verification')
       .set(CLIENT_HEADER)
-      .send({ nin: '1234 5678 901' })
+      .send({ nin: '1234 5678 901', ...TRAINING })
       .expect(200);
     expect(res.body.verification).toMatchObject({ status: 'PENDING', canSubmit: false });
     expect(JSON.stringify(res.body)).not.toContain('12345678901');
@@ -687,7 +701,7 @@ describe('identity verification: Pros submit, nobody reads it back', () => {
       .select()
       .from(privateFiles)
       .where(eq(privateFiles.ownerId, pro.userId));
-    expect(files).toHaveLength(2);
+    expect(files).toHaveLength(3);
     expect(files.every((f) => f.verificationId === row!.id)).toBe(true);
     const id = files.find((f) => f.purpose === 'ID_DOCUMENT')!;
     expect(id.byteSize).toBe(3104);
@@ -697,14 +711,76 @@ describe('identity verification: Pros submit, nobody reads it back', () => {
       .from(proProfiles)
       .where(eq(proProfiles.userId, pro.userId));
     expect(profile!.verificationStatus).toBe('PENDING');
+    expect(row!).toMatchObject({ ...TRAINING, trainerPhoneEncrypted: null, techLinks: null });
+    expect(row!.attestationRef).toBe(
+      `file:${files.find((f) => f.purpose === 'ATTESTATION_LETTER')!.id}`,
+    );
+    expect(row!.certificateRef).toBeNull();
 
     // While under review nothing can be changed.
     await upload(pro.agent, 'selfie', jpeg()).expect(409);
     await pro.agent
       .post('/v1/pro/verification')
       .set(CLIENT_HEADER)
-      .send({ nin: '12345678901' })
+      .send({ nin: '12345678901', ...TRAINING })
       .expect(409);
+  });
+
+  it('keeps the trainer phone encrypted, masks contact details, and takes links from tech Pros only', async () => {
+    const send = async (pro: Awaited<ReturnType<typeof login>>) => {
+      await upload(pro.agent, 'selfie', jpeg()).expect(204);
+      await upload(pro.agent, 'id-document', jpeg()).expect(204);
+      await upload(pro.agent, 'certificate', jpeg()).expect(204);
+      await pro.agent
+        .post('/v1/pro/verification')
+        .set(CLIENT_HEADER)
+        .send({
+          nin: '12345678901',
+          trainedAt: 'Ade Workshop, call 08031234567',
+          trainedBy: 'Mr Ade',
+          trainerPhone: '0803 123 4567',
+          links: { linkedin: 'linkedin.com/in/ada', github: 'https://github.com/ada' },
+        })
+        .expect(200);
+      const [row] = await ctx.db
+        .select()
+        .from(verifications)
+        .where(eq(verifications.proId, pro.userId));
+      return row!;
+    };
+
+    const plumber = await login(ctx, { role: 'pro' });
+    const plain = await send(plumber);
+    expect(plain.trainedAt).not.toContain('08031234567');
+    expect(plain.trainerPhoneEncrypted).not.toContain('8031234567');
+    const crypto = ctx.app.get<FieldCrypto>(FIELD_CRYPTO);
+    expect(crypto.decrypt(plain.trainerPhoneEncrypted!).toString()).toBe('+2348031234567');
+    expect(plain.techLinks).toBeNull(); // not a tech Pro
+    expect(plain.certificateRef).toMatch(/^file:/);
+    expect(plain.attestationRef).toBeNull();
+
+    const developer = await login(ctx, { role: 'pro' });
+    const [web] = await ctx.db
+      .select({ id: categories.id })
+      .from(categories)
+      .where(eq(categories.slug, 'web-developer'));
+    await ctx.db.insert(proCategories).values({ proId: developer.userId, categoryId: web!.id });
+    const seen = await developer.agent.get('/v1/pro/verification').expect(200);
+    expect(seen.body.verification.techLinks).toBe(true);
+    const tech = await send(developer);
+    expect(tech.techLinks).toEqual({
+      linkedin: 'https://linkedin.com/in/ada',
+      github: 'https://github.com/ada',
+    });
+    const res = await developer.agent.get('/v1/pro/verification').expect(200);
+    expect(JSON.stringify(res.body)).not.toContain('linkedin.com');
+    expect(JSON.stringify(res.body)).not.toContain('8031234567');
+
+    await developer.agent
+      .post('/v1/pro/verification')
+      .set(CLIENT_HEADER)
+      .send({ nin: '12345678901', ...TRAINING, links: { github: 'https://gitlab.com/x' } })
+      .expect(400);
   });
 
   it('each Pro only ever sees their own check', async () => {
@@ -719,10 +795,11 @@ describe('identity verification: Pros submit, nobody reads it back', () => {
     const pro = await login(ctx, { role: 'pro' });
     await upload(pro.agent, 'selfie', jpeg()).expect(204);
     await upload(pro.agent, 'id-document', jpeg()).expect(204);
+    await upload(pro.agent, 'attestation', jpeg()).expect(204);
     await pro.agent
       .post('/v1/pro/verification')
       .set(CLIENT_HEADER)
-      .send({ nin: '12345678901' })
+      .send({ nin: '12345678901', ...TRAINING })
       .expect(200);
     await ctx.db
       .update(verifications)
@@ -737,7 +814,7 @@ describe('identity verification: Pros submit, nobody reads it back', () => {
       status: 'NEEDS_INFO',
       canSubmit: true,
       note: 'The ID photo is blurred.',
-      photos: { idDocument: false, selfie: false },
+      photos: { idDocument: false, selfie: false, attestation: false, certificate: false },
     });
     await upload(pro.agent, 'id-document', jpeg()).expect(204);
   });
@@ -752,6 +829,7 @@ describe('staff review of identity checks', () => {
     for (const [kind, fill] of [
       ['id-document', 1],
       ['selfie', 2],
+      ['attestation', 3],
     ] as const) {
       await pro.agent
         .put(`/v1/pro/verification/photos/${kind}`)
@@ -760,7 +838,11 @@ describe('staff review of identity checks', () => {
         .send(jpeg(fill))
         .expect(204);
     }
-    await pro.agent.post('/v1/pro/verification').set(CLIENT_HEADER).send({ nin }).expect(200);
+    await pro.agent
+      .post('/v1/pro/verification')
+      .set(CLIENT_HEADER)
+      .send({ nin, ...TRAINING })
+      .expect(200);
     const [row] = await ctx.db
       .select({ id: verifications.id })
       .from(verifications)
@@ -782,6 +864,7 @@ describe('staff review of identity checks', () => {
       await who.agent.get('/v1/admin/verifications').expect(403);
       await who.agent.get(`/v1/admin/verifications/${checkId}`).expect(403);
       await who.agent.get(`/v1/admin/verifications/${checkId}/photos/selfie`).expect(403);
+      await who.agent.get(`/v1/admin/verifications/${checkId}/photos/attestation`).expect(403);
       await who.agent
         .post(`/v1/admin/verifications/${checkId}/decision`)
         .set(CLIENT_HEADER)
@@ -807,7 +890,13 @@ describe('staff review of identity checks', () => {
       nin,
       proPhone: pro.phone.e164,
       result: 'PENDING',
+      ...TRAINING,
+      trainerPhone: null,
+      techLinks: null,
+      documents: { attestation: true, certificate: false },
     });
+    expect(detail.body.verification).not.toHaveProperty('trainerPhoneEncrypted');
+    expect(detail.body.verification).not.toHaveProperty('attestationRef');
 
     const photo = await reviewer.agent
       .get(`/v1/admin/verifications/${checkId}/photos/selfie`)
@@ -827,6 +916,18 @@ describe('staff review of identity checks', () => {
       .from(auditLogs)
       .where(and(eq(auditLogs.actorId, reviewer.userId)));
     expect(logged.map((l) => l.action).sort()).toEqual(['VIEW_NIN', 'VIEW_SELFIE']);
+
+    const letter = await reviewer.agent
+      .get(`/v1/admin/verifications/${checkId}/photos/attestation`)
+      .buffer(true)
+      .parse((res, done) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => done(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    expect((letter.body as Buffer).equals(jpeg(3))).toBe(true);
+    await reviewer.agent.get(`/v1/admin/verifications/${checkId}/photos/certificate`).expect(404);
 
     await reviewer.agent.get('/v1/admin/verifications/not-a-uuid').expect(400);
     await reviewer.agent

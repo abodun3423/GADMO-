@@ -178,8 +178,9 @@ export function ProProfileForm({ groups }: { groups: CategoryGroup[] }) {
           {profile?.verificationStatus !== 'APPROVED' && (
             <>
               {' '}
-              Next: <Link href="/pro/verify">verify your identity</Link> (NIN, a photo of your ID
-              and a selfie). Once GADMO has checked it, you can go online and receive jobs.
+              Next: <Link href="/pro/verify">verify your identity</Link> (NIN, a photo of your ID, a
+              selfie and proof of your skill). Once GADMO has checked it and seen your work, you can
+              go online and receive jobs.
             </>
           )}{' '}
           <Link href="/pro">Go to Pro home</Link>

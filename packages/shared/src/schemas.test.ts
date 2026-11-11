@@ -16,6 +16,7 @@ import {
   staffPasswordSchema,
   staffVerifySchema,
   submitVerificationSchema,
+  techLinksSchema,
   updateProfileSchema,
   verificationDecisionSchema,
 } from './schemas';
@@ -93,10 +94,56 @@ describe('Pro profile', () => {
 });
 
 describe('identity check', () => {
+  const training = { trainedAt: 'Adeyemi Auto Workshop, Ado-Ekiti', trainedBy: 'Mr Adeyemi' };
+
   it('takes an 11-digit NIN, ignoring spaces and dashes', () => {
-    expect(submitVerificationSchema.parse({ nin: '1234 5678-901' }).nin).toBe('12345678901');
-    expect(submitVerificationSchema.safeParse({ nin: '1234567890' }).success).toBe(false);
-    expect(submitVerificationSchema.safeParse({ nin: '1234567890a' }).success).toBe(false);
+    expect(submitVerificationSchema.parse({ nin: '1234 5678-901', ...training }).nin).toBe(
+      '12345678901',
+    );
+    expect(submitVerificationSchema.safeParse({ nin: '1234567890', ...training }).success).toBe(
+      false,
+    );
+    expect(submitVerificationSchema.safeParse({ nin: '1234567890a', ...training }).success).toBe(
+      false,
+    );
+  });
+
+  it('needs where and with whom the Pro trained; the trainer phone is optional', () => {
+    const nin = '12345678901';
+    expect(submitVerificationSchema.safeParse({ nin }).success).toBe(false);
+    expect(submitVerificationSchema.safeParse({ nin, ...training, trainedBy: ' ' }).success).toBe(
+      false,
+    );
+    expect(
+      submitVerificationSchema.parse({ nin, ...training, trainerPhone: '0803 123 4567' })
+        .trainerPhone,
+    ).toBe('+2348031234567');
+    expect(
+      submitVerificationSchema.safeParse({ nin, ...training, trainerPhone: '12' }).success,
+    ).toBe(false);
+  });
+
+  it('takes tech links only on the right sites, over https', () => {
+    expect(
+      techLinksSchema.parse({
+        linkedin: 'linkedin.com/in/ada',
+        github: 'https://github.com/ada',
+        portfolio: 'ada.dev',
+      }),
+    ).toEqual({
+      linkedin: 'https://linkedin.com/in/ada',
+      github: 'https://github.com/ada',
+      portfolio: 'https://ada.dev',
+    });
+    expect(techLinksSchema.parse({ linkedin: 'https://ng.linkedin.com/in/ada' }).linkedin).toBe(
+      'https://ng.linkedin.com/in/ada',
+    );
+    expect(techLinksSchema.safeParse({ linkedin: 'https://evil-linkedin.com/x' }).success).toBe(
+      false,
+    );
+    expect(techLinksSchema.safeParse({ github: 'https://gitlab.com/ada' }).success).toBe(false);
+    expect(techLinksSchema.safeParse({ portfolio: 'http://ada.dev' }).success).toBe(false);
+    expect(techLinksSchema.safeParse({ portfolio: 'javascript:alert(1)' }).success).toBe(false);
   });
 
   it('needs a note unless the check is approved', () => {

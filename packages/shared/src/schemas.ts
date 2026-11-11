@@ -94,7 +94,56 @@ export const ninSchema = z
   .transform((v) => v.replace(/[\s-]/g, ''))
   .pipe(z.string().regex(/^\d{11}$/, 'Your NIN has 11 digits'));
 
-export const submitVerificationSchema = z.object({ nin: ninSchema }).strict();
+/** A web link on one of the given sites (or any site when none are given), https only. */
+function linkOn(hosts: readonly string[], message: string) {
+  return z
+    .string()
+    .trim()
+    .max(300)
+    .transform((v) => (/^https?:\/\//i.test(v) ? v : `https://${v}`))
+    .pipe(
+      z.url({ protocol: /^https$/, message }).refine((v) => {
+        let host: string;
+        try {
+          host = new URL(v).hostname.toLowerCase();
+        } catch {
+          return false;
+        }
+        return hosts.length === 0 || hosts.some((h) => host === h || host.endsWith(`.${h}`));
+      }, message),
+    );
+}
+
+/**
+ * Links a tech Pro gives so staff can check their work (founder decision: staff only,
+ * never shown to customers, so all contact stays in GADMO chat). All optional.
+ */
+export const techLinksSchema = z
+  .object({
+    linkedin: linkOn(['linkedin.com'], 'Enter your LinkedIn profile link').optional(),
+    github: linkOn(['github.com'], 'Enter your GitHub profile link').optional(),
+    portfolio: linkOn([], 'Enter a link to your portfolio or website').optional(),
+  })
+  .strict();
+export type TechLinks = z.infer<typeof techLinksSchema>;
+
+/**
+ * Stage 1 of Pro verification (founder decision): identity, plus where and with whom the
+ * Pro learned their trade. A photo of an attestation letter or a certificate is uploaded
+ * separately; at least one is required.
+ */
+export const submitVerificationSchema = z
+  .object({
+    nin: ninSchema,
+    /** The workshop, master's business or school where they learned. */
+    trainedAt: z.string().trim().min(2, 'Tell us where you learned').max(120),
+    /** The master, teacher or instructor who trained them. */
+    trainedBy: z.string().trim().min(2, 'Tell us who trained you').max(80),
+    /** So staff can call the trainer to confirm. Seen by GADMO staff only. */
+    trainerPhone: phoneSchema.optional(),
+    links: techLinksSchema.optional(),
+  })
+  .strict();
 export type SubmitVerification = z.infer<typeof submitVerificationSchema>;
 
 /** A staff decision on an identity check. A note is required unless it is approved. */

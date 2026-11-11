@@ -161,7 +161,16 @@ export interface VerificationState {
   canSubmit: boolean;
   submittedAt: string | null;
   note: string | null;
-  photos: { idDocument: boolean; selfie: boolean };
+  photos: { idDocument: boolean; selfie: boolean; attestation: boolean; certificate: boolean };
+  /** True when the Pro has a tech skill and can add LinkedIn, GitHub and portfolio links. */
+  techLinks: boolean;
+}
+
+/** A tech Pro's links, for GADMO staff only. */
+export interface TechLinks {
+  linkedin?: string;
+  github?: string;
+  portfolio?: string;
 }
 
 export type ReviewResult = 'PENDING' | 'APPROVED' | 'REJECTED' | 'NEEDS_INFO';
@@ -184,6 +193,11 @@ export interface ReviewDetail extends ReviewItem {
   nin: string | null;
   reviewNote: string | null;
   skills: string[];
+  trainedAt: string | null;
+  trainedBy: string | null;
+  trainerPhone: string | null;
+  techLinks: TechLinks | null;
+  documents: { attestation: boolean; certificate: boolean };
   history: { id: string; result: ReviewResult; createdAt: string; reviewNote: string | null }[];
 }
 

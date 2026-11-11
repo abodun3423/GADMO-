@@ -377,7 +377,7 @@ function ProChecklist({ pro }: { pro: NonNullable<AccountSummary['pro']> }) {
       text:
         pro.verificationStatus === 'PENDING'
           ? 'Identity check: under review by GADMO'
-          : 'Verify your identity (NIN and a selfie)',
+          : 'Verify your identity (NIN, selfie and proof of skill)',
       href: '/pro/verify',
     },
   ];

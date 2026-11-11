@@ -141,6 +141,13 @@
       "when": 1794217826094,
       "tag": "0019_work_started",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794392454022,
+      "tag": "0020_skill_proof",
+      "breakpoints": true
     }
   ]
 }

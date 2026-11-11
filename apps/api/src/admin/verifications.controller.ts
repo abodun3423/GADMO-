@@ -38,11 +38,20 @@ const idPipe = new ZodValidationPipe(z.uuid());
 const statusPipe = new ZodValidationPipe(
   z.enum(['PENDING', 'APPROVED', 'REJECTED', 'NEEDS_INFO']).default('PENDING'),
 );
-const photoPipe = new ZodValidationPipe(z.enum(['id-document', 'selfie']));
+const PHOTO = {
+  'id-document': { purpose: 'ID_DOCUMENT', audit: 'VIEW_ID_PHOTO' },
+  selfie: { purpose: 'SELFIE', audit: 'VIEW_SELFIE' },
+  attestation: { purpose: 'ATTESTATION_LETTER', audit: 'VIEW_ATTESTATION' },
+  certificate: { purpose: 'CERTIFICATE', audit: 'VIEW_CERTIFICATE' },
+} as const;
+const photoPipe = new ZodValidationPipe(
+  z.enum(['id-document', 'selfie', 'attestation', 'certificate']),
+);
 
 /**
- * GADMO staff review of Pros' identity checks (PRD: verification review queue).
- * Staff only; every look at a NIN or photo and every decision is written to the audit log.
+ * GADMO staff review of Pros' verification documents (PRD: verification review queue):
+ * identity, proof of skill and, for tech Pros, their links. Staff only; every look at a NIN,
+ * phone or photo and every decision is written to the audit log.
  */
 @Controller('admin/verifications')
 @UseGuards(JwtAuthGuard)
@@ -93,6 +102,12 @@ export class AdminVerificationsController {
         result: verifications.result,
         ninEncrypted: verifications.ninEncrypted,
         ninHash: verifications.ninHash,
+        attestationRef: verifications.attestationRef,
+        certificateRef: verifications.certificateRef,
+        trainedAt: verifications.trainedAt,
+        trainedBy: verifications.trainedBy,
+        trainerPhoneEncrypted: verifications.trainerPhoneEncrypted,
+        techLinks: verifications.techLinks,
         reviewNote: verifications.reviewNote,
         reviewedAt: verifications.reviewedAt,
         createdAt: verifications.createdAt,
@@ -121,11 +136,22 @@ export class AdminVerificationsController {
       .orderBy(desc(verifications.createdAt));
 
     await this.audit(staff.id, 'VIEW_NIN', id);
-    const { ninEncrypted, ninHash, ...rest } = row;
+    const {
+      ninEncrypted,
+      ninHash,
+      attestationRef,
+      certificateRef,
+      trainerPhoneEncrypted,
+      ...rest
+    } = row;
     return {
       verification: {
         ...rest,
         nin: ninEncrypted ? this.crypto.decrypt(ninEncrypted).toString() : null,
+        trainerPhone: trainerPhoneEncrypted
+          ? this.crypto.decrypt(trainerPhoneEncrypted).toString()
+          : null,
+        documents: { attestation: Boolean(attestationRef), certificate: Boolean(certificateRef) },
         ninUsedElsewhere: await this.otherAccountsWithNin(ninHash, row.proId),
         skills: skills.map((s) => s.name),
         history,
@@ -138,21 +164,18 @@ export class AdminVerificationsController {
   async photo(
     @CurrentUser() staff: AuthUser,
     @Param('id', idPipe) id: string,
-    @Param('purpose', photoPipe) purpose: 'id-document' | 'selfie',
+    @Param('purpose', photoPipe) purpose: keyof typeof PHOTO,
     @Res() res: Response,
   ): Promise<void> {
     const [file] = await this.db
       .select({ contentType: privateFiles.contentType, data: privateFiles.dataEncrypted })
       .from(privateFiles)
       .where(
-        and(
-          eq(privateFiles.verificationId, id),
-          eq(privateFiles.purpose, purpose === 'selfie' ? 'SELFIE' : 'ID_DOCUMENT'),
-        ),
+        and(eq(privateFiles.verificationId, id), eq(privateFiles.purpose, PHOTO[purpose].purpose)),
       )
       .limit(1);
     if (!file) throw new NotFoundException();
-    await this.audit(staff.id, purpose === 'selfie' ? 'VIEW_SELFIE' : 'VIEW_ID_PHOTO', id);
+    await this.audit(staff.id, PHOTO[purpose].audit, id);
     res
       .status(200)
       .type(file.contentType)
