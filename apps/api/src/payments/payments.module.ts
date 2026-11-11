@@ -7,6 +7,8 @@ import { PaymentsService } from './payments.service';
 import { QuotesController } from '../quotes/quotes.controller';
 import { AdminWithdrawalsController, WalletController } from '../wallet/wallet.controller';
 import { WalletService } from '../wallet/wallet.service';
+import { BalanceController } from '../work/balance.controller';
+import { BalanceService } from '../work/balance.service';
 import { WorkController } from '../work/work.controller';
 
 @Module({
@@ -22,7 +24,9 @@ import { WorkController } from '../work/work.controller';
     },
     PaymentsService,
     WalletService,
+    BalanceService,
   ],
+  exports: [BalanceService],
   controllers: [
     PaymentsController,
     PaystackWebhookController,
@@ -30,6 +34,7 @@ import { WorkController } from '../work/work.controller';
     WalletController,
     AdminWithdrawalsController,
     WorkController,
+    BalanceController,
   ],
 })
 export class PaymentsModule {}

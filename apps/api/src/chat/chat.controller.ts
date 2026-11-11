@@ -456,6 +456,7 @@ export class ChatController {
         arrivedAt: jobs.arrivedAt,
         startedAt: jobs.startedAt,
         doneAt: jobs.doneAt,
+        balanceReleaseAt: jobs.balanceReleaseAt,
         serviceName: categories.name,
         inspectionPolicy: categories.inspectionPolicy,
       })
@@ -477,6 +478,8 @@ export class ChatController {
     doneAt: Date | null;
     inspectionFeeKobo: number | null;
     arrivedAt: Date | null;
+    status: string;
+    balanceReleaseAt: Date | null;
   }) {
     const [quote] = await this.db
       .select({ amountKobo: quotes.amountKobo, depositKobo: quotes.depositKobo })
@@ -487,6 +490,8 @@ export class ChatController {
     return {
       startedAt: job.startedAt,
       doneAt: job.doneAt,
+      /** While the balance is held: when GADMO pays the Pro if no problem is reported. */
+      releaseAt: job.status === 'BALANCE_HELD' ? job.balanceReleaseAt : null,
       balanceKobo: quote
         ? balanceDue({
             quoteKobo: quote.amountKobo,

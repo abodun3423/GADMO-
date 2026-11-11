@@ -253,6 +253,8 @@ export interface Conversation {
     doneAt: string | null;
     /** From the accepted quote: quote − inspection fee paid − deposit. Null before a quote is accepted. */
     balanceKobo: number | null;
+    /** While the balance is held: when GADMO pays the Pro if no problem is reported. */
+    releaseAt: string | null;
     /** Customer only, after paying the inspection fee and until the Pro arrives. */
     arrivalCode: string | null;
   };
@@ -301,7 +303,12 @@ export interface MessagesResponse {
   inspectionFeeKobo: number | null;
   jobStatus: JobStatus;
   visit: { onTheWayAt: string | null; arrivedAt: string | null };
-  work: { startedAt: string | null; doneAt: string | null; balanceKobo: number | null };
+  work: {
+    startedAt: string | null;
+    doneAt: string | null;
+    balanceKobo: number | null;
+    releaseAt: string | null;
+  };
   call: { id: string; status: 'RINGING' | 'ACTIVE'; you: 'CALLER' | 'CALLEE' } | null;
 }
 

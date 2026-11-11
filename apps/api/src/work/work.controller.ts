@@ -10,7 +10,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { balanceDue, formatNaira } from '@gadmo/shared';
+import { BALANCE_HOLD_HOURS, balanceDue, formatNaira } from '@gadmo/shared';
 import { and, desc, eq, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { AlertsService } from '../alerts/alerts.service';
@@ -18,6 +18,7 @@ import { type AuthUser, CurrentUser, JwtAuthGuard } from '../auth/guards';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { jobs, ledgerEntries, messages, quotes } from '../db/schema';
 import { DB, type Db } from '../infra/infra.module';
+import { BalanceService } from './balance.service';
 
 const idPipe = new ZodValidationPipe(z.uuid());
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -34,6 +35,7 @@ export class WorkController {
   constructor(
     @Inject(DB) private readonly db: Db,
     private readonly alerts: AlertsService,
+    private readonly balances: BalanceService,
   ) {}
 
   @Post('start-work')
@@ -123,13 +125,15 @@ export class WorkController {
         .update(jobs)
         .set({ status: 'DONE_AWAITING_PAYMENT', doneAt: sql`now()` })
         .where(eq(jobs.id, jobId));
+      // Nothing left to pay: the customer still gets the same window to report a problem.
+      if (balance === 0) await this.balances.hold(tx, jobId);
       await this.event(
         tx,
         jobId,
         user.id,
         balance > 0
           ? `Your Pro marked the job done. Balance to pay: ${naira(balance)}.`
-          : 'Your Pro marked the job done. Nothing more to pay.',
+          : `Your Pro marked the job done. Nothing more to pay. If something is wrong with the work, report it within ${BALANCE_HOLD_HOURS} hours.`,
       );
       return { customerId: job.customerId, balance };
     });

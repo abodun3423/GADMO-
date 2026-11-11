@@ -69,7 +69,9 @@ export function PaymentReturn({ reference }: { reference: string }) {
         <p className="alert alert-ok" role="status">
           {payment.type === 'DEPOSIT'
             ? `${naira(payment.amountKobo)} deposit paid and your quote is accepted. The deposit goes to your Pro to buy materials.`
-            : `${naira(payment.amountKobo)} paid. GADMO holds it until your Pro arrives.`}
+            : payment.type === 'BALANCE'
+              ? `${naira(payment.amountKobo)} balance paid. GADMO holds it for 12 hours, then pays your Pro. If something is wrong with the work, report it in the job chat before then.`
+              : `${naira(payment.amountKobo)} paid. GADMO holds it until your Pro arrives.`}
         </p>
         {back}
       </>

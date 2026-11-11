@@ -14,6 +14,12 @@ export const MAX_DEPOSIT_BPS: Bps = 5_000;
 export const COMMISSION_BPS: Bps = 1_000;
 
 /**
+ * How long GADMO holds a balance paid in the app before paying the Pro (founder decision),
+ * unless the customer confirms sooner. A report of poor work keeps it held.
+ */
+export const BALANCE_HOLD_HOURS = 12;
+
+/**
  * Inspection fees are agreed in chat but can never exceed ₦5,000.
  * ₦5,000 is meant for the farthest trips, where transport alone costs about ₦2,500.
  */
