@@ -210,6 +210,21 @@ export const verifications = pgTable(
     selfieRef: text('selfie_ref'),
     /** Photo of an ID document (NIN slip, ID card, voter's card, licence or passport). */
     idDocumentRef: text('id_document_ref'),
+    /** Proof of skill (founder decision): a photo of an attestation letter and/or a certificate. */
+    attestationRef: text('attestation_ref'),
+    certificateRef: text('certificate_ref'),
+    /** Where the Pro learned their trade (workshop, master's business or school). */
+    trainedAt: text('trained_at'),
+    /** The master, teacher or instructor who trained them. */
+    trainedBy: text('trained_by'),
+    /** The trainer's phone, so staff can call to confirm. AES-256-GCM ciphertext; staff only. */
+    trainerPhoneEncrypted: text('trainer_phone_encrypted'),
+    /** A tech Pro's LinkedIn, GitHub and portfolio links. Staff only, never shown to customers. */
+    techLinks: jsonb('tech_links').$type<{
+      linkedin?: string;
+      github?: string;
+      portfolio?: string;
+    }>(),
     result: verificationStatusEnum('result').notNull().default('PENDING'),
     reviewedById: uuid('reviewed_by_id').references(() => users.id),
     reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
@@ -227,6 +242,8 @@ export const verifications = pgTable(
 export const privateFilePurposeEnum = pgEnum('private_file_purpose', [
   'ID_DOCUMENT',
   'SELFIE',
+  'ATTESTATION_LETTER',
+  'CERTIFICATE',
   'CHAT_PHOTO',
   'CHAT_VOICE',
 ]);

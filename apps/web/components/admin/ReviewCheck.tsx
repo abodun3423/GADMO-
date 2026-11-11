@@ -110,6 +110,21 @@ function Check({ id }: { id: string }) {
               <img src={`/v1/admin/verifications/${id}/photos/selfie`} alt="Selfie" />
               <figcaption>Selfie</figcaption>
             </figure>
+            {check.documents.attestation && (
+              <figure className="review-photo">
+                <img
+                  src={`/v1/admin/verifications/${id}/photos/attestation`}
+                  alt="Attestation letter"
+                />
+                <figcaption>Attestation letter</figcaption>
+              </figure>
+            )}
+            {check.documents.certificate && (
+              <figure className="review-photo">
+                <img src={`/v1/admin/verifications/${id}/photos/certificate`} alt="Certificate" />
+                <figcaption>Certificate</figcaption>
+              </figure>
+            )}
           </div>
 
           <dl className="details">
@@ -125,6 +140,49 @@ function Check({ id }: { id: string }) {
               <dt>Skills</dt>
               <dd>{check.skills.length ? check.skills.join(', ') : 'None yet'}</dd>
             </div>
+            <div>
+              <dt>Learned at</dt>
+              <dd>{check.trainedAt ?? 'Not given'}</dd>
+            </div>
+            <div>
+              <dt>Trained by</dt>
+              <dd>
+                {check.trainedBy ?? 'Not given'}
+                {check.trainerPhone && (
+                  <span className="hint">
+                    Call to confirm:{' '}
+                    <a href={`tel:${check.trainerPhone}`}>{localPhone(check.trainerPhone)}</a>
+                  </span>
+                )}
+              </dd>
+            </div>
+            {check.techLinks && (
+              <div>
+                <dt>Work online</dt>
+                <dd>
+                  {(
+                    [
+                      ['linkedin', 'LinkedIn'],
+                      ['github', 'GitHub'],
+                      ['portfolio', 'Portfolio'],
+                    ] as const
+                  ).map(([key, label]) =>
+                    check.techLinks?.[key] ? (
+                      <span key={key} className="hint">
+                        {label}:{' '}
+                        <a
+                          href={check.techLinks[key]}
+                          target="_blank"
+                          rel="noopener noreferrer nofollow"
+                        >
+                          {check.techLinks[key]}
+                        </a>
+                      </span>
+                    ) : null,
+                  )}
+                </dd>
+              </div>
+            )}
             <div>
               <dt>Joined GADMO</dt>
               <dd>{dateFormat.format(new Date(check.proJoinedAt))}</dd>
@@ -160,7 +218,7 @@ function Check({ id }: { id: string }) {
                     [
                       'APPROVED',
                       'Approve',
-                      'The selfie matches the ID and the details look right.',
+                      'The selfie matches the ID, the letter or certificate looks genuine, and the trainer confirmed.',
                     ],
                     ['NEEDS_INFO', 'Ask for more', 'A photo is unclear or something is missing.'],
                     ['REJECTED', 'Reject', 'It is not the same person, or the ID looks fake.'],

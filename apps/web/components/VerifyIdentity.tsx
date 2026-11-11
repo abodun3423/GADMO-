@@ -7,7 +7,15 @@ import { shrinkPhoto } from '@/lib/photo';
 import type { VerificationState } from '@/lib/types';
 import { useSession } from '@/lib/useSession';
 
-type Kind = 'id-document' | 'selfie';
+type Kind = 'id-document' | 'selfie' | 'attestation' | 'certificate';
+type Links = { linkedin: string; github: string; portfolio: string };
+
+const NO_PHOTOS: Record<Kind, PhotoState> = {
+  'id-document': { status: 'empty' },
+  selfie: { status: 'empty' },
+  attestation: { status: 'empty' },
+  certificate: { status: 'empty' },
+};
 type PhotoState = { status: 'empty' | 'uploading' | 'done' | 'error'; preview?: string };
 
 const dateFormat = new Intl.DateTimeFormat('en-NG', { day: 'numeric', month: 'long' });
@@ -16,10 +24,11 @@ export function VerifyIdentity() {
   const { me, loading } = useSession();
   const [state, setState] = useState<VerificationState | null>(null);
   const [nin, setNin] = useState('');
-  const [photos, setPhotos] = useState<Record<Kind, PhotoState>>({
-    'id-document': { status: 'empty' },
-    selfie: { status: 'empty' },
-  });
+  const [trainedAt, setTrainedAt] = useState('');
+  const [trainedBy, setTrainedBy] = useState('');
+  const [trainerPhone, setTrainerPhone] = useState('');
+  const [links, setLinks] = useState<Links>({ linkedin: '', github: '', portfolio: '' });
+  const [photos, setPhotos] = useState<Record<Kind, PhotoState>>(NO_PHOTOS);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,14 +38,19 @@ export function VerifyIdentity() {
         '/v1/pro/verification',
       );
       setState(verification);
-      setPhotos((current) => ({
-        'id-document': verification.photos.idDocument
-          ? { ...current['id-document'], status: 'done' }
-          : { status: 'empty' },
-        selfie: verification.photos.selfie
-          ? { ...current.selfie, status: 'done' }
-          : { status: 'empty' },
-      }));
+      const has: Record<Kind, boolean> = {
+        'id-document': verification.photos.idDocument,
+        selfie: verification.photos.selfie,
+        attestation: verification.photos.attestation,
+        certificate: verification.photos.certificate,
+      };
+      setPhotos((current) => {
+        const next = { ...NO_PHOTOS };
+        for (const kind of Object.keys(has) as Kind[]) {
+          if (has[kind]) next[kind] = { ...current[kind], status: 'done' };
+        }
+        return next;
+      });
     } catch {
       setError('Your identity check could not be loaded. Check your connection and refresh.');
     }
@@ -80,11 +94,26 @@ export function VerifyIdentity() {
       setError('Add a photo of your ID and a selfie first.');
       return;
     }
+    if (trainedAt.trim().length < 2 || trainedBy.trim().length < 2) {
+      setError('Tell us where you learned your trade and who trained you.');
+      return;
+    }
+    if (photos.attestation.status !== 'done' && photos.certificate.status !== 'done') {
+      setError('Add a photo of your attestation letter or your certificate.');
+      return;
+    }
+    const givenLinks = Object.fromEntries(Object.entries(links).filter(([, v]) => v.trim() !== ''));
     setBusy(true);
     try {
       const { verification } = await post<{ verification: VerificationState }>(
         '/v1/pro/verification',
-        { nin },
+        {
+          nin,
+          trainedAt,
+          trainedBy,
+          ...(trainerPhone.trim() ? { trainerPhone } : {}),
+          ...(state?.techLinks && Object.keys(givenLinks).length ? { links: givenLinks } : {}),
+        },
       );
       setState(verification);
       setNin('');
@@ -117,10 +146,11 @@ export function VerifyIdentity() {
 
   return (
     <>
-      <h1 className="page-title">Verify your identity</h1>
+      <h1 className="page-title">Get verified</h1>
       <p className="lede">
-        Customers book verified Pros with confidence. Once GADMO has checked it’s you, you get the
-        verified badge and can go online.
+        Customers book verified Pros with confidence. Verification has two steps: first you send
+        your ID and proof of your skill here; then a GADMO agent visits you to see your work. After
+        both, you get the verified badge and can go online.
       </p>
 
       {error && (
@@ -203,9 +233,106 @@ export function VerifyIdentity() {
               onChange={(e) => choose('selfie', e)}
             />
 
+            <h2 className="section-title">Proof of your skill</h2>
             <p className="meta">
-              Only GADMO staff can see these, to confirm it’s you. Your NIN is stored encrypted and
-              is never shown to customers.
+              Tell us where you learned your trade. Add a photo of an attestation letter from your
+              master, workshop or school, or of your certificate. You need at least one.
+            </p>
+            <div className="field">
+              <label htmlFor="trained-at">
+                Where you learned
+                <span className="hint">The workshop, business or school, and its town.</span>
+              </label>
+              <input
+                id="trained-at"
+                type="text"
+                maxLength={120}
+                value={trainedAt}
+                onChange={(e) => setTrainedAt(e.target.value)}
+                placeholder="e.g. Adeyemi Auto Workshop, Ado-Ekiti"
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="trained-by">
+                Who trained you
+                <span className="hint">Your master, teacher or instructor.</span>
+              </label>
+              <input
+                id="trained-by"
+                type="text"
+                maxLength={80}
+                value={trainedBy}
+                onChange={(e) => setTrainedBy(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="trainer-phone">
+                Their phone number (optional)
+                <span className="hint">
+                  So GADMO can call them to confirm. Only GADMO staff see it.
+                </span>
+              </label>
+              <input
+                id="trainer-phone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="off"
+                maxLength={20}
+                value={trainerPhone}
+                onChange={(e) => setTrainerPhone(e.target.value)}
+              />
+            </div>
+            <PhotoField
+              id="attestation"
+              label="Attestation letter"
+              hint="A signed letter from your master, workshop or school saying you trained with them."
+              capture="environment"
+              state={photos.attestation}
+              onChange={(e) => choose('attestation', e)}
+            />
+            <PhotoField
+              id="certificate"
+              label="Certificate"
+              hint="A trade test, freedom, school or professional certificate, if you have one."
+              capture="environment"
+              state={photos.certificate}
+              onChange={(e) => choose('certificate', e)}
+            />
+
+            {state.techLinks && (
+              <>
+                <h2 className="section-title">Your work online (optional)</h2>
+                <p className="meta">
+                  Helps GADMO check your tech skills. Only GADMO staff see these links; customers
+                  never do.
+                </p>
+                {(
+                  [
+                    ['linkedin', 'LinkedIn profile', 'linkedin.com/in/your-name'],
+                    ['github', 'GitHub profile', 'github.com/your-name'],
+                    ['portfolio', 'Portfolio or website', 'your-site.com'],
+                  ] as const
+                ).map(([key, label, example]) => (
+                  <div className="field" key={key}>
+                    <label htmlFor={`link-${key}`}>{label}</label>
+                    <input
+                      id={`link-${key}`}
+                      type="url"
+                      inputMode="url"
+                      autoComplete="off"
+                      maxLength={300}
+                      value={links[key]}
+                      onChange={(e) => setLinks((l) => ({ ...l, [key]: e.target.value }))}
+                      placeholder={example}
+                    />
+                  </div>
+                ))}
+              </>
+            )}
+
+            <p className="meta">
+              Only GADMO staff can see these, to confirm it’s you and your skill. Your NIN is stored
+              encrypted and is never shown to customers.
             </p>
             <button className="button" type="submit" disabled={busy}>
               {busy ? 'Sending…' : 'Send for review'}

@@ -11,7 +11,7 @@ const photo = (name: string) => ({
   ),
 });
 
-test('a Pro sends their NIN, ID photo and selfie for review', async ({ page }) => {
+test('a Pro sends their NIN, ID photo, selfie and proof of skill for review', async ({ page }) => {
   const noCspViolations = watchCsp(page);
   await page.goto('/signin');
   const pro = await signIn(page, 'pro');
@@ -33,10 +33,23 @@ test('a Pro sends their NIN, ID photo and selfie for review', async ({ page }) =
   await expect(page.getByRole('img', { name: 'Your a selfie' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Send for review' }).click();
+  await expect(page.locator('p[role="alert"]')).toContainText('where you learned your trade');
+  await page.getByLabel('Where you learned').fill('Adeyemi Auto Workshop, Ado-Ekiti');
+  await page.getByLabel('Who trained you').fill('Mr Adeyemi');
+  await page.getByRole('button', { name: 'Send for review' }).click();
+  await expect(page.locator('p[role="alert"]')).toContainText(
+    'attestation letter or your certificate',
+  );
+  await page.getByLabel('Attestation letter').setInputFiles(photo('letter.png'));
+  await expect(page.getByText('✓ Added')).toHaveCount(3);
+  // Links are only offered to Pros with a tech skill.
+  await expect(page.getByLabel('LinkedIn profile')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Send for review' }).click();
   await expect(page.getByRole('heading', { name: 'Under review' })).toBeVisible();
 
   const stored = await storedVerification(pro.e164);
-  expect(stored).toMatchObject({ result: 'PENDING', files: 2 });
+  expect(stored).toMatchObject({ result: 'PENDING', files: 3 });
   expect(stored!.ninEncrypted).not.toContain('12345678901');
 
   await page.getByRole('link', { name: 'Go to Pro home' }).click();
@@ -67,7 +80,11 @@ test('GADMO staff ask for a better photo, then approve; the Pro can go online', 
     await page.getByLabel('Your NIN').fill('98765432109');
     await page.getByLabel('Photo of your ID').setInputFiles(photo('id.png'));
     await page.getByLabel('A selfie').setInputFiles(photo('me.png'));
-    await expect(page.getByText('✓ Added')).toHaveCount(2);
+    await page.getByLabel('Where you learned').fill('Bisi Plumbing Works, Ikere');
+    await page.getByLabel('Who trained you').fill('Mrs Bisi Ojo');
+    await page.getByLabel('Their phone number').fill('0803 555 1234');
+    await page.getByLabel('Certificate').setInputFiles(photo('cert.png'));
+    await expect(page.getByText('✓ Added')).toHaveCount(3);
     await page.getByRole('button', { name: 'Send for review' }).click();
     await expect(page.getByRole('heading', { name: 'Under review' })).toBeVisible();
   };
@@ -92,7 +109,10 @@ test('GADMO staff ask for a better photo, then approve; the Pro can go online', 
     .click();
   await expect(staffPage.getByText('98765432109')).toBeVisible();
   await expect(staffPage.getByRole('img', { name: 'Selfie' })).toBeVisible();
-  await expect(staffPage.getByText('Plumber')).toBeVisible();
+  await expect(staffPage.getByText('Plumber', { exact: true })).toBeVisible();
+  await expect(staffPage.getByRole('img', { name: 'Certificate' })).toBeVisible();
+  await expect(staffPage.getByText('Bisi Plumbing Works, Ikere')).toBeVisible();
+  await expect(staffPage.getByRole('link', { name: '0803 555 1234' })).toBeVisible();
 
   await staffPage.getByRole('radio', { name: /Ask for more/ }).check();
   await staffPage.getByRole('button', { name: 'Save decision' }).click();

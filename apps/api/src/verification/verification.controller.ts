@@ -13,9 +13,10 @@ import {
   UnsupportedMediaTypeException,
   UseGuards,
 } from '@nestjs/common';
-import { type SubmitVerification, submitVerificationSchema } from '@gadmo/shared';
+import { maskContactInfo, type SubmitVerification, submitVerificationSchema } from '@gadmo/shared';
 import { createHmac } from 'node:crypto';
 import { and, desc, eq, isNull } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import type { Request } from 'express';
 import type Redis from 'ioredis';
 import { z } from 'zod';
@@ -24,20 +25,39 @@ import type { FieldCrypto } from '../common/field-crypto';
 import { enforceLimits } from '../common/rate-limit';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { ENV, type Env } from '../config/env';
-import { auditLogs, privateFiles, proProfiles, verifications } from '../db/schema';
+import {
+  auditLogs,
+  categories,
+  privateFiles,
+  proCategories,
+  proProfiles,
+  verifications,
+} from '../db/schema';
 import { DB, type Db, FIELD_CRYPTO, REDIS } from '../infra/infra.module';
 import { sniffImageType } from './images';
 
-const PURPOSE = { 'id-document': 'ID_DOCUMENT', selfie: 'SELFIE' } as const;
-const purposePipe = new ZodValidationPipe(z.enum(['id-document', 'selfie']));
+const PURPOSE = {
+  'id-document': 'ID_DOCUMENT',
+  selfie: 'SELFIE',
+  attestation: 'ATTESTATION_LETTER',
+  certificate: 'CERTIFICATE',
+} as const;
+const purposePipe = new ZodValidationPipe(
+  z.enum(['id-document', 'selfie', 'attestation', 'certificate']),
+);
+
+/** The service group whose Pros may add LinkedIn, GitHub and portfolio links. */
+const TECH_GROUP = 'tech-digital';
 
 /** A Pro may (re)submit only before a check is under review or after it was sent back. */
 const CAN_SUBMIT = new Set(['NOT_STARTED', 'REJECTED', 'NEEDS_INFO']);
 
 /**
- * A Pro's identity check (PRD: NIN + selfie). Until a KYC provider is connected,
- * GADMO staff review it by hand. The NIN and photos are encrypted at rest and are never
- * sent back to the Pro or anyone else through these routes.
+ * Stage 1 of a Pro's verification (PRD, founder decision): NIN, ID photo and selfie, plus
+ * proof of skill (an attestation letter or a certificate, and where and with whom they
+ * trained). Until a KYC provider is connected, GADMO staff review it by hand. The NIN,
+ * photos and trainer's phone are encrypted at rest and are never sent back to the Pro or
+ * anyone else through these routes.
  */
 @Controller('pro/verification')
 @UseGuards(JwtAuthGuard)
@@ -77,7 +97,11 @@ export class VerificationController {
         photos: {
           idDocument: drafts.some((d) => d.purpose === 'ID_DOCUMENT'),
           selfie: drafts.some((d) => d.purpose === 'SELFIE'),
+          attestation: drafts.some((d) => d.purpose === 'ATTESTATION_LETTER'),
+          certificate: drafts.some((d) => d.purpose === 'CERTIFICATE'),
         },
+        /** Pros with a tech skill can add LinkedIn, GitHub and portfolio links. */
+        techLinks: await this.hasTechSkill(pro.id),
       },
     };
   }
@@ -124,7 +148,7 @@ export class VerificationController {
     });
   }
 
-  /** Sends the NIN and both photos for review. */
+  /** Sends the NIN, the photos and the training details for review. */
   @Post()
   @HttpCode(200)
   async submit(
@@ -135,6 +159,10 @@ export class VerificationController {
       { key: `kyc-submit:${pro.id}`, max: 5, windowSeconds: 24 * 60 * 60 },
     ]);
     await this.assertCanSubmit(pro.id);
+    // Links are kept only for Pros with a tech skill, and only the ones given.
+    const given = Object.entries(body.links ?? {}).filter(([, v]) => v);
+    const links =
+      given.length > 0 && (await this.hasTechSkill(pro.id)) ? Object.fromEntries(given) : null;
 
     await this.db.transaction(async (tx) => {
       const drafts = await tx
@@ -144,8 +172,15 @@ export class VerificationController {
         .for('update');
       const idDocument = drafts.find((d) => d.purpose === 'ID_DOCUMENT');
       const selfie = drafts.find((d) => d.purpose === 'SELFIE');
+      const attestation = drafts.find((d) => d.purpose === 'ATTESTATION_LETTER');
+      const certificate = drafts.find((d) => d.purpose === 'CERTIFICATE');
       if (!idDocument || !selfie) {
         throw new UnprocessableEntityException('Add a photo of your ID and a selfie first.');
+      }
+      if (!attestation && !certificate) {
+        throw new UnprocessableEntityException(
+          'Add a photo of your attestation letter or your certificate first.',
+        );
       }
 
       const [check] = await tx
@@ -157,6 +192,12 @@ export class VerificationController {
           ninHash: this.ninHash(body.nin),
           idDocumentRef: `file:${idDocument.id}`,
           selfieRef: `file:${selfie.id}`,
+          attestationRef: attestation ? `file:${attestation.id}` : null,
+          certificateRef: certificate ? `file:${certificate.id}` : null,
+          trainedAt: maskContactInfo(body.trainedAt).text,
+          trainedBy: maskContactInfo(body.trainedBy).text,
+          trainerPhoneEncrypted: body.trainerPhone ? this.crypto.encrypt(body.trainerPhone) : null,
+          techLinks: links,
           result: 'PENDING',
         })
         .returning({ id: verifications.id });
@@ -175,6 +216,19 @@ export class VerificationController {
       });
     });
     return this.status(pro);
+  }
+
+  /** Whether the Pro offers any service in the tech & digital group. */
+  private async hasTechSkill(proId: string): Promise<boolean> {
+    const group = alias(categories, 'service_group');
+    const [row] = await this.db
+      .select({ id: categories.id })
+      .from(proCategories)
+      .innerJoin(categories, eq(categories.id, proCategories.categoryId))
+      .innerJoin(group, eq(group.id, categories.parentId))
+      .where(and(eq(proCategories.proId, proId), eq(group.slug, TECH_GROUP)))
+      .limit(1);
+    return Boolean(row);
   }
 
   /** Keyed hash: the same NIN always gives the same value, but it can't be reversed. */
