@@ -107,8 +107,7 @@ export function JobChat({ jobId }: { jobId: string }) {
           c.job.startedAt !== res.work.startedAt ||
           c.job.doneAt !== res.work.doneAt ||
           c.job.balanceKobo !== res.work.balanceKobo ||
-          c.job.releaseAt !== res.work.releaseAt ||
-          c.job.paymentMethod !== res.work.paymentMethod)
+          c.job.releaseAt !== res.work.releaseAt)
           ? {
               ...c,
               job: {
