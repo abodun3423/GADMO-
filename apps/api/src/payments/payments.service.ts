@@ -371,7 +371,7 @@ export class PaymentsService {
         });
         paidJob = { id: job!.id, proId: job!.proId, amount, type: 'INSPECTION_FEE' };
       } else if (counts && payment.type === 'BALANCE') {
-        // Paid in the app after all, even if cash was chosen earlier: GADMO holds it.
+        // Every balance is paid in the app (there is no cash option); GADMO holds it.
         await tx.update(jobs).set({ paymentMethod: 'APP' }).where(eq(jobs.id, job!.id));
         await this.balances.hold(tx, job!.id);
         await tx.insert(messages).values({

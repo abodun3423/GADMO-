@@ -11,7 +11,7 @@ const COMMON = [
   },
   {
     q: 'Is my money safe?',
-    a: 'Payments made in GADMO are held by GADMO, not by the Pro, until each step is done: the inspection fee until the Pro arrives, and the balance for 12 hours after the job (longer if you report a problem). Cash payments are between you and the Pro and are not covered.',
+    a: 'Payments made in GADMO are held by GADMO, not by the Pro, until each step is done: the inspection fee until the Pro arrives, and the balance for 12 hours after the job (longer if you report a problem). Every payment goes through GADMO, so every job is covered. Never pay a Pro in cash.',
   },
 ];
 

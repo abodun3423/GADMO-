@@ -1,4 +1,3 @@
-import { CASH_AGREEMENT_VERSION } from './cash';
 import { describe, expect, it } from 'vitest';
 import {
   MAX_QUOTE_KOBO,
@@ -16,8 +15,6 @@ import {
   staffLoginSchema,
   staffPasswordSchema,
   staffVerifySchema,
-  cashAgreementSchema,
-  cashReceivedSchema,
   reportProblemSchema,
   resolveDisputeSchema,
   scheduleSkillCheckSchema,
@@ -298,23 +295,5 @@ describe('poor-work reports', () => {
     ).toBe(false);
     expect(resolveDisputeSchema.safeParse({ outcome: 'PAY_PRO', note }).success).toBe(true);
     expect(resolveDisputeSchema.safeParse({ outcome: 'PAY_PRO', note: 'ok' }).success).toBe(false);
-  });
-});
-
-describe('cash balance', () => {
-  it('needs the current agreement, accepted', () => {
-    expect(
-      cashAgreementSchema.safeParse({ accept: true, version: CASH_AGREEMENT_VERSION }).success,
-    ).toBe(true);
-    expect(
-      cashAgreementSchema.safeParse({ accept: false, version: CASH_AGREEMENT_VERSION }).success,
-    ).toBe(false);
-    expect(cashAgreementSchema.safeParse({ accept: true, version: 'old' }).success).toBe(false);
-  });
-
-  it('takes the cash received in whole naira', () => {
-    expect(cashReceivedSchema.safeParse({ amountKobo: 1_200_000 }).success).toBe(true);
-    expect(cashReceivedSchema.safeParse({ amountKobo: 1_200_050 }).success).toBe(false);
-    expect(cashReceivedSchema.safeParse({ amountKobo: 0 }).success).toBe(false);
   });
 });

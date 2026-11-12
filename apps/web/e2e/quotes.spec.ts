@@ -72,7 +72,9 @@ test('the Pro quotes with a deposit; the customer accepts, pays the deposit, the
   await proPage.getByRole('button', { name: 'Job done' }).click();
   await expect(proPage.getByText(/pay the ₦18,000 balance/)).toBeVisible();
   await proPage.getByRole('button', { name: 'Yes, the job is done' }).click();
-  await expect(proPage.getByText('The customer pays the ₦18,000 balance next.')).toBeVisible();
+  await expect(
+    proPage.getByText('The customer pays the ₦18,000 balance in the app next.', { exact: false }),
+  ).toBeVisible();
   await expect(page.locator('.fee-panel')).toContainText('Balance to pay: ₦18,000.', {
     timeout: 10_000,
   });

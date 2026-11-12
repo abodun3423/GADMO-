@@ -14,7 +14,8 @@ Ask the founder before deciding anything the PRD leaves open.
   businesses (policy NONE) quote directly.
 - Payments: optional materials deposit (max 50% of quote) on quote acceptance; balance after the job.
   In-app balances are held for 12 hours (or until the customer confirms) and stay held if the customer
-  reports poor work. Cash balances require the in-app cash agreement and carry no GADMO guarantee.
+  reports poor work. There is no cash option: every payment goes through GADMO, so every job is
+  covered by the GADMO Guarantee (founder decision, November 2026).
 - Commission: 10% (`COMMISSION_BPS`).
 - Money is integer kobo everywhere. Use `@gadmo/shared` money helpers. The ledger is append-only.
 - The service catalogue lives in `apps/api/src/db/categories.ts`; `db:seed` upserts it by slug.
