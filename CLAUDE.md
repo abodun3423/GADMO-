@@ -12,9 +12,11 @@ Ask the founder before deciding anything the PRD leaves open.
   accepts or counters), paid in-app before the visit, and never above ₦5,000 (`MAX_INSPECTION_FEE_KOBO`).
   Only categories with inspection policy REQUIRED or OPTIONAL use it; tech, lessons, beauty, events and
   businesses (policy NONE) quote directly.
-- Payments: optional materials deposit (max 50% of quote) on quote acceptance; balance after the job.
-  In-app balances are held for 12 hours (or until the customer confirms) and stay held if the customer
-  reports poor work. There is no cash option: every payment goes through GADMO, so every job is
+- Payments: the customer pays the whole quote (less any inspection fee paid) when accepting it. The
+  optional materials deposit (max 50% of quote) goes to the Pro at once; GADMO holds the balance. After
+  "Job done" the customer is asked if they are satisfied and can release it at once; otherwise it is
+  released automatically 12 hours after "Job done". A report of poor work (allowed from quote acceptance
+  until release) keeps it held. There is no cash option: every payment goes through GADMO, so every job is
   covered by the GADMO Guarantee (founder decision, November 2026).
 - Commission: 10% (`COMMISSION_BPS`).
 - Money is integer kobo everywhere. Use `@gadmo/shared` money helpers. The ledger is append-only.

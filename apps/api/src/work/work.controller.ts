@@ -16,9 +16,9 @@ import { z } from 'zod';
 import { AlertsService } from '../alerts/alerts.service';
 import { type AuthUser, CurrentUser, JwtAuthGuard } from '../auth/guards';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { jobs, ledgerEntries, messages, quotes } from '../db/schema';
+import { disputes, jobs, ledgerEntries, messages, payments, quotes } from '../db/schema';
 import { DB, type Db } from '../infra/infra.module';
-import { accountBalance, BalanceService } from './balance.service';
+import { accountBalance, BalanceService, quotePayNowKobo } from './balance.service';
 
 const idPipe = new ZodValidationPipe(z.uuid());
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -51,15 +51,29 @@ export class WorkController {
         );
       }
       const quote = await this.acceptedQuote(tx, jobId);
-      // Deposits now go to the Pro as soon as they are paid. One paid earlier, while GADMO
-      // still held deposits until work started, is still in the job's escrow: release it.
+      // Deposits now go to the Pro as soon as they are paid, and the rest of the quote is
+      // held until the job is done. A deposit paid on its own earlier, while GADMO still held
+      // deposits until work started, is still in the job's escrow: release just that.
       const [held] = await tx
         .select({
           kobo: sql<string>`coalesce(sum(${ledgerEntries.creditKobo} - ${ledgerEntries.debitKobo}), 0)`,
         })
         .from(ledgerEntries)
         .where(eq(ledgerEntries.account, `escrow:job:${jobId}`));
-      const deposit = Math.min(Number(held!.kobo), quote.depositKobo);
+      const [paid] = await tx
+        .select({ kobo: payments.amountKobo })
+        .from(payments)
+        .where(
+          and(
+            eq(payments.jobId, jobId),
+            eq(payments.type, 'DEPOSIT'),
+            eq(payments.status, 'SUCCEEDED'),
+          ),
+        )
+        .orderBy(desc(payments.paidAt))
+        .limit(1);
+      const depositOnly = !!paid && paid.kobo < quotePayNowKobo(quote.amountKobo, job);
+      const deposit = depositOnly ? Math.min(Number(held!.kobo), quote.depositKobo) : 0;
       if (deposit > 0) {
         const txnId = randomUUID();
         await tx.insert(ledgerEntries).values([
@@ -125,20 +139,25 @@ export class WorkController {
         .update(jobs)
         .set({ status: 'DONE_AWAITING_PAYMENT', doneAt: sql`now()` })
         .where(eq(jobs.id, jobId));
-      // Nothing left to pay, or the Pro fixed the work after a report (the balance is still
-      // held): the customer gets a new window to report a problem.
+      // The whole quote was paid up front (founder decision), so GADMO already holds the
+      // balance: the 12 hours start now. The customer can release it as soon as they are
+      // satisfied; without a complaint it is released automatically when the time is up.
+      // (Jobs accepted before the change, with the balance still to pay, pay it now.)
       const alreadyPaid =
         balance > 0 && (await accountBalance(tx, `escrow:job:${jobId}`)) >= balance;
       if (balance === 0 || alreadyPaid) await this.balances.hold(tx, jobId);
+      const [rework] = await tx
+        .select({ id: disputes.id })
+        .from(disputes)
+        .where(and(eq(disputes.jobId, jobId), eq(disputes.status, 'RESOLVED_REWORK')))
+        .limit(1);
       await this.event(
         tx,
         jobId,
         user.id,
-        alreadyPaid
-          ? `Your Pro marked the job done again. GADMO still holds your payment: check the work, and report a problem within ${BALANCE_HOLD_HOURS} hours if it’s not right.`
-          : balance > 0
-            ? `Your Pro marked the job done. Balance to pay: ${naira(balance)}.`
-            : `Your Pro marked the job done. Nothing more to pay. If something is wrong with the work, report it within ${BALANCE_HOLD_HOURS} hours.`,
+        balance > 0 && !alreadyPaid
+          ? `Your Pro marked the job done. Balance to pay: ${naira(balance)}.`
+          : `Your Pro marked the job done${rework ? ' again' : ''}. Are you satisfied with the work? Release the payment to your Pro now, or GADMO releases it automatically in ${BALANCE_HOLD_HOURS} hours unless you report a problem.`,
       );
       return { customerId: job.customerId, balance, alreadyPaid };
     });
@@ -149,7 +168,7 @@ export class WorkController {
         body:
           done.balance > 0 && !done.alreadyPaid
             ? `Your Pro marked the job done. Check the work, then pay the ${naira(done.balance)} balance in GADMO.`
-            : 'Your Pro marked the job done. Check the work in GADMO.',
+            : `Your Pro marked the job done. Are you satisfied? Release the payment in GADMO, or it is released automatically in ${BALANCE_HOLD_HOURS} hours unless you report a problem.`,
         url: `/jobs/${jobId}`,
         tag: `job-${jobId}`,
       },

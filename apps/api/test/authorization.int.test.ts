@@ -1847,7 +1847,7 @@ describe('paying the inspection fee (test checkout)', () => {
   });
 });
 
-describe('quotes and the materials deposit', () => {
+describe('quotes: paid in full on acceptance (deposit to the Pro, the rest held)', () => {
   type Who = Awaited<ReturnType<typeof login>>;
   async function jobFor(categoryId: string, patch: Partial<typeof jobs.$inferInsert> = {}) {
     const customer = await login(ctx);
@@ -1875,8 +1875,14 @@ describe('quotes and the materials deposit', () => {
     who.agent.post(`/v1/jobs/${id}/quotes`).set(CLIENT_HEADER).send(body);
   const act = (who: Who, quoteId: string, action: 'accept' | 'decline' | 'withdraw') =>
     who.agent.post(`/v1/quotes/${quoteId}/${action}`).set(CLIENT_HEADER).send();
+  const payTest = (who: Who, reference: string) =>
+    who.agent
+      .post(`/v1/payments/test/${reference}/complete`)
+      .set(CLIENT_HEADER)
+      .send({ outcome: 'success' })
+      .expect(200);
 
-  it('services without an inspection: the Pro quotes, the customer accepts; nobody else can', async () => {
+  it('services without an inspection: the Pro quotes, the customer accepts and pays; nobody else can', async () => {
     const [none] = await ctx.db
       .select()
       .from(categories)
@@ -1904,8 +1910,13 @@ describe('quotes and the materials deposit', () => {
     await act(pro, quoteId, 'accept').expect(403);
     await act(stranger, quoteId, 'accept').expect(404);
     await act(customer, quoteId, 'withdraw').expect(403);
-    const accepted = await act(customer, quoteId, 'accept').expect(200);
-    expect(accepted.body.quote.status).toBe('ACCEPTED');
+    const started = await act(customer, quoteId, 'accept').expect(200);
+    const [pending] = await ctx.db
+      .select()
+      .from(payments)
+      .where(eq(payments.paystackReference, started.body.payment.reference));
+    expect(pending).toMatchObject({ type: 'DEPOSIT', amountKobo: 1_500_000 }); // the whole quote
+    await payTest(customer, started.body.payment.reference);
     await act(customer, quoteId, 'decline').expect(409);
     const [row] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
     expect(row!.status).toBe('QUOTE_ACCEPTED');
@@ -1915,14 +1926,14 @@ describe('quotes and the materials deposit', () => {
     expect(card.quote).toMatchObject({ id: quoteId, amountKobo: 1_500_000 });
     expect(chat.body.quotes).toEqual([{ id: quoteId, status: 'ACCEPTED' }]);
 
-    // No deposit and no inspection fee: the whole quote is the balance.
+    // No deposit and no inspection fee: GADMO holds the whole quote until the job is done.
     const begun = await pro.agent.post(`/v1/jobs/${id}/start-work`).set(CLIENT_HEADER).expect(200);
-    expect(begun.body.depositReleasedKobo).toBe(0);
+    expect(begun.body.depositReleasedKobo).toBe(0); // the held balance stays held
     const done = await pro.agent.post(`/v1/jobs/${id}/work-done`).set(CLIENT_HEADER).expect(200);
-    expect(done.body.balanceKobo).toBe(1_500_000);
+    expect(done.body).toMatchObject({ job: { status: 'BALANCE_HELD' }, balanceKobo: 1_500_000 });
   });
 
-  it('repairs: quote after arriving; a deposit is paid in the app, straight to the Pro', async () => {
+  it('repairs: quote after arriving; paid in full: the deposit to the Pro, the rest held', async () => {
     const { customer, pro, id } = await jobFor(electricianId, {
       status: 'INSPECTION_PAID',
       inspectionFeeKobo: 200_000,
@@ -1946,27 +1957,32 @@ describe('quotes and the materials deposit', () => {
     const ref = started.body.payment.reference as string;
     expect(started.body.payment.authorizationUrl).toContain('/pay/test?reference=');
     [row] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
-    expect(row!.status).toBe('QUOTED'); // accepted only once the deposit is paid
+    expect(row!.status).toBe('QUOTED'); // accepted only once the quote is paid
+    const [pending] = await ctx.db
+      .select()
+      .from(payments)
+      .where(eq(payments.paystackReference, ref));
+    expect(pending!.amountKobo).toBe(1_800_000); // ₦20,000 quote − ₦2,000 inspection fee
 
-    await customer.agent
-      .post(`/v1/payments/test/${ref}/complete`)
-      .set(CLIENT_HEADER)
-      .send({ outcome: 'success' })
-      .expect(200);
+    await payTest(customer, ref);
     [row] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
     expect(row!.status).toBe('QUOTE_ACCEPTED');
     const entries = await ctx.db.select().from(ledgerEntries).where(eq(ledgerEntries.jobId, id));
-    // Straight to the Pro, to buy materials; nothing is held for it.
-    expect(entries.find((e) => e.account === `pro:${pro.userId}`)!.creditKobo).toBe(800_000);
-    expect(entries.some((e) => e.account === `escrow:job:${id}`)).toBe(false);
+    const sum = (account: string) =>
+      entries
+        .filter((e) => e.account === account)
+        .reduce((n, e) => n + e.creditKobo - e.debitKobo, 0);
+    // The deposit straight to the Pro, to buy materials; the rest held until the job is done.
+    expect(sum(`pro:${pro.userId}`)).toBe(800_000);
+    expect(sum(`escrow:job:${id}`)).toBe(1_000_000);
     const chat = await pro.agent.get(`/v1/jobs/${id}/messages`).expect(200);
     expect(chat.body.messages.at(-1).body).toBe(
-      'Quote of ₦20,000 accepted. Materials deposit of ₦8,000 paid to the Pro for materials.',
+      'Quote of ₦20,000 accepted and paid: ₦8,000 materials deposit to the Pro now; GADMO holds ₦10,000 until the job is done.',
     );
     await act(customer, quoteId, 'accept').expect(409);
   });
 
-  it('work: only the Pro starts it and marks it done; the balance is then due', async () => {
+  it('work: only the Pro starts it and marks it done; the held balance’s 12 hours then start', async () => {
     const { customer, pro, id } = await jobFor(electricianId, {
       status: 'INSPECTION_PAID',
       inspectionFeeKobo: 300_000,
@@ -1983,11 +1999,7 @@ describe('quotes and the materials deposit', () => {
       description: 'Replace the distribution board',
     }).expect(201);
     const started = await act(customer, sent.body.quote.id, 'accept').expect(200);
-    await customer.agent
-      .post(`/v1/payments/test/${started.body.payment.reference}/complete`)
-      .set(CLIENT_HEADER)
-      .send({ outcome: 'success' })
-      .expect(200);
+    await payTest(customer, started.body.payment.reference);
 
     await work(customer, 'start-work').expect(403);
     await work(stranger, 'start-work').expect(404);
@@ -2005,29 +2017,116 @@ describe('quotes and the materials deposit', () => {
       entries
         .filter((e) => e.account === account)
         .reduce((n, e) => n + e.creditKobo - e.debitKobo, 0);
-    expect(sum(`escrow:job:${id}`)).toBe(0);
+    expect(sum(`escrow:job:${id}`)).toBe(1_200_000); // the balance, held until the job is done
     expect(sum(`pro:${pro.userId}`)).toBe(1_000_000);
 
     await work(customer, 'work-done').expect(403);
     await work(stranger, 'work-done').expect(404);
     const finished = await work(pro, 'work-done').expect(200);
-    // ₦25,000 quote − ₦3,000 inspection fee − ₦10,000 deposit.
+    // ₦25,000 quote − ₦3,000 inspection fee − ₦10,000 deposit, already held by GADMO.
     expect(finished.body).toMatchObject({
-      job: { status: 'DONE_AWAITING_PAYMENT' },
+      job: { status: 'BALANCE_HELD' },
       balanceKobo: 1_200_000,
     });
     expect(finished.body.job.doneAt).toBeTruthy();
     await work(pro, 'work-done').expect(409);
+    const [held] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    const hours = (held!.balanceReleaseAt!.getTime() - held!.doneAt!.getTime()) / 3_600_000;
+    expect(hours).toBeCloseTo(12, 1); // 12 hours from "Job done"
 
     const chat = await customer.agent.get(`/v1/jobs/${id}/messages`).expect(200);
     expect(chat.body.work).toMatchObject({ balanceKobo: 1_200_000 });
+    expect(chat.body.work.releaseAt).toBeTruthy();
     expect(chat.body.messages.at(-1).body).toBe(
-      'Your Pro marked the job done. Balance to pay: ₦12,000.',
+      'Your Pro marked the job done. Are you satisfied with the work? Release the payment to your Pro now, or GADMO releases it automatically in 12 hours unless you report a problem.',
     );
+    await customer.agent.post(`/v1/jobs/${id}/balance/pay`).set(CLIENT_HEADER).send().expect(409); // nothing more to pay
     const convo = await customer.agent.get(`/v1/jobs/${id}/conversation`).expect(200);
     expect(convo.body.conversation.job).toMatchObject({ balanceKobo: 1_200_000 });
     expect(convo.body.conversation.job.startedAt).toBeTruthy();
     await stranger.agent.get(`/v1/jobs/${id}/messages`).expect(404);
+  });
+
+  /** A ₦25,000 quote with a ₦10,000 deposit, accepted and paid in full (no inspection). */
+  async function paidJob() {
+    const [none] = await ctx.db
+      .select()
+      .from(categories)
+      .where(and(eq(categories.inspectionPolicy, 'NONE'), isNotNull(categories.parentId)))
+      .limit(1);
+    const { customer, pro, id } = await jobFor(none!.id);
+    const sent = await quote(pro, id, {
+      amountKobo: 2_500_000,
+      depositKobo: 1_000_000,
+      description: 'Build the website',
+    }).expect(201);
+    const started = await act(customer, sent.body.quote.id, 'accept').expect(200);
+    await payTest(customer, started.body.payment.reference);
+    return { customer, pro, id };
+  }
+  const total = async (account: string) => {
+    const rows = await ctx.db
+      .select()
+      .from(ledgerEntries)
+      .where(eq(ledgerEntries.account, account));
+    return rows.reduce((n, e) => n + e.creditKobo - e.debitKobo, 0);
+  };
+  const step = (who: Who, id: string, path: string) =>
+    who.agent.post(`/v1/jobs/${id}/${path}`).set(CLIENT_HEADER).send();
+
+  it('satisfied right after "Job done": the customer releases the payment at once', async () => {
+    const { customer, pro, id } = await paidJob();
+    await step(customer, id, 'confirm').expect(409); // the work isn't done yet
+    await step(pro, id, 'start-work').expect(200);
+    await step(pro, id, 'work-done').expect(200);
+    await step(pro, id, 'confirm').expect(403);
+    await step(customer, id, 'confirm').expect(200);
+    const [job] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(job!.status).toBe('COMPLETED');
+    // ₦10,000 deposit + ₦15,000 balance − ₦2,500 commission.
+    expect(await total(`pro:${pro.userId}`)).toBe(2_250_000);
+    expect(await total(`escrow:job:${id}`)).toBe(0);
+  });
+
+  it('no answer and no complaint: released automatically 12 hours after "Job done"', async () => {
+    const { pro, id } = await paidJob();
+    await step(pro, id, 'start-work').expect(200);
+    await step(pro, id, 'work-done').expect(200);
+    const balances = ctx.app.get(BalanceService);
+    await balances.tick();
+    let [job] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(job!.status).toBe('BALANCE_HELD'); // not yet
+    await ctx.db
+      .update(jobs)
+      .set({ balanceReleaseAt: new Date(Date.now() - 1000) })
+      .where(eq(jobs.id, id));
+    await balances.tick();
+    [job] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(job!.status).toBe('COMPLETED');
+    expect(await total(`pro:${pro.userId}`)).toBe(2_250_000);
+  });
+
+  it('a problem can be reported before "Job done"; the money stays held for staff to settle', async () => {
+    const { customer, pro, id } = await paidJob();
+    const report = () =>
+      customer.agent
+        .post(`/v1/jobs/${id}/report-problem`)
+        .set(CLIENT_HEADER)
+        .send({ reason: 'The Pro took the deposit and has not come back.' });
+    await report().expect(200);
+    const [job] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(job!.status).toBe('DISPUTED');
+    await step(pro, id, 'start-work').expect(409);
+    const [dispute] = await ctx.db.select().from(disputes).where(eq(disputes.jobId, id));
+    const reviewer = await login(ctx);
+    await ctx.db.update(users).set({ role: 'ADMIN' }).where(eq(users.id, reviewer.userId));
+    await reviewer.agent
+      .post(`/v1/admin/disputes/${dispute!.id}/resolve`)
+      .set(CLIENT_HEADER)
+      .send({ outcome: 'REFUND', note: 'The Pro never came back to do the work.' })
+      .expect(200);
+    expect(await total(`refund-due:customer:${customer.userId}`)).toBe(1_500_000);
+    expect(await total(`escrow:job:${id}`)).toBe(0);
   });
 
   it('a deposit GADMO was still holding from before is released when work starts', async () => {
@@ -2051,6 +2150,14 @@ describe('quotes and the materials deposit', () => {
       },
       { txnId, account: `escrow:job:${id}`, creditKobo: 600_000, jobId: id, description: 'Old' },
     ]);
+    // Paid on its own, the old way: just the deposit.
+    await ctx.db.insert(payments).values({
+      jobId: id,
+      type: 'DEPOSIT',
+      amountKobo: 600_000,
+      status: 'SUCCEEDED',
+      paidAt: new Date(),
+    });
     const begun = await pro.agent.post(`/v1/jobs/${id}/start-work`).set(CLIENT_HEADER).expect(200);
     expect(begun.body.depositReleasedKobo).toBe(600_000);
   });

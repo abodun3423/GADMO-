@@ -181,8 +181,9 @@ function QuoteForm({
       </div>
       {amountKobo !== null && balance !== null && balance >= 0 && (
         <p className="meta">
-          The customer pays {depositKobo ? `${money(depositKobo)} now, then ` : ''}
-          {money(balance)} after the job.
+          The customer pays {money(amountKobo - feeKobo)} when accepting.{' '}
+          {depositKobo ? `${money(depositKobo)} comes to you at once for materials; ` : ''}
+          GADMO holds {money(balance)} and pays you after the job.
         </p>
       )}
       <div className="fee-actions">
@@ -262,13 +263,21 @@ export function QuoteCard({
         )}
         {quote.depositKobo > 0 && (
           <div>
-            <dt>Materials deposit, paid on accepting</dt>
+            <dt>Materials deposit, to the Pro at once</dt>
             <dd>{money(quote.depositKobo)}</dd>
           </div>
         )}
         <div>
-          <dt>Balance, paid after the job</dt>
+          <dt>Held by GADMO until the job is done</dt>
           <dd>{money(balance)}</dd>
+        </div>
+        <div>
+          <dt>
+            <strong>You pay on accepting</strong>
+          </dt>
+          <dd>
+            <strong>{money(quote.amountKobo - fee)}</strong>
+          </dd>
         </div>
       </dl>
       <p className={`offer-card-status offer-${status.toLowerCase()}`}>{STATUS[status]}</p>
@@ -285,8 +294,8 @@ export function QuoteCard({
             disabled={busy}
             onClick={() => act('accept')}
           >
-            {quote.depositKobo > 0
-              ? `Accept and pay ${money(quote.depositKobo)} deposit`
+            {quote.amountKobo - fee > 0
+              ? `Accept and pay ${money(quote.amountKobo - fee)}`
               : 'Accept quote'}
           </button>
           <button
