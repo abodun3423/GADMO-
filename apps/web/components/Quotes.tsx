@@ -4,6 +4,7 @@ import { type FormEvent, useState } from 'react';
 import { ApiError, fieldMessage, post } from '@/lib/api';
 import { money } from '@/lib/money';
 import type { ChatMessage, Conversation, Quote, QuoteStatus } from '@/lib/types';
+import { useWalletPay } from './WalletPay';
 
 /** Whole naira typed by a person → kobo (0 for empty), or null if it isn't usable. */
 function toKobo(text: string, allowEmpty = false): number | null {
@@ -229,6 +230,7 @@ export function QuoteCard({
   const fee = feePaid(convo.job);
   const balance = Math.max(0, quote.amountKobo - fee - quote.depositKobo);
   const open = status === 'PENDING' && convo.open;
+  const wallet = useWalletPay(Math.max(0, quote.amountKobo - fee), open && customer);
 
   async function act(action: 'accept' | 'decline' | 'withdraw') {
     setError(null);
@@ -236,6 +238,7 @@ export function QuoteCard({
     try {
       const res = await post<{ payment?: { authorizationUrl: string } }>(
         `/v1/quotes/${quote.id}/${action}`,
+        action === 'accept' ? wallet.body : undefined,
       );
       if (res.payment) {
         window.location.assign(res.payment.authorizationUrl);
@@ -286,6 +289,7 @@ export function QuoteCard({
           {error}
         </p>
       )}
+      {open && customer && wallet.choice}
       {open && customer && (
         <div className="fee-actions">
           <button
@@ -295,7 +299,7 @@ export function QuoteCard({
             onClick={() => act('accept')}
           >
             {quote.amountKobo - fee > 0
-              ? `Accept and pay ${money(quote.amountKobo - fee)}`
+              ? `Accept and ${wallet.label.replace(/^Pay/, 'pay')}`
               : 'Accept quote'}
           </button>
           <button

@@ -52,7 +52,7 @@ test('the Pro offers an inspection fee, the customer counters, the Pro accepts',
   await expect(proPage.getByText(/Waiting for the customer to pay it/)).toBeVisible();
 
   // The first try fails; nothing is paid and the customer can try again.
-  await page.getByRole('button', { name: 'Pay ₦1,500 now' }).click();
+  await page.getByRole('button', { name: 'Pay ₦1,500', exact: true }).click();
   await expect(page).toHaveURL(/\/pay\/test\?reference=gadmo_/);
   await expect(page.getByText('No real money moves.', { exact: false })).toBeVisible();
   await page.getByRole('button', { name: 'Make the payment fail' }).click();
@@ -61,7 +61,7 @@ test('the Pro offers an inspection fee, the customer counters, the Pro accepts',
   await expect(page).toHaveURL(`/jobs/${id}`);
 
   // The second try succeeds. GADMO holds the fee until the Pro arrives.
-  await page.getByRole('button', { name: 'Pay ₦1,500 now' }).click();
+  await page.getByRole('button', { name: 'Pay ₦1,500', exact: true }).click();
   await page.getByRole('button', { name: 'Pay ₦1,500 (test)' }).click();
   await expect(page.getByRole('heading', { name: 'Payment received' })).toBeVisible();
   await expect(page.getByRole('status')).toHaveText(
@@ -74,7 +74,7 @@ test('the Pro offers an inspection fee, the customer counters, the Pro accepts',
       'Inspection fee paid: ₦1,500. GADMO holds it until the Pro arrives and enters the customer’s arrival code.',
     ),
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Pay ₦1,500 now' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Pay ₦1,500', exact: true })).toHaveCount(0);
   await expect(proPage.getByText(/releases it to\s+you when you arrive/)).toBeVisible({
     timeout: 10_000,
   });

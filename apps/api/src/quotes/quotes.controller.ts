@@ -15,6 +15,8 @@ import {
   balanceDue,
   formatNaira,
   maskContactInfo,
+  type PayOptions,
+  payOptionsSchema,
   type QuoteInput,
   quoteSchema,
 } from '@gadmo/shared';
@@ -129,10 +131,14 @@ export class QuotesController {
    */
   @Post('quotes/:id/accept')
   @HttpCode(200)
-  async accept(@CurrentUser() user: AuthUser, @Param('id', idPipe) id: string) {
+  async accept(
+    @CurrentUser() user: AuthUser,
+    @Param('id', idPipe) id: string,
+    @Body(new ZodValidationPipe(payOptionsSchema)) body: PayOptions,
+  ) {
     const quote = await this.quoteForCustomer(id, user);
     if (quotePayNowKobo(quote.amountKobo, quote) > 0) {
-      const checkout = await this.payments.startQuotePayment(user.id, id);
+      const checkout = await this.payments.startQuotePayment(user.id, id, body?.useWallet ?? true);
       return { payment: checkout };
     }
     const done = await this.db.transaction(async (tx) => {

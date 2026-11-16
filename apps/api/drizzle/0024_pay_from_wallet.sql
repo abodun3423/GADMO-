@@ -1,0 +1,2 @@
+ALTER TABLE "payments" ADD COLUMN "wallet_kobo" bigint DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "payments" ADD CONSTRAINT "payments_wallet_part" CHECK ("payments"."wallet_kobo" >= 0 and "payments"."wallet_kobo" <= "payments"."amount_kobo");

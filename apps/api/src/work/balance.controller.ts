@@ -10,7 +10,13 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { maskContactInfo, type ReportProblem, reportProblemSchema } from '@gadmo/shared';
+import {
+  maskContactInfo,
+  type PayOptions,
+  payOptionsSchema,
+  type ReportProblem,
+  reportProblemSchema,
+} from '@gadmo/shared';
 import { and, eq, or } from 'drizzle-orm';
 import { AlertsService } from '../alerts/alerts.service';
 import type Redis from 'ioredis';
@@ -45,12 +51,16 @@ export class BalanceController {
   /** Starts paying the balance; the web app sends the customer to the checkout page. */
   @Post('balance/pay')
   @HttpCode(200)
-  async pay(@CurrentUser() user: AuthUser, @Param('jobId', idPipe) jobId: string) {
+  async pay(
+    @CurrentUser() user: AuthUser,
+    @Param('jobId', idPipe) jobId: string,
+    @Body(new ZodValidationPipe(payOptionsSchema)) body: PayOptions,
+  ) {
     await this.assertCustomer(user, jobId);
     await enforceLimits(this.redis, [
       { key: `pay-start:${user.id}`, max: 20, windowSeconds: 60 * 60 },
     ]);
-    return this.payments.startBalance(user.id, jobId);
+    return this.payments.startBalance(user.id, jobId, body?.useWallet ?? true);
   }
 
   /** "All good": the customer is happy with the work, so GADMO pays the Pro now. */

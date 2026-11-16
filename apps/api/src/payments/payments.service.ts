@@ -19,13 +19,31 @@ import { ENV, type Env } from '../config/env';
 import { categories, jobs, ledgerEntries, messages, payments, quotes } from '../db/schema';
 import type { FieldCrypto } from '../common/field-crypto';
 import { DB, type Db, FIELD_CRYPTO } from '../infra/infra.module';
-import { BalanceService, jobBalanceKobo, quotePayNowKobo } from '../work/balance.service';
+import {
+  accountBalance,
+  BalanceService,
+  jobBalanceKobo,
+  quotePayNowKobo,
+} from '../work/balance.service';
 import { PAYMENT_GATEWAY, type PaymentGateway } from './gateway';
 
 /** A checkout page is reused if the customer taps Pay again within this time. */
 const CHECKOUT_REUSE_MINUTES = 30;
 
 export const REFERENCE_PATTERN = /^gadmo_[0-9a-f]{32}$/;
+
+/** The `gateway` of a payment made wholly from the customer's GADMO wallet. */
+export const WALLET_GATEWAY = 'wallet';
+
+/** A customer's GADMO wallet (their refunds), as a ledger account. */
+function customerWallet(customerId: string): string {
+  return `refund-due:customer:${customerId}`;
+}
+
+/** The same lock withdrawals take, so wallet money can't be spent twice at once. */
+async function lockWallet(tx: Tx, userId: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`wallet:${userId}`}))`);
+}
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
@@ -34,6 +52,8 @@ export interface PaymentView {
   jobId: string;
   type: 'INSPECTION_FEE' | 'DEPOSIT' | 'BALANCE';
   amountKobo: number;
+  /** The part paid from the customer's GADMO wallet. */
+  walletKobo: number;
   status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
 }
 
@@ -42,6 +62,7 @@ const paymentView = {
   jobId: payments.jobId,
   type: payments.type,
   amountKobo: payments.amountKobo,
+  walletKobo: payments.walletKobo,
   status: payments.status,
 };
 
@@ -64,8 +85,8 @@ export class PaymentsService {
   ) {}
 
   /** The customer starts paying the agreed inspection fee. Returns the checkout page. */
-  async startInspectionFee(customerId: string, jobId: string) {
-    return this.checkout(customerId, jobId, 'INSPECTION_FEE', async (tx) => {
+  async startInspectionFee(customerId: string, jobId: string, useWallet = true) {
+    return this.checkout(customerId, jobId, 'INSPECTION_FEE', useWallet, async (tx) => {
       const [job] = await tx
         .select({
           status: jobs.status,
@@ -98,14 +119,14 @@ export class PaymentsService {
    * materials deposit goes straight to the Pro; the rest is held by GADMO until the job is
    * done, then released when the customer is satisfied or 12 hours after "Job done".
    */
-  async startQuotePayment(customerId: string, quoteId: string) {
+  async startQuotePayment(customerId: string, quoteId: string, useWallet = true) {
     const [found] = await this.db
       .select({ jobId: quotes.jobId })
       .from(quotes)
       .innerJoin(jobs, eq(jobs.id, quotes.jobId))
       .where(and(eq(quotes.id, quoteId), eq(jobs.customerId, customerId)));
     if (!found) throw new NotFoundException();
-    return this.checkout(customerId, found.jobId, 'DEPOSIT', async (tx) => {
+    return this.checkout(customerId, found.jobId, 'DEPOSIT', useWallet, async (tx) => {
       const [job] = await tx
         .select({
           status: jobs.status,
@@ -129,8 +150,8 @@ export class PaymentsService {
   }
 
   /** After the Pro marks the job done, the customer pays the balance in the app. */
-  async startBalance(customerId: string, jobId: string) {
-    return this.checkout(customerId, jobId, 'BALANCE', async (tx) => {
+  async startBalance(customerId: string, jobId: string, useWallet = true) {
+    return this.checkout(customerId, jobId, 'BALANCE', useWallet, async (tx) => {
       const [job] = await tx
         .select({
           id: jobs.id,
@@ -158,15 +179,40 @@ export class PaymentsService {
   /**
    * Creates (or reuses, within CHECKOUT_REUSE_MINUTES) a pending payment and its checkout
    * page. `prepare` checks the job inside the transaction and says how much to charge.
+   *
+   * With `useWallet`, money in the customer's GADMO wallet pays first (founder decision,
+   * November 2026): if it covers everything, the payment is made at once with no checkout
+   * page (the customer goes straight to the payment result); otherwise the card pays the
+   * rest. The wallet is only debited when the payment is confirmed.
    */
   private async checkout(
     customerId: string,
     jobId: string,
     type: 'INSPECTION_FEE' | 'DEPOSIT' | 'BALANCE',
+    useWallet: boolean,
     prepare: (tx: Tx) => Promise<{ amountKobo: number; quoteId: string | null }>,
   ) {
     const prepared = await this.db.transaction(async (tx) => {
       const { amountKobo, quoteId } = await prepare(tx);
+      let walletKobo = 0;
+      if (useWallet) {
+        await lockWallet(tx, customerId);
+        walletKobo = Math.min(amountKobo, await accountBalance(tx, customerWallet(customerId)));
+      }
+      if (walletKobo === amountKobo) {
+        const reference = `gadmo_${randomUUID().replace(/-/g, '')}`;
+        await tx.insert(payments).values({
+          jobId,
+          type,
+          method: 'APP',
+          paystackReference: reference,
+          amountKobo,
+          walletKobo,
+          quoteId,
+          gateway: WALLET_GATEWAY,
+        });
+        return { reference, walletOnly: true as const };
+      }
       const [recent] = await tx
         .select({ reference: payments.paystackReference, checkoutUrl: payments.checkoutUrl })
         .from(payments)
@@ -176,6 +222,7 @@ export class PaymentsService {
             eq(payments.type, type),
             eq(payments.status, 'PENDING'),
             eq(payments.amountKobo, amountKobo),
+            eq(payments.walletKobo, walletKobo),
             eq(payments.gateway, this.gateway.name),
             quoteId ? eq(payments.quoteId, quoteId) : undefined,
             gt(payments.createdAt, sql`now() - make_interval(mins => ${CHECKOUT_REUSE_MINUTES})`),
@@ -194,11 +241,19 @@ export class PaymentsService {
         method: 'APP',
         paystackReference: reference,
         amountKobo,
+        walletKobo,
         quoteId,
         gateway: this.gateway.name,
       });
-      return { reference, amountKobo, reuse: false };
+      return { reference, cardKobo: amountKobo - walletKobo, reuse: false };
     });
+    if ('walletOnly' in prepared) {
+      // Paid from the wallet alone: settle it now and show the customer the result page.
+      await this.settle(prepared.reference, { status: 'success', amountKobo: 0, currency: 'NGN' });
+      const result = new URL('/pay/return', this.env.WEB_ORIGIN);
+      result.searchParams.set('reference', prepared.reference);
+      return { reference: prepared.reference, authorizationUrl: result.toString() };
+    }
     if (prepared.reuse) {
       return { reference: prepared.reference, authorizationUrl: prepared.authorizationUrl! };
     }
@@ -207,7 +262,7 @@ export class PaymentsService {
     try {
       const { authorizationUrl } = await this.gateway.initialize({
         reference,
-        amountKobo: prepared.amountKobo!,
+        amountKobo: prepared.cardKobo!,
         // Paystack needs an email. GADMO never shares the customer's contact details,
         // so it sends a private alias instead.
         email: `customer-${customerId}@pay.gadmo.ng`,
@@ -246,7 +301,28 @@ export class PaymentsService {
    * times (return page, webhook, retries): a payment is recorded once.
    */
   async confirm(reference: string): Promise<PaymentView | null> {
-    const check = await this.gateway.verify(reference);
+    const [found] = await this.db
+      .select({ gateway: payments.gateway })
+      .from(payments)
+      .where(eq(payments.paystackReference, reference));
+    if (!found) return null;
+    if (found.gateway === WALLET_GATEWAY) return this.view(reference); // settled when made
+    return this.settle(reference, await this.gateway.verify(reference));
+  }
+
+  private async view(reference: string): Promise<PaymentView | null> {
+    const [row] = await this.db
+      .select(paymentView)
+      .from(payments)
+      .where(eq(payments.paystackReference, reference));
+    return (row as PaymentView | undefined) ?? null;
+  }
+
+  /** Records what the provider (or, for wallet-only payments, GADMO) says happened. */
+  private async settle(
+    reference: string,
+    check: { status: 'success' | 'failed' | 'pending'; amountKobo: number; currency: string },
+  ): Promise<PaymentView | null> {
     let paidJob: {
       id: string;
       proId: string | null;
@@ -271,20 +347,24 @@ export class PaymentsService {
         jobId: payment.jobId,
         type: payment.type,
         amountKobo: payment.amountKobo,
+        walletKobo: payment.walletKobo,
         status: payment.status,
       });
       if (payment.status !== 'PENDING' || check.status === 'pending') return view();
-      if (payment.gateway !== this.gateway.name) return view();
+      if (payment.gateway !== this.gateway.name && payment.gateway !== WALLET_GATEWAY) {
+        return view();
+      }
+      const card = payment.amountKobo - payment.walletKobo;
 
       if (check.status === 'failed') {
         await tx.update(payments).set({ status: 'FAILED' }).where(eq(payments.id, payment.id));
         payment.status = 'FAILED';
         return view();
       }
-      if (check.amountKobo !== payment.amountKobo || check.currency !== 'NGN') {
+      if (check.amountKobo !== card || check.currency !== 'NGN') {
         // Never credit a different amount than agreed; staff resolve it by hand.
         this.log.error(
-          `Payment ${reference} came back as ${check.amountKobo} ${check.currency}, expected ${payment.amountKobo} NGN`,
+          `Payment ${reference} came back as ${check.amountKobo} ${check.currency}, expected ${card} NGN`,
         );
         await tx.update(payments).set({ status: 'FAILED' }).where(eq(payments.id, payment.id));
         payment.status = 'FAILED';
@@ -325,8 +405,17 @@ export class PaymentsService {
           .where(eq(quotes.id, payment.quoteId))
           .for('update');
       }
+      // The wallet part is taken now; if the wallet no longer holds it (spent or withdrawn
+      // meanwhile), the payment doesn't count and any card money goes to the wallet.
+      let walletOk = true;
+      if (payment.walletKobo > 0) {
+        await lockWallet(tx, job!.customerId);
+        walletOk =
+          (await accountBalance(tx, customerWallet(job!.customerId))) >= payment.walletKobo;
+      }
       const counts =
-        payment.type === 'INSPECTION_FEE'
+        walletOk &&
+        (payment.type === 'INSPECTION_FEE'
           ? job!.status === 'ACCEPTED'
           : payment.type === 'BALANCE'
             ? job!.status === 'DONE_AWAITING_PAYMENT' &&
@@ -334,16 +423,34 @@ export class PaymentsService {
             : payment.type === 'DEPOSIT' &&
               job!.status === 'QUOTED' &&
               quote?.status === 'PENDING' &&
-              quotePayNowKobo(quote.amountKobo, job!) === payment.amountKobo;
+              quotePayNowKobo(quote.amountKobo, job!) === payment.amountKobo);
+      if (!counts && card === 0) {
+        // Nothing came in from a card, so nothing is owed back.
+        await tx.update(payments).set({ status: 'FAILED' }).where(eq(payments.id, payment.id));
+        payment.status = 'FAILED';
+        return view();
+      }
       const txnId = randomUUID();
-      const amount = payment.amountKobo;
-      const received = {
-        txnId,
-        account: `gateway:${this.gateway.name}:clearing`,
-        debitKobo: amount,
-        jobId: job!.id,
-        description: `Payment ${reference} received`,
-      };
+      const amount = counts ? payment.amountKobo : card;
+      const received: (typeof ledgerEntries.$inferInsert)[] = [];
+      if (card > 0) {
+        received.push({
+          txnId,
+          account: `gateway:${payment.gateway}:clearing`,
+          debitKobo: card,
+          jobId: job!.id,
+          description: `Payment ${reference} received`,
+        });
+      }
+      if (counts && payment.walletKobo > 0) {
+        received.push({
+          txnId,
+          account: customerWallet(job!.customerId),
+          debitKobo: payment.walletKobo,
+          jobId: job!.id,
+          description: 'Paid from your GADMO wallet',
+        });
+      }
       // A quote is paid in full up front (founder decision): the materials deposit goes
       // straight to the Pro so they can buy what the job needs; the rest is held by GADMO
       // until the job is done. The inspection fee is held until the Pro arrives.
@@ -396,7 +503,7 @@ export class PaymentsService {
                     : 'Inspection fee held until the Pro arrives',
               },
             ];
-      await tx.insert(ledgerEntries).values([received, ...credits]);
+      await tx.insert(ledgerEntries).values([...received, ...credits]);
       if (counts && payment.type === 'INSPECTION_FEE') {
         // The customer gives this code to the Pro on arrival; it releases the fee.
         const arrivalCode = String(randomInt(0, 10_000)).padStart(4, '0');

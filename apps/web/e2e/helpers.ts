@@ -270,3 +270,23 @@ export async function makeVisitLate(jobId: string): Promise<void> {
     jobId,
   ]);
 }
+
+/** Stands in for an inspection fee the customer and Pro agreed in the chat. */
+export async function agreeFee(jobId: string, kobo: number): Promise<void> {
+  await db.query(
+    `UPDATE jobs SET inspection_fee_kobo = $2, inspection_agreed_at = now() WHERE id = $1`,
+    [jobId, kobo],
+  );
+}
+
+/** Puts money in a customer's GADMO wallet, as a refund would. */
+export async function fundWallet(e164: string, kobo: number): Promise<void> {
+  await db.query(
+    `WITH t AS (SELECT gen_random_uuid() AS id), u AS (SELECT id FROM users WHERE phone = $1)
+     INSERT INTO ledger_entries (txn_id, account, debit_kobo, credit_kobo, description)
+     SELECT t.id, 'gateway:test:clearing', $2, 0, 'test' FROM t
+     UNION ALL
+     SELECT t.id, 'refund-due:customer:' || u.id, 0, $2, 'Refund' FROM t, u`,
+    [e164, kobo],
+  );
+}

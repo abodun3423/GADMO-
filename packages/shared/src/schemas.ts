@@ -395,3 +395,10 @@ export const SCHEDULED_VISIT_GRACE_MINUTES = 60;
 export const VISIT_EXTEND_MINUTES = 30;
 export const NO_SHOW_ALERT_COUNT = 3;
 export const NO_SHOW_ALERT_DAYS = 30;
+
+/**
+ * Paying for a job (inspection fee, quote, balance). Money in the customer's GADMO wallet
+ * pays first unless they untick it (founder decision, November 2026).
+ */
+export const payOptionsSchema = z.object({ useWallet: z.boolean().optional() }).strict().optional(); // a request with no body uses the wallet
+export type PayOptions = z.infer<typeof payOptionsSchema>;

@@ -19,6 +19,10 @@ Ask the founder before deciding anything the PRD leaves open.
   until release) keeps it held. There is no cash option: every payment goes through GADMO, so every job is
   covered by the GADMO Guarantee (founder decision, November 2026).
 - Commission: 10% (`COMMISSION_BPS`).
+- Wallet: refunds go to the customer's GADMO wallet. When paying (inspection fee, quote, balance) the
+  wallet pays first unless the customer unticks it; the card pays the rest, and a payment the wallet
+  covers fully is made at once. The wallet part is taken only when the payment is confirmed, under the
+  same lock as withdrawals (founder decision, November 2026).
 - Pro no-show: after the inspection fee is paid, the Pro must arrive (arrival code) within 2h30 for an
   emergency, or by 1 hour after the booked time. Then the customer can wait 30 minutes longer (while the
   Pro is on the way) or cancel: the fee is refunded to their GADMO wallet at once, the no-show is recorded,

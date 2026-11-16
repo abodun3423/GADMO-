@@ -169,6 +169,13 @@
       "when": 1794836216631,
       "tag": "0023_pro_no_show",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794846060385,
+      "tag": "0024_pay_from_wallet",
+      "breakpoints": true
     }
   ]
 }

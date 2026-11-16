@@ -341,6 +341,8 @@ export interface Payment {
   jobId: string;
   type: 'INSPECTION_FEE' | 'DEPOSIT' | 'BALANCE';
   amountKobo: number;
+  /** The part paid from the customer's GADMO wallet; the card pays the rest. */
+  walletKobo: number;
   status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
 }
 
