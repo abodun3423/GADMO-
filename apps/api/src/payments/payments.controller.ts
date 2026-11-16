@@ -13,6 +13,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { type PayOptions, payOptionsSchema } from '@gadmo/shared';
 import type { Request } from 'express';
 import type Redis from 'ioredis';
 import { z } from 'zod';
@@ -40,11 +41,15 @@ export class PaymentsController {
   /** Start paying the agreed inspection fee; the web app sends the customer to the page. */
   @Post('jobs/:jobId/inspection-fee/pay')
   @HttpCode(200)
-  async payInspectionFee(@CurrentUser() user: AuthUser, @Param('jobId', idPipe) jobId: string) {
+  async payInspectionFee(
+    @CurrentUser() user: AuthUser,
+    @Param('jobId', idPipe) jobId: string,
+    @Body(new ZodValidationPipe(payOptionsSchema)) body: PayOptions,
+  ) {
     await enforceLimits(this.redis, [
       { key: `pay-start:${user.id}`, max: 20, windowSeconds: 60 * 60 },
     ]);
-    return this.payments.startInspectionFee(user.id, jobId);
+    return this.payments.startInspectionFee(user.id, jobId, body?.useWallet ?? true);
   }
 
   /** Called when the customer comes back from the checkout page. */
@@ -78,7 +83,8 @@ export class PaymentsController {
     const gateway = this.testGateway();
     const payment = await this.payments.findForCustomer(ref, user.id);
     if (payment.status !== 'PENDING') return { payment };
-    gateway.complete(ref, payment.amountKobo, body.outcome);
+    // The card pays what the wallet doesn't.
+    gateway.complete(ref, payment.amountKobo - payment.walletKobo, body.outcome);
     return { payment: await this.payments.confirm(ref) };
   }
 

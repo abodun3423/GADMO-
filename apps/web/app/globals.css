@@ -3463,3 +3463,28 @@ a.tile {
   color: var(--error);
   font-weight: 600;
 }
+
+/* ---------- Pay from wallet ---------- */
+.wallet-choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 4px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  cursor: pointer;
+  font-weight: 600;
+}
+.wallet-choice input {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--dye);
+}
+.wallet-choice .hint {
+  display: block;
+  font-weight: 400;
+}

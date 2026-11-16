@@ -5,6 +5,7 @@ import { ApiError, post } from '@/lib/api';
 import { money } from '@/lib/money';
 import type { Conversation } from '@/lib/types';
 import { RateJob } from './RateJob';
+import { useWalletPay } from './WalletPay';
 
 const releaseFormat = new Intl.DateTimeFormat('en-NG', {
   weekday: 'short',
@@ -34,6 +35,10 @@ export function WorkPanel({
   const [error, setError] = useState<string | null>(null);
   const satisfied = useRef<HTMLDialogElement>(null);
   const askSatisfied = job.status === 'BALANCE_HELD' && you !== 'PRO';
+  const wallet = useWalletPay(
+    job.balanceKobo ?? 0,
+    you === 'CUSTOMER' && job.status === 'DONE_AWAITING_PAYMENT',
+  );
 
   // Once the Pro marks the job done, ask the customer straight away whether they are
   // satisfied (once per job in this browser session; the panel keeps the same choices).
@@ -56,6 +61,7 @@ export function WorkPanel({
     try {
       const { authorizationUrl } = await post<{ authorizationUrl: string }>(
         `/v1/jobs/${job.id}/balance/pay`,
+        wallet.body,
       );
       window.location.assign(authorizationUrl);
     } catch (err) {
@@ -250,8 +256,9 @@ export function WorkPanel({
           holds your payment for 12 hours before paying your Pro, so you can report a problem.
           Always pay through GADMO, never in cash, so your money stays protected.
         </p>
+        {wallet.choice}
         <button className="button" type="button" disabled={busy} onClick={payBalance}>
-          {busy ? 'Opening payment…' : `Pay ${money(balance)}`}
+          {busy ? 'Paying…' : wallet.label}
         </button>
         {failed}
       </div>

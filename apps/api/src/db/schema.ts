@@ -549,6 +549,12 @@ export const payments = pgTable(
     /** Unique so a replayed Paystack webhook is processed only once. */
     paystackReference: text('paystack_reference').unique(),
     amountKobo: kobo('amount_kobo').notNull(),
+    /**
+     * The part of amountKobo paid from the customer's GADMO wallet (founder decision,
+     * November 2026); the card is charged the rest. Taken from the wallet only when the
+     * payment is confirmed.
+     */
+    walletKobo: kobo('wallet_kobo').notNull().default(0),
     status: paymentStatusEnum('status').notNull().default('PENDING'),
     dueAt: timestamp('due_at', { withTimezone: true }),
     /** DEPOSIT payments: the quote being accepted. */
@@ -564,6 +570,7 @@ export const payments = pgTable(
   (t) => [
     index('payments_job_idx').on(t.jobId),
     check('payments_amount_nonneg', sql`${t.amountKobo} >= 0`),
+    check('payments_wallet_part', sql`${t.walletKobo} >= 0 and ${t.walletKobo} <= ${t.amountKobo}`),
   ],
 );
 

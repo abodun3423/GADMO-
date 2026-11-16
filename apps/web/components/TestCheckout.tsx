@@ -58,7 +58,10 @@ export function TestCheckout({ reference }: { reference: string }) {
       {payment && payment.status === 'PENDING' && (
         <div className="fee-panel">
           <p className="meta">{WHAT[payment.type]}</p>
-          <p className="pay-amount">{naira(payment.amountKobo)}</p>
+          <p className="pay-amount">{naira(payment.amountKobo - payment.walletKobo)}</p>
+          {payment.walletKobo > 0 && (
+            <p className="meta">{naira(payment.walletKobo)} comes from the GADMO wallet.</p>
+          )}
           <div className="fee-actions">
             <button
               className="button"
@@ -66,7 +69,7 @@ export function TestCheckout({ reference }: { reference: string }) {
               disabled={busy}
               onClick={() => finish('success')}
             >
-              Pay {naira(payment.amountKobo)} (test)
+              Pay {naira(payment.amountKobo - payment.walletKobo)} (test)
             </button>
             <button
               className="button button-quiet"

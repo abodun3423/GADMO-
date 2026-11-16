@@ -67,6 +67,10 @@ export function PaymentReturn({ reference }: { reference: string }) {
       <>
         <h1 className="page-title">Payment received</h1>
         <p className="alert alert-ok" role="status">
+          {payment.walletKobo > 0 &&
+            (payment.walletKobo === payment.amountKobo
+              ? 'Paid from your GADMO wallet. '
+              : `${naira(payment.walletKobo)} came from your GADMO wallet. `)}
           {payment.type === 'DEPOSIT'
             ? `${naira(payment.amountKobo)} paid and your quote is accepted. Any materials deposit goes to your Pro now; GADMO holds the rest until you’re satisfied with the job.`
             : payment.type === 'BALANCE'

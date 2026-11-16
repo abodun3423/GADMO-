@@ -4,6 +4,7 @@ import { type FormEvent, useState } from 'react';
 import { ApiError, fieldMessage, post } from '@/lib/api';
 import type { ChatMessage, Conversation, OfferStatus } from '@/lib/types';
 import { VisitPanel } from './Visit';
+import { useWalletPay } from './WalletPay';
 
 /** "₦2,500": offers are in whole naira. */
 export function naira(kobo: number): string {
@@ -145,7 +146,7 @@ export function InspectionPanel({
         </p>
       );
     }
-    return <PayInspectionFee jobId={job.id} fee={fee} />;
+    return <PayInspectionFee jobId={job.id} fee={fee} feeKobo={job.inspectionFeeKobo} />;
   }
   // Quoted without an inspection: nothing more to agree here.
   if (job.status !== 'ACCEPTED') return null;
@@ -186,9 +187,18 @@ export function InspectionPanel({
 }
 
 /** The customer pays the agreed fee on the payment page, then comes back to the chat. */
-function PayInspectionFee({ jobId, fee }: { jobId: string; fee: string }) {
+function PayInspectionFee({
+  jobId,
+  fee,
+  feeKobo,
+}: {
+  jobId: string;
+  fee: string;
+  feeKobo: number;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const wallet = useWalletPay(feeKobo);
 
   async function pay() {
     setError(null);
@@ -196,6 +206,7 @@ function PayInspectionFee({ jobId, fee }: { jobId: string; fee: string }) {
     try {
       const { authorizationUrl } = await post<{ authorizationUrl: string }>(
         `/v1/jobs/${jobId}/inspection-fee/pay`,
+        wallet.body,
       );
       window.location.assign(authorizationUrl);
     } catch (err) {
@@ -215,8 +226,9 @@ function PayInspectionFee({ jobId, fee }: { jobId: string; fee: string }) {
           {error}
         </p>
       )}
+      {wallet.choice}
       <button className="button button-small" type="button" disabled={busy} onClick={pay}>
-        {busy ? 'Opening payment…' : `Pay ${fee} now`}
+        {busy ? 'Paying…' : wallet.label}
       </button>
     </div>
   );

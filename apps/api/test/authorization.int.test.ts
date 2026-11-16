@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -1906,6 +1907,111 @@ describe('paying the inspection fee (test checkout)', () => {
     expect(row).toMatchObject({ proId, recordedById: reviewer.userId, refundKobo: 200_000 });
     const detail = await reviewer.agent.get(`/v1/admin/users/${proId}`).expect(200);
     expect(detail.body.user.noShows).toEqual({ total: 3, recent: 3 });
+  });
+
+  /** Money in the customer's GADMO wallet (as a refund would put it there). */
+  async function fundWallet(customerId: string, kobo: number) {
+    const txnId = randomUUID();
+    await ctx.db.insert(ledgerEntries).values([
+      { txnId, account: 'gateway:test:clearing', debitKobo: kobo, description: 'test' },
+      {
+        txnId,
+        account: `refund-due:customer:${customerId}`,
+        creditKobo: kobo,
+        description: 'Refund',
+      },
+    ]);
+  }
+  async function balanceOf(account: string) {
+    const rows = await ctx.db
+      .select()
+      .from(ledgerEntries)
+      .where(eq(ledgerEntries.account, account));
+    return rows.reduce((n, e) => n + e.creditKobo - e.debitKobo, 0);
+  }
+
+  it('wallet: covers the whole fee, so it is paid at once with no checkout page', async () => {
+    const { customer, pro, id } = await agreedJob(200_000);
+    await fundWallet(customer.userId, 300_000);
+    const started = await pay(customer.agent, id).expect(200);
+    const url = new URL(started.body.authorizationUrl);
+    expect(url.pathname).toBe('/pay/return');
+    const reference = url.searchParams.get('reference')!;
+    expect(reference).toBe(started.body.reference);
+
+    const checked = await customer.agent
+      .post(`/v1/payments/${reference}/check`)
+      .set(CLIENT_HEADER)
+      .expect(200);
+    expect(checked.body.payment).toMatchObject({
+      status: 'SUCCEEDED',
+      amountKobo: 200_000,
+      walletKobo: 200_000,
+    });
+    const [job] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(job!.status).toBe('INSPECTION_PAID');
+    expect(await balanceOf(`refund-due:customer:${customer.userId}`)).toBe(100_000);
+    expect(await balanceOf(`escrow:job:${id}`)).toBe(200_000);
+    // Only the customer sees it; the test checkout can't be used on it again.
+    await pro.agent.post(`/v1/payments/${reference}/check`).set(CLIENT_HEADER).expect(403);
+    await complete(customer.agent, reference, 'success').expect(200);
+    expect(await balanceOf(`escrow:job:${id}`)).toBe(200_000);
+  });
+
+  it('wallet: pays part; the card pays the rest; or the customer keeps the wallet for later', async () => {
+    const { customer, id } = await agreedJob(200_000);
+    await fundWallet(customer.userId, 50_000);
+    const kept = await customer.agent
+      .post(`/v1/jobs/${id}/inspection-fee/pay`)
+      .set(CLIENT_HEADER)
+      .send({ useWallet: false })
+      .expect(200);
+    const [noWallet] = await ctx.db
+      .select()
+      .from(payments)
+      .where(eq(payments.paystackReference, kept.body.reference));
+    expect(noWallet!.walletKobo).toBe(0);
+    for (const bad of [{ useWallet: 'yes' }, { useWallet: true, amountKobo: 1 }]) {
+      await customer.agent
+        .post(`/v1/jobs/${id}/inspection-fee/pay`)
+        .set(CLIENT_HEADER)
+        .send(bad)
+        .expect(400);
+    }
+
+    const started = await pay(customer.agent, id).expect(200);
+    expect(new URL(started.body.authorizationUrl).pathname).toBe('/pay/test');
+    const done = await complete(customer.agent, started.body.reference, 'success').expect(200);
+    expect(done.body.payment).toMatchObject({ status: 'SUCCEEDED', walletKobo: 50_000 });
+    expect(await balanceOf(`refund-due:customer:${customer.userId}`)).toBe(0);
+    expect(await balanceOf(`escrow:job:${id}`)).toBe(200_000);
+    const card = await ctx.db
+      .select()
+      .from(ledgerEntries)
+      .where(and(eq(ledgerEntries.jobId, id), eq(ledgerEntries.account, 'gateway:test:clearing')));
+    expect(card.reduce((n, e) => n + e.debitKobo, 0)).toBe(150_000);
+  });
+
+  it('wallet: if the wallet was spent before the card payment finished, the card money goes to the wallet', async () => {
+    const { customer, id } = await agreedJob(200_000);
+    await fundWallet(customer.userId, 50_000);
+    const started = await pay(customer.agent, id).expect(200);
+    // Withdrawn meanwhile.
+    const txnId = randomUUID();
+    await ctx.db.insert(ledgerEntries).values([
+      {
+        txnId,
+        account: `refund-due:customer:${customer.userId}`,
+        debitKobo: 50_000,
+        description: 'Withdrawal',
+      },
+      { txnId, account: 'gateway:test:transfers', creditKobo: 50_000, description: 'test' },
+    ]);
+    await complete(customer.agent, started.body.reference, 'success').expect(200);
+    const [job] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(job!.status).toBe('ACCEPTED');
+    expect(await balanceOf(`refund-due:customer:${customer.userId}`)).toBe(150_000);
+    expect(await balanceOf(`escrow:job:${id}`)).toBe(0);
   });
 
   it('a failed payment leaves the fee unpaid and can be tried again', async () => {
