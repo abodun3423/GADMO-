@@ -266,6 +266,11 @@ export interface Conversation {
     inspectionFeeKobo: number | null;
     onTheWayAt: string | null;
     arrivedAt: string | null;
+    /**
+     * After the inspection fee is paid: once this passes without the Pro arriving, the
+     * customer can cancel with a refund, or wait 30 minutes longer if the Pro is on the way.
+     */
+    visitDueAt: string | null;
     /** When the Pro started the work, and marked it done. */
     startedAt: string | null;
     doneAt: string | null;
@@ -320,7 +325,7 @@ export interface MessagesResponse {
   quotes: { id: string; status: QuoteStatus }[];
   inspectionFeeKobo: number | null;
   jobStatus: JobStatus;
-  visit: { onTheWayAt: string | null; arrivedAt: string | null };
+  visit: { onTheWayAt: string | null; arrivedAt: string | null; visitDueAt: string | null };
   work: {
     startedAt: string | null;
     doneAt: string | null;
@@ -433,6 +438,8 @@ export interface AdminUserDetail extends Omit<AdminUserRow, 'verificationStatus'
   latestCheck: { id: string; result: ReviewResult } | null;
   recentJobs: AdminJobRow[];
   /** Ratings this user received: customers' ratings of a Pro, or Pros' ratings of a customer. */
+  /** Visits this Pro didn't come to: in the last 30 days, and ever. */
+  noShows: { total: number; recent: number };
   reviewsReceived: { jobId: string; rating: number; comment: string | null; createdAt: string }[];
   statusHistory: {
     action: string;

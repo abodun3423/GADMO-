@@ -350,6 +350,12 @@ export const jobs = pgTable(
     arrivalCodeEncrypted: text('arrival_code_encrypted'),
     onTheWayAt: timestamp('on_the_way_at', { withTimezone: true }),
     arrivedAt: timestamp('arrived_at', { withTimezone: true }),
+    /**
+     * After the inspection fee is paid: when the customer may cancel with a refund if the Pro
+     * hasn't arrived (2h30 for emergencies; 1 hour after the booked time for scheduled jobs).
+     * The customer can wait 30 minutes longer at a time while the Pro is on the way.
+     */
+    visitDueAt: timestamp('visit_due_at', { withTimezone: true }),
     /** doneAt + 12 hours for in-app balances. */
     balanceReleaseAt: timestamp('balance_release_at', { withTimezone: true }),
     /** When the job became COMPLETED; reviews can be left for 14 days after. */
@@ -687,6 +693,34 @@ export const reviews = pgTable(
     index('reviews_subject_idx').on(t.subjectId, t.createdAt),
     check('reviews_rating_range', sql`${t.rating} BETWEEN 1 AND 5`),
   ],
+);
+
+/**
+ * A Pro who didn't come after the customer paid the inspection fee (founder decision,
+ * November 2026). Staff are alerted when a Pro reaches NO_SHOW_ALERT_COUNT within
+ * NO_SHOW_ALERT_DAYS.
+ */
+export const noShows = pgTable(
+  'no_shows',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    jobId: uuid('job_id')
+      .notNull()
+      .unique()
+      .references(() => jobs.id),
+    proId: uuid('pro_id')
+      .notNull()
+      .references(() => users.id),
+    /** The customer, or the staff member who recorded it. */
+    recordedById: uuid('recorded_by_id')
+      .notNull()
+      .references(() => users.id),
+    /** The new request made for the customer, so another Pro can take it. */
+    replacementJobId: uuid('replacement_job_id').references(() => jobs.id),
+    refundKobo: integer('refund_kobo').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('no_shows_pro_idx').on(t.proId, t.createdAt)],
 );
 
 export const disputes = pgTable('disputes', {

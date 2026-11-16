@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import {
   maskContactInfo,
+  NO_SHOW_ALERT_DAYS,
   normalizeNigerianPhone,
   type UserStatusChange,
   userStatusChangeSchema,
@@ -30,6 +31,7 @@ import {
   jobs,
   proCategories,
   proProfiles,
+  noShows,
   refreshTokens,
   reviews,
   users,
@@ -219,6 +221,14 @@ export class AdminUsersController {
       .where(eq(reviews.subjectId, id))
       .orderBy(desc(reviews.createdAt))
       .limit(20);
+    // Visits this Pro didn't come to (founder decision: staff are alerted at 3 in 30 days).
+    const [missed] = await this.db
+      .select({
+        total: sql<number>`count(*)::int`,
+        recent: sql<number>`(count(*) filter (where ${noShows.createdAt} >= now() - make_interval(days => ${NO_SHOW_ALERT_DAYS})))::int`,
+      })
+      .from(noShows)
+      .where(eq(noShows.proId, id));
     const history = await this.db
       .select({
         action: auditLogs.action,
@@ -251,6 +261,7 @@ export class AdminUsersController {
         latestCheck: latestCheck ?? null,
         recentJobs,
         reviewsReceived,
+        noShows: missed ?? { total: 0, recent: 0 },
         statusHistory: history,
       },
     };

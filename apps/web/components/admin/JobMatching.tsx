@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, post } from '@/lib/api';
 import type { JobMatching } from '@/lib/types';
 import { AdminNav } from './AdminNav';
 import { ACCOUNT_STATUS_LABEL, CHECK_LABEL, dateTime, JOB_STATUS_SHORT } from './labels';
@@ -91,6 +91,7 @@ function Matching({ id }: { id: string }) {
         <Link href={`/admin/users/${job.customerId}`}>{job.customerName ?? 'no name yet'}</Link>
       </p>
       <p>{job.description}</p>
+      {job.status === 'INSPECTION_PAID' && <StaffNoShow jobId={job.id} />}
 
       <h2 className="section-title">Which Pros can take it?</h2>
       <p className={`alert ${matching.length ? 'alert-ok' : 'alert-info'}`} role="status">
@@ -151,5 +152,78 @@ function Matching({ id }: { id: string }) {
         </>
       )}
     </>
+  );
+}
+
+/**
+ * The customer says the Pro never came but didn't cancel in the app: staff refund the fee,
+ * record the no-show and send the request to another Pro.
+ */
+function StaffNoShow({ jobId }: { jobId: string }) {
+  const [state, setState] = useState<'idle' | 'confirm' | 'busy' | 'done'>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const [replacement, setReplacement] = useState<string | null>(null);
+
+  async function record() {
+    setState('busy');
+    setError(null);
+    try {
+      const res = await post<{ replacementJob: { id: string } }>(`/v1/admin/jobs/${jobId}/no-show`);
+      setReplacement(res.replacementJob.id);
+      setState('done');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Not saved. Try again.');
+      setState('confirm');
+    }
+  }
+
+  if (state === 'done') {
+    return (
+      <p className="alert alert-ok" role="status">
+        Recorded. The fee was refunded to the customer’s wallet and{' '}
+        <Link href={`/admin/jobs/${replacement}`}>a new request</Link> is open for other Pros.
+      </p>
+    );
+  }
+  return (
+    <div className="fee-panel late-visit">
+      <p>
+        <strong>Waiting for the Pro to arrive.</strong> If the customer tells you the Pro never
+        came, you can cancel the visit for them.
+      </p>
+      {error && (
+        <p className="alert alert-error" role="alert">
+          {error}
+        </p>
+      )}
+      {state === 'idle' ? (
+        <button
+          className="button button-quiet button-small"
+          type="button"
+          onClick={() => setState('confirm')}
+        >
+          The Pro didn’t come
+        </button>
+      ) : (
+        <div className="fee-actions">
+          <button
+            className="button button-small"
+            type="button"
+            disabled={state === 'busy'}
+            onClick={record}
+          >
+            {state === 'busy' ? 'Saving…' : 'Refund the fee and find another Pro'}
+          </button>
+          <button
+            className="button button-quiet button-small"
+            type="button"
+            disabled={state === 'busy'}
+            onClick={() => setState('idle')}
+          >
+            Back
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

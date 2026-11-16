@@ -17,12 +17,13 @@ import { and, eq, or, sql } from 'drizzle-orm';
 import type Redis from 'ioredis';
 import { z } from 'zod';
 import { AlertsService } from '../alerts/alerts.service';
-import { type AuthUser, CurrentUser, JwtAuthGuard } from '../auth/guards';
+import { type AuthUser, CurrentUser, JwtAuthGuard, Roles } from '../auth/guards';
 import type { FieldCrypto } from '../common/field-crypto';
 import { enforceLimits } from '../common/rate-limit';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { jobs, ledgerEntries, messages } from '../db/schema';
 import { DB, type Db, FIELD_CRYPTO, REDIS } from '../infra/infra.module';
+import { NoShowService } from './no-show.service';
 
 const idPipe = new ZodValidationPipe(z.uuid());
 const arrivalSchema = z
@@ -48,7 +49,27 @@ export class VisitController {
     @Inject(REDIS) private readonly redis: Redis,
     @Inject(FIELD_CRYPTO) private readonly crypto: FieldCrypto,
     private readonly alerts: AlertsService,
+    private readonly noShows: NoShowService,
   ) {}
+
+  /** The visit is late and the Pro is on the way: the customer waits a little longer. */
+  @Post('visit/wait-longer')
+  @HttpCode(200)
+  async waitLonger(@CurrentUser() user: AuthUser, @Param('jobId', idPipe) jobId: string) {
+    await this.assertCustomer(user, jobId);
+    return { visit: await this.noShows.waitLonger(jobId) };
+  }
+
+  /** The Pro didn't come: the customer cancels the visit and gets the fee back at once. */
+  @Post('visit/no-show')
+  @HttpCode(200)
+  async noShow(@CurrentUser() user: AuthUser, @Param('jobId', idPipe) jobId: string) {
+    await this.assertCustomer(user, jobId);
+    await enforceLimits(this.redis, [
+      { key: `no-show:${user.id}`, max: 10, windowSeconds: 24 * 60 * 60 },
+    ]);
+    return this.noShows.record(jobId, user.id);
+  }
 
   @Post('on-the-way')
   @HttpCode(200)
@@ -146,9 +167,26 @@ export class VisitController {
     return { visit: result.visit };
   }
 
+  /** Only the job's customer; its Pro gets 403, anyone else 404. */
+  private async assertCustomer(user: AuthUser, jobId: string) {
+    const [job] = await this.db
+      .select({ customerId: jobs.customerId })
+      .from(jobs)
+      .where(and(eq(jobs.id, jobId), or(eq(jobs.customerId, user.id), eq(jobs.proId, user.id))))
+      .limit(1);
+    if (!job) throw new NotFoundException();
+    if (job.customerId !== user.id) {
+      throw new ForbiddenException('Only the customer can do this.');
+    }
+  }
+
   private async visit(tx: Tx, jobId: string) {
     const [v] = await tx
-      .select({ onTheWayAt: jobs.onTheWayAt, arrivedAt: jobs.arrivedAt })
+      .select({
+        onTheWayAt: jobs.onTheWayAt,
+        arrivedAt: jobs.arrivedAt,
+        visitDueAt: jobs.visitDueAt,
+      })
       .from(jobs)
       .where(eq(jobs.id, jobId));
     return v!;
@@ -186,6 +224,23 @@ export class VisitController {
       );
     }
     return this.crypto.decrypt(job.arrivalCodeEncrypted);
+  }
+}
+
+/**
+ * Staff record a no-show for a customer who never tapped "My Pro didn't come" (the waiting
+ * time doesn't apply: staff have checked with the customer).
+ */
+@Controller('admin/jobs/:jobId')
+@UseGuards(JwtAuthGuard)
+@Roles(['ADMIN', 'SUPER_ADMIN'])
+export class AdminNoShowController {
+  constructor(private readonly noShows: NoShowService) {}
+
+  @Post('no-show')
+  @HttpCode(200)
+  async record(@CurrentUser() staff: AuthUser, @Param('jobId', idPipe) jobId: string) {
+    return this.noShows.record(jobId, staff.id, true);
   }
 }
 

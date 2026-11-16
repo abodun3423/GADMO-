@@ -19,6 +19,11 @@ Ask the founder before deciding anything the PRD leaves open.
   until release) keeps it held. There is no cash option: every payment goes through GADMO, so every job is
   covered by the GADMO Guarantee (founder decision, November 2026).
 - Commission: 10% (`COMMISSION_BPS`).
+- Pro no-show: after the inspection fee is paid, the Pro must arrive (arrival code) within 2h30 for an
+  emergency, or by 1 hour after the booked time. Then the customer can wait 30 minutes longer (while the
+  Pro is on the way) or cancel: the fee is refunded to their GADMO wallet at once, the no-show is recorded,
+  and a new request goes to other Pros. Staff can record it too; 3 no-shows in 30 days alerts staff
+  (founder decision, November 2026).
 - Ratings: after a job is complete, each side rates the other once (1–5 stars, optional comment, no
   edits) within 14 days (`REVIEW_WINDOW_DAYS`). Customers' ratings of a Pro make up the Pro's stars and
   are shown to customers without the customer's name; Pros' ratings of a customer are seen only by

@@ -102,6 +102,7 @@ export class ChatController {
           inspectionFeeKobo: job.inspectionFeeKobo,
           onTheWayAt: job.onTheWayAt,
           arrivedAt: job.arrivedAt,
+          visitDueAt: job.visitDueAt,
           ...(await this.work(job)),
           // Only the customer sees the code, and only until the Pro has used it.
           arrivalCode: job.customerId === user.id ? await this.arrivalCode(job) : null,
@@ -180,7 +181,7 @@ export class ChatController {
         .where(eq(quotes.jobId, jobId)),
       inspectionFeeKobo: job.inspectionFeeKobo,
       jobStatus: job.status,
-      visit: { onTheWayAt: job.onTheWayAt, arrivedAt: job.arrivedAt },
+      visit: { onTheWayAt: job.onTheWayAt, arrivedAt: job.arrivedAt, visitDueAt: job.visitDueAt },
       work: await this.work(job),
       // A call ringing or in progress, so the chat can show it (details: /calls/current).
       call: await this.liveCall(jobId, user),
@@ -454,6 +455,7 @@ export class ChatController {
         arrivalCodeEncrypted: jobs.arrivalCodeEncrypted,
         onTheWayAt: jobs.onTheWayAt,
         arrivedAt: jobs.arrivedAt,
+        visitDueAt: jobs.visitDueAt,
         startedAt: jobs.startedAt,
         doneAt: jobs.doneAt,
         balanceReleaseAt: jobs.balanceReleaseAt,

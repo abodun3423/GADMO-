@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { type FormEvent, useEffect, useState } from 'react';
 import { api, ApiError, fieldMessage, post } from '@/lib/api';
 import type { Conversation } from '@/lib/types';
@@ -32,9 +33,117 @@ export function VisitPanel({
     );
   }
   return you === 'CUSTOMER' ? (
-    <CustomerCode convo={convo} fee={fee} />
+    <>
+      <LateVisit convo={convo} fee={fee} onChanged={onChanged} />
+      <CustomerCode convo={convo} fee={fee} />
+    </>
   ) : (
     <ProVisit convo={convo} fee={fee} onChanged={onChanged} />
+  );
+}
+
+const arriveBy = new Intl.DateTimeFormat('en-NG', {
+  weekday: 'short',
+  hour: 'numeric',
+  minute: '2-digit',
+  timeZone: 'Africa/Lagos',
+});
+
+/** True once `at` has passed; re-renders at that moment. */
+function usePassed(at: string | null): boolean {
+  const [now, setNow] = useState(() => Date.now());
+  const due = at ? new Date(at).getTime() : null;
+  useEffect(() => {
+    if (due === null || due <= now) return;
+    const t = setTimeout(() => setNow(Date.now()), Math.min(due - now + 500, 2 ** 31 - 1));
+    return () => clearTimeout(t);
+  }, [due, now]);
+  return due !== null && due <= now;
+}
+
+/**
+ * The Pro hasn't arrived in time (founder decision): the customer can cancel the visit and
+ * get the fee back in their GADMO wallet at once, and GADMO finds them another Pro; or,
+ * while the Pro is on the way, wait 30 minutes longer.
+ */
+function LateVisit({
+  convo,
+  fee,
+  onChanged,
+}: {
+  convo: Conversation;
+  fee: string;
+  onChanged: () => Promise<void>;
+}) {
+  const { job } = convo;
+  const router = useRouter();
+  const late = usePassed(job.visitDueAt);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!job.visitDueAt) return null;
+  if (!late) {
+    return (
+      <p className="meta visit-due">
+        Your Pro should arrive by {arriveBy.format(new Date(job.visitDueAt))}. If they don’t, you
+        can cancel and get your {fee} back.
+      </p>
+    );
+  }
+
+  async function run(path: 'wait-longer' | 'no-show') {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await post<{ replacementJob?: { id: string } }>(
+        `/v1/jobs/${job.id}/visit/${path}`,
+      );
+      if (res.replacementJob) router.push(`/jobs/${res.replacementJob.id}`);
+      else await onChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Not sent. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fee-panel late-visit" role="region" aria-labelledby="late-title">
+      <p id="late-title">
+        <strong>Your Pro hasn’t arrived yet.</strong>{' '}
+        {job.onTheWayAt
+          ? 'They said they are on the way. You can wait 30 more minutes, or cancel and get your fee back.'
+          : 'You can cancel and get your fee back. GADMO will find you another Pro.'}
+      </p>
+      {error && (
+        <p className="alert alert-error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="fee-actions">
+        {job.onTheWayAt && (
+          <button
+            className="button button-small"
+            type="button"
+            disabled={busy}
+            onClick={() => run('wait-longer')}
+          >
+            Wait 30 more minutes
+          </button>
+        )}
+        <button
+          className={job.onTheWayAt ? 'button button-quiet button-small' : 'button button-small'}
+          type="button"
+          disabled={busy}
+          onClick={() => run('no-show')}
+        >
+          My Pro didn’t come: refund {fee}
+        </button>
+      </div>
+      <p className="meta">
+        The refund goes to your GADMO wallet at once, and your request goes to another Pro.
+      </p>
+    </div>
   );
 }
 
@@ -119,6 +228,12 @@ function ProVisit({
       {!arriving ? (
         <>
           {job.onTheWayAt && <p className="meta">Your customer knows you’re on the way.</p>}
+          {job.visitDueAt && (
+            <p className="meta visit-due">
+              Arrive and enter the code by {arriveBy.format(new Date(job.visitDueAt))}. After that,
+              the customer can cancel and get the fee back, and it counts as a no-show.
+            </p>
+          )}
           <div className="fee-actions">
             {!job.onTheWayAt && (
               <button

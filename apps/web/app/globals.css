@@ -3448,3 +3448,18 @@ a.tile {
 .pro-reviews li p {
   margin: 0;
 }
+
+/* ---------- Late Pro ---------- */
+.visit-due {
+  margin: 0 0 12px;
+}
+.late-visit {
+  border-color: #f0d48a;
+  box-shadow:
+    inset 4px 0 0 var(--warn),
+    var(--shadow-card);
+}
+.no-show-warn {
+  color: var(--error);
+  font-weight: 600;
+}
