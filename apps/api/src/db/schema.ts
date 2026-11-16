@@ -352,6 +352,8 @@ export const jobs = pgTable(
     arrivedAt: timestamp('arrived_at', { withTimezone: true }),
     /** doneAt + 12 hours for in-app balances. */
     balanceReleaseAt: timestamp('balance_release_at', { withTimezone: true }),
+    /** When the job became COMPLETED; reviews can be left for 14 days after. */
+    completedAt: timestamp('completed_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -682,6 +684,7 @@ export const reviews = pgTable(
   },
   (t) => [
     unique('reviews_one_per_author').on(t.jobId, t.authorId),
+    index('reviews_subject_idx').on(t.subjectId, t.createdAt),
     check('reviews_rating_range', sql`${t.rating} BETWEEN 1 AND 5`),
   ],
 );

@@ -86,6 +86,24 @@ export interface Job {
   requestedPro?: { name: string | null; answerBy: string } | null;
 }
 
+/** The signed-in side's rating of a completed job (GET /v1/jobs/:id/review). */
+export interface JobReview {
+  mine: { rating: number; comment: string | null; createdAt: string } | null;
+  canReview: boolean;
+  /** The last moment the job can be rated; null until it is complete. */
+  until: string | null;
+  /** Who is being rated: the Pro (by the customer) or the customer (by the Pro). */
+  subject?: 'PRO' | 'CUSTOMER';
+}
+
+/** A customer's rating of a Pro, shown without the customer's name (GET /v1/pros/:id/reviews). */
+export interface ProReview {
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  service: string;
+}
+
 /** A Pro the customer can choose for a scheduled job (GET /v1/jobs/:id/pros). */
 export interface ChoosablePro {
   /** False when the Pro offers a related service rather than this exact one. */
@@ -414,6 +432,8 @@ export interface AdminUserDetail extends Omit<AdminUserRow, 'verificationStatus'
   skills: string[];
   latestCheck: { id: string; result: ReviewResult } | null;
   recentJobs: AdminJobRow[];
+  /** Ratings this user received: customers' ratings of a Pro, or Pros' ratings of a customer. */
+  reviewsReceived: { jobId: string; rating: number; comment: string | null; createdAt: string }[];
   statusHistory: {
     action: string;
     metadata: { from?: string; to?: string; reason?: string } | null;

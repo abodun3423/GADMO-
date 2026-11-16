@@ -6,6 +6,7 @@ import { api, ApiError, fieldMessage, post } from '@/lib/api';
 import { localPhone } from '@/lib/format';
 import type { AccountStatus, AdminUserDetail } from '@/lib/types';
 import { useSession } from '@/lib/useSession';
+import { stars } from '../RateJob';
 import { AdminNav } from './AdminNav';
 import { JobRow } from './JobsList';
 import { ACCOUNT_STATUS_LABEL, CHECK_LABEL, dateTime, ROLE_LABEL } from './labels';
@@ -227,6 +228,28 @@ function Detail({ id }: { id: string }) {
                 </ul>
               )}
             </section>
+          )}
+
+          <h2 className="section-title">
+            {user.role === 'PRO' ? 'Ratings from customers' : 'Ratings from Pros (staff only)'}
+          </h2>
+          {user.reviewsReceived.length === 0 ? (
+            <p className="empty">No ratings yet.</p>
+          ) : (
+            <ul className="pro-reviews admin-reviews">
+              {user.reviewsReceived.map((r) => (
+                <li key={r.jobId}>
+                  <p className="meta">
+                    <span className="review-stars" aria-label={`${r.rating} out of 5 stars`}>
+                      {stars(r.rating)}
+                    </span>{' '}
+                    · {dateTime.format(new Date(r.createdAt))} ·{' '}
+                    <Link href={`/admin/jobs/${r.jobId}`}>Job</Link>
+                  </p>
+                  {r.comment && <p>{r.comment}</p>}
+                </li>
+              ))}
+            </ul>
           )}
 
           <h2 className="section-title">Recent jobs</h2>

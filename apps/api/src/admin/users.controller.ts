@@ -31,6 +31,7 @@ import {
   proCategories,
   proProfiles,
   refreshTokens,
+  reviews,
   users,
   verifications,
 } from '../db/schema';
@@ -205,6 +206,19 @@ export class AdminUsersController {
       .orderBy(desc(verifications.createdAt))
       .limit(1);
     const recentJobs = await this.jobRows(or(eq(jobs.customerId, id), eq(jobs.proId, id)), 10, 0);
+    // Every rating this user received: customers' ratings of a Pro, and Pros' ratings of a
+    // customer (those are seen only by staff).
+    const reviewsReceived = await this.db
+      .select({
+        jobId: reviews.jobId,
+        rating: reviews.rating,
+        comment: reviews.comment,
+        createdAt: reviews.createdAt,
+      })
+      .from(reviews)
+      .where(eq(reviews.subjectId, id))
+      .orderBy(desc(reviews.createdAt))
+      .limit(20);
     const history = await this.db
       .select({
         action: auditLogs.action,
@@ -236,6 +250,7 @@ export class AdminUsersController {
         skills: skills.map((s) => s.name),
         latestCheck: latestCheck ?? null,
         recentJobs,
+        reviewsReceived,
         statusHistory: history,
       },
     };

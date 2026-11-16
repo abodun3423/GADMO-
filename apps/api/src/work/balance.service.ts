@@ -170,7 +170,10 @@ export class BalanceService implements OnModuleInit, OnModuleDestroy {
         toProKobo: held,
         commissionKobo: commission,
       });
-      await tx.update(jobs).set({ status: 'COMPLETED' }).where(eq(jobs.id, jobId));
+      await tx
+        .update(jobs)
+        .set({ status: 'COMPLETED', completedAt: sql`now()` })
+        .where(eq(jobs.id, jobId));
       await tx.insert(messages).values({
         jobId,
         senderId: why === 'CONFIRMED' ? job.customerId : job.proId,

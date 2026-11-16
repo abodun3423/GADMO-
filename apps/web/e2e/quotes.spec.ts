@@ -88,6 +88,24 @@ test('the customer pays the whole quote on accepting; after “Job done” they 
   await expect(proPage.getByText('See your wallet for what GADMO paid you.')).toBeVisible({
     timeout: 10_000,
   });
+
+  // Each side rates the other. The customer's rating shows without their name.
+  const rate = page.getByRole('group', { name: /How did your Pro do\?/ });
+  await page.getByRole('button', { name: 'Send rating' }).click();
+  await expect(page.locator('p[role="alert"]')).toHaveText('Choose from 1 to 5 stars.');
+  await rate.locator('label', { hasText: '4 stars' }).click();
+  await page.getByLabel(/Tell other customers about the work/).fill('Tidy and on time.');
+  await page.getByRole('button', { name: 'Send rating' }).click();
+  await expect(page.getByText(/You rated this Pro/)).toBeVisible();
+  await expect(page.getByLabel('4 out of 5 stars')).toBeVisible();
+
+  await proPage.reload();
+  await expect(proPage.getByRole('group', { name: /How was this customer\?/ })).toContainText(
+    'Only GADMO staff see this.',
+  );
+  await proPage.locator('.star', { hasText: '5 stars' }).click();
+  await proPage.getByRole('button', { name: 'Send rating' }).click();
+  await expect(proPage.getByText(/You rated this customer/)).toBeVisible();
   await proContext.close();
   noCspViolations();
 });

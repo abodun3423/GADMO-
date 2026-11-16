@@ -16,6 +16,7 @@ import {
   staffPasswordSchema,
   staffVerifySchema,
   reportProblemSchema,
+  reviewSchema,
   resolveDisputeSchema,
   scheduleSkillCheckSchema,
   skillCheckResultSchema,
@@ -295,5 +296,17 @@ describe('poor-work reports', () => {
     ).toBe(false);
     expect(resolveDisputeSchema.safeParse({ outcome: 'PAY_PRO', note }).success).toBe(true);
     expect(resolveDisputeSchema.safeParse({ outcome: 'PAY_PRO', note: 'ok' }).success).toBe(false);
+  });
+});
+
+describe('reviewSchema', () => {
+  it('takes 1 to 5 whole stars and an optional comment', () => {
+    expect(reviewSchema.parse({ rating: 5 })).toEqual({ rating: 5 });
+    expect(reviewSchema.parse({ rating: 1, comment: '  Came late  ' }).comment).toBe('Came late');
+    for (const rating of [0, 6, 4.5]) {
+      expect(reviewSchema.safeParse({ rating }).success).toBe(false);
+    }
+    expect(reviewSchema.safeParse({ rating: 4, comment: 'x'.repeat(501) }).success).toBe(false);
+    expect(reviewSchema.safeParse({ rating: 4, extra: 1 }).success).toBe(false);
   });
 });

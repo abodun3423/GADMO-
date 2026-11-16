@@ -19,6 +19,10 @@ Ask the founder before deciding anything the PRD leaves open.
   until release) keeps it held. There is no cash option: every payment goes through GADMO, so every job is
   covered by the GADMO Guarantee (founder decision, November 2026).
 - Commission: 10% (`COMMISSION_BPS`).
+- Ratings: after a job is complete, each side rates the other once (1–5 stars, optional comment, no
+  edits) within 14 days (`REVIEW_WINDOW_DAYS`). Customers' ratings of a Pro make up the Pro's stars and
+  are shown to customers without the customer's name; Pros' ratings of a customer are seen only by
+  staff (founder decision, November 2026).
 - Money is integer kobo everywhere. Use `@gadmo/shared` money helpers. The ledger is append-only.
 - The service catalogue lives in `apps/api/src/db/categories.ts`; `db:seed` upserts it by slug.
 - The client is a lightweight PWA (JS budget < 200 KB gzipped on first load).

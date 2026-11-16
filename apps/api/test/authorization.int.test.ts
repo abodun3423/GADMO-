@@ -2129,6 +2129,87 @@ describe('quotes: paid in full on acceptance (deposit to the Pro, the rest held)
     expect(await total(`escrow:job:${id}`)).toBe(0);
   });
 
+  it('reviews: each side rates the other once after the job; only the customer’s counts publicly', async () => {
+    const { customer, pro, id } = await paidJob();
+    const stranger = await login(ctx);
+    const rate = (who: Who, body: Record<string, unknown>) =>
+      who.agent.post(`/v1/jobs/${id}/review`).set(CLIENT_HEADER).send(body);
+
+    // Not before the job is complete.
+    await rate(customer, { rating: 5 }).expect(409);
+    let mine = await customer.agent.get(`/v1/jobs/${id}/review`).expect(200);
+    expect(mine.body.review).toMatchObject({ canReview: false, mine: null, subject: 'PRO' });
+    await step(pro, id, 'start-work').expect(200);
+    await step(pro, id, 'work-done').expect(200);
+    await step(customer, id, 'confirm').expect(200);
+
+    // Only the job's two sides; anyone else gets 404; CSRF header needed.
+    await stranger.agent.get(`/v1/jobs/${id}/review`).expect(404);
+    await rate(stranger, { rating: 1 }).expect(404);
+    await customer.agent.post(`/v1/jobs/${id}/review`).send({ rating: 5 }).expect(403);
+    await rate(customer, { rating: 6 }).expect(400);
+    await rate(customer, { rating: 4, proId: pro.userId }).expect(400);
+
+    mine = await customer.agent.get(`/v1/jobs/${id}/review`).expect(200);
+    expect(mine.body.review).toMatchObject({ canReview: true, mine: null });
+    await rate(customer, { rating: 4, comment: 'Neat work. Call me on 08031234567' }).expect(201);
+    await rate(customer, { rating: 1 }).expect(409); // once, no edits
+    mine = await customer.agent.get(`/v1/jobs/${id}/review`).expect(200);
+    expect(mine.body.review).toMatchObject({ canReview: false, mine: { rating: 4 } });
+    expect(mine.body.review.mine.comment).not.toContain('08031234567');
+
+    // The Pro rates the customer: staff see it; it never touches the Pro's stars.
+    const proSide = await pro.agent.get(`/v1/jobs/${id}/review`).expect(200);
+    expect(proSide.body.review).toMatchObject({ canReview: true, subject: 'CUSTOMER' });
+    await rate(pro, { rating: 2, comment: 'Kept changing the job' }).expect(201);
+    const [profile] = await ctx.db
+      .select()
+      .from(proProfiles)
+      .where(eq(proProfiles.userId, pro.userId));
+    expect(profile).toMatchObject({ ratingAvg: 4, ratingCount: 1 });
+
+    // Customers see the Pro's ratings without who gave them, and never the Pro's rating of a customer.
+    const shown = await stranger.agent.get(`/v1/pros/${pro.userId}/reviews`).expect(200);
+    expect(shown.body.reviews).toHaveLength(1);
+    expect(Object.keys(shown.body.reviews[0]).sort()).toEqual([
+      'comment',
+      'createdAt',
+      'rating',
+      'service',
+    ]);
+    const aboutCustomer = await stranger.agent
+      .get(`/v1/pros/${customer.userId}/reviews`)
+      .expect(200);
+    expect(aboutCustomer.body.reviews).toHaveLength(0);
+
+    const reviewer = await login(ctx);
+    await ctx.db.update(users).set({ role: 'ADMIN' }).where(eq(users.id, reviewer.userId));
+    const detail = await reviewer.agent.get(`/v1/admin/users/${customer.userId}`).expect(200);
+    expect(detail.body.user.reviewsReceived).toMatchObject([
+      { rating: 2, comment: 'Kept changing the job' },
+    ]);
+  });
+
+  it('reviews: closed 14 days after the job is complete', async () => {
+    const { customer, pro, id } = await paidJob();
+    await step(pro, id, 'start-work').expect(200);
+    await step(pro, id, 'work-done').expect(200);
+    await step(customer, id, 'confirm').expect(200);
+    const [done] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
+    expect(done!.completedAt).toBeTruthy();
+    await ctx.db
+      .update(jobs)
+      .set({ completedAt: new Date(Date.now() - 14 * 24 * 3_600_000 - 1000) })
+      .where(eq(jobs.id, id));
+    const mine = await customer.agent.get(`/v1/jobs/${id}/review`).expect(200);
+    expect(mine.body.review.canReview).toBe(false);
+    await customer.agent
+      .post(`/v1/jobs/${id}/review`)
+      .set(CLIENT_HEADER)
+      .send({ rating: 5 })
+      .expect(409);
+  });
+
   it('a deposit GADMO was still holding from before is released when work starts', async () => {
     const { pro, id } = await jobFor(electricianId, { status: 'QUOTE_ACCEPTED' });
     await ctx.db.insert(quotes).values({
