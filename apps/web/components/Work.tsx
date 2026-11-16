@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError, post } from '@/lib/api';
 import { money } from '@/lib/money';
 import type { Conversation } from '@/lib/types';
+import { RateJob } from './RateJob';
 
 const releaseFormat = new Intl.DateTimeFormat('en-NG', {
   weekday: 'short',
@@ -373,10 +374,15 @@ export function WorkPanel({
 
   if (job.status === 'COMPLETED') {
     return (
-      <p className="fee-panel fee-agreed">
-        <strong>Job complete.</strong>{' '}
-        {you === 'PRO' ? 'See your wallet for what GADMO paid you.' : 'Thank you for using GADMO.'}
-      </p>
+      <div className="fee-panel fee-agreed">
+        <p>
+          <strong>Job complete.</strong>{' '}
+          {you === 'PRO'
+            ? 'See your wallet for what GADMO paid you.'
+            : 'Thank you for using GADMO.'}
+        </p>
+        <RateJob jobId={job.id} />
+      </div>
     );
   }
 

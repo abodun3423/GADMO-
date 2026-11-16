@@ -367,3 +367,18 @@ export const resolveDisputeSchema = z
     path: ['proShareKobo'],
   });
 export type ResolveDispute = z.infer<typeof resolveDisputeSchema>;
+
+/** Days after a job is complete during which each side can rate the other (founder decision). */
+export const REVIEW_WINDOW_DAYS = 14;
+
+/**
+ * A rating after a completed job. Customers rate the Pro (public, without the customer's
+ * name); Pros rate the customer (seen only by GADMO staff). One per side per job, no edits.
+ */
+export const reviewSchema = z
+  .object({
+    rating: z.number().int().min(1, 'Choose from 1 to 5 stars').max(5, 'Choose from 1 to 5 stars'),
+    comment: z.string().trim().max(500, 'Keep it under 500 characters').optional(),
+  })
+  .strict();
+export type Review = z.infer<typeof reviewSchema>;

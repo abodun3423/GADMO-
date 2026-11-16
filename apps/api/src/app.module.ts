@@ -17,6 +17,7 @@ import { InfraModule } from './infra/infra.module';
 import { JobsController } from './jobs/jobs.controller';
 import { PaymentsModule } from './payments/payments.module';
 import { ProController } from './pro/pro.controller';
+import { ReviewsController } from './reviews/reviews.controller';
 import { VisitController } from './visit/visit.controller';
 import { VerificationController } from './verification/verification.controller';
 
@@ -35,6 +36,7 @@ import { VerificationController } from './verification/verification.controller';
     InspectionController,
     JobsController,
     ProController,
+    ReviewsController,
     VerificationController,
     VisitController,
   ],

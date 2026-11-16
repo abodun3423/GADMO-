@@ -246,7 +246,10 @@ export class AdminDisputesController {
           commissionKobo: commission,
         });
         refund = moved.refundKobo;
-        await tx.update(jobs).set({ status: 'COMPLETED' }).where(eq(jobs.id, jobId));
+        await tx
+          .update(jobs)
+          .set({ status: 'COMPLETED', completedAt: sql`now()` })
+          .where(eq(jobs.id, jobId));
       }
       await tx
         .update(disputes)
