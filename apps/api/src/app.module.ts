@@ -18,7 +18,8 @@ import { JobsController } from './jobs/jobs.controller';
 import { PaymentsModule } from './payments/payments.module';
 import { ProController } from './pro/pro.controller';
 import { ReviewsController } from './reviews/reviews.controller';
-import { VisitController } from './visit/visit.controller';
+import { NoShowService } from './visit/no-show.service';
+import { AdminNoShowController, VisitController } from './visit/visit.controller';
 import { VerificationController } from './verification/verification.controller';
 
 @Module({
@@ -26,6 +27,7 @@ import { VerificationController } from './verification/verification.controller';
   controllers: [
     AccountController,
     AdminJobMatchingController,
+    AdminNoShowController,
     AdminUsersController,
     AdminVerificationsController,
     AdminSkillChecksController,
@@ -40,5 +42,6 @@ import { VerificationController } from './verification/verification.controller';
     VerificationController,
     VisitController,
   ],
+  providers: [NoShowService],
 })
 export class AppModule {}

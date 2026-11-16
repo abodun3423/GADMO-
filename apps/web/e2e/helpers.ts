@@ -231,3 +231,42 @@ export async function doneJob(
   );
   return jobId;
 }
+
+/**
+ * Stands in for a paid inspection fee (₦1,500 held by GADMO) while the Pro is on the way,
+ * with the visit due at `dueInMinutes` from now (negative: already late).
+ */
+export async function paidVisit(
+  customerE164: string,
+  proE164: string,
+  description: string,
+  dueInMinutes: number,
+): Promise<string> {
+  const res = await db.query(
+    `INSERT INTO jobs (customer_id, pro_id, status, category_id, type, description, latitude, longitude,
+                       inspection_fee_kobo, inspection_agreed_at, on_the_way_at, visit_due_at)
+     SELECT cu.id, pr.id, 'INSPECTION_PAID', c.id, 'EMERGENCY', $3, 7.63, 5.221,
+            150000, now(), now(), now() + make_interval(mins => $4)
+     FROM users cu, users pr, categories c
+     WHERE cu.phone = $1 AND pr.phone = $2 AND c.slug = 'electrician'
+     RETURNING id`,
+    [customerE164, proE164, description, dueInMinutes],
+  );
+  const jobId = (res.rows[0] as { id: string }).id;
+  await db.query(
+    `WITH t AS (SELECT gen_random_uuid() AS id)
+     INSERT INTO ledger_entries (txn_id, account, debit_kobo, credit_kobo, job_id, description)
+     SELECT t.id, 'gateway:test:clearing', 150000, 0, $1::uuid, 'test' FROM t
+     UNION ALL
+     SELECT t.id, 'escrow:job:' || $1, 0, 150000, $1::uuid, 'Inspection fee held' FROM t`,
+    [jobId],
+  );
+  return jobId;
+}
+
+/** Makes a paid visit late now. */
+export async function makeVisitLate(jobId: string): Promise<void> {
+  await db.query(`UPDATE jobs SET visit_due_at = now() - interval '1 minute' WHERE id = $1`, [
+    jobId,
+  ]);
+}

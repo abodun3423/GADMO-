@@ -382,3 +382,16 @@ export const reviewSchema = z
   })
   .strict();
 export type Review = z.infer<typeof reviewSchema>;
+
+/**
+ * A Pro who doesn't come (founder decisions, November 2026). After the inspection fee is
+ * paid, an emergency Pro has 2 hours 30 minutes to arrive; a scheduled Pro, until 1 hour
+ * after the booked time. Then the customer can cancel with the fee refunded to their GADMO
+ * wallet (the request goes to another Pro), or, while the Pro is on the way, wait 30
+ * minutes longer. Staff are alerted when a Pro has 3 no-shows in 30 days.
+ */
+export const EMERGENCY_VISIT_MINUTES = 150;
+export const SCHEDULED_VISIT_GRACE_MINUTES = 60;
+export const VISIT_EXTEND_MINUTES = 30;
+export const NO_SHOW_ALERT_COUNT = 3;
+export const NO_SHOW_ALERT_DAYS = 30;

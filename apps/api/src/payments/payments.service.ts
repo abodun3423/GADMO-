@@ -7,7 +7,12 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { BALANCE_HOLD_HOURS, formatNaira } from '@gadmo/shared';
+import {
+  BALANCE_HOLD_HOURS,
+  EMERGENCY_VISIT_MINUTES,
+  formatNaira,
+  SCHEDULED_VISIT_GRACE_MINUTES,
+} from '@gadmo/shared';
 import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import { AlertsService } from '../alerts/alerts.service';
 import { ENV, type Env } from '../config/env';
@@ -400,6 +405,7 @@ export class PaymentsService {
           .set({
             status: 'INSPECTION_PAID',
             arrivalCodeEncrypted: this.crypto.encrypt(arrivalCode),
+            visitDueAt: visitDueSql(),
           })
           .where(eq(jobs.id, job!.id));
         await tx.insert(messages).values({
@@ -495,4 +501,16 @@ export class PaymentsService {
 
 function naira(kobo: number): string {
   return formatNaira(kobo).replace(/\.00$/, '');
+}
+
+/**
+ * When the customer may cancel with a refund if the Pro hasn't come (founder decision): 2h30
+ * after paying for an emergency; for a scheduled job, 1 hour after the booked time (or 2h30
+ * after paying, if that is later).
+ */
+export function visitDueSql() {
+  return sql`case when ${jobs.type} = 'SCHEDULED' and ${jobs.scheduledAt} is not null
+    then greatest(${jobs.scheduledAt} + make_interval(mins => ${SCHEDULED_VISIT_GRACE_MINUTES}),
+                  now() + make_interval(mins => ${EMERGENCY_VISIT_MINUTES}))
+    else now() + make_interval(mins => ${EMERGENCY_VISIT_MINUTES}) end`;
 }

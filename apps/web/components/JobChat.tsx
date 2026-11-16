@@ -104,6 +104,7 @@ export function JobChat({ jobId }: { jobId: string }) {
           c.job.status !== res.jobStatus ||
           c.job.onTheWayAt !== res.visit.onTheWayAt ||
           c.job.arrivedAt !== res.visit.arrivedAt ||
+          c.job.visitDueAt !== res.visit.visitDueAt ||
           c.job.startedAt !== res.work.startedAt ||
           c.job.doneAt !== res.work.doneAt ||
           c.job.balanceKobo !== res.work.balanceKobo ||

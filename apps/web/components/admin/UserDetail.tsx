@@ -147,6 +147,13 @@ function Detail({ id }: { id: string }) {
                     {user.pro.ratingCount ? user.pro.ratingAvg.toFixed(1) : 'none yet'}
                   </dd>
                 </div>
+                <div>
+                  <dt>No-shows</dt>
+                  <dd className={user.noShows.recent >= 3 ? 'no-show-warn' : undefined}>
+                    {user.noShows.recent} in the last 30 days · {user.noShows.total} in all
+                    {user.noShows.recent >= 3 && ' · review this Pro'}
+                  </dd>
+                </div>
                 {user.pro.bio && (
                   <div>
                     <dt>About</dt>

@@ -7,8 +7,10 @@ import {
   categories,
   disputes,
   jobs,
+  jobOffers,
   ledgerEntries,
   messages,
+  noShows,
   payments,
   privateFiles,
   proCategories,
@@ -1808,6 +1810,102 @@ describe('paying the inspection fee (test checkout)', () => {
         .expect(422);
     }
     await pro.agent.post(`/v1/jobs/${id}/arrived`).set(CLIENT_HEADER).send({ code }).expect(429);
+  });
+
+  /** A paid inspection fee whose visit is due now (the Pro had their time). */
+  async function paidVisit(type: 'EMERGENCY' | 'SCHEDULED' = 'SCHEDULED') {
+    const v = await agreedJob(200_000);
+    if (type === 'EMERGENCY') {
+      await ctx.db
+        .update(jobs)
+        .set({ type: 'EMERGENCY', scheduledAt: null })
+        .where(eq(jobs.id, v.id));
+    }
+    const ref = (await pay(v.customer.agent, v.id).expect(200)).body.reference as string;
+    await complete(v.customer.agent, ref, 'success').expect(200);
+    return v;
+  }
+  const visitDue = (id: string, at: Date) =>
+    ctx.db.update(jobs).set({ visitDueAt: at }).where(eq(jobs.id, id));
+  const visitStep = (who: Awaited<ReturnType<typeof login>>, id: string, step: string) =>
+    who.agent.post(`/v1/jobs/${id}/visit/${step}`).set(CLIENT_HEADER).send();
+
+  it('the Pro has 2h30 to arrive for an emergency, until 1 hour after the time for a booking', async () => {
+    const emergency = await paidVisit('EMERGENCY');
+    let [job] = await ctx.db.select().from(jobs).where(eq(jobs.id, emergency.id));
+    expect((job!.visitDueAt!.getTime() - Date.now()) / 60_000).toBeCloseTo(150, 0);
+    const booked = await paidVisit('SCHEDULED');
+    [job] = await ctx.db.select().from(jobs).where(eq(jobs.id, booked.id));
+    expect(job!.visitDueAt!.getTime() - job!.scheduledAt!.getTime()).toBe(60 * 60_000);
+    const convo = await booked.pro.agent.get(`/v1/jobs/${booked.id}/conversation`).expect(200);
+    expect(convo.body.conversation.job.visitDueAt).toBe(job!.visitDueAt!.toISOString());
+  });
+
+  it('no-show: once the time is up the customer waits longer or cancels with the fee refunded; another Pro gets the request', async () => {
+    const { customer, pro, id } = await paidVisit('EMERGENCY');
+    const stranger = await login(ctx);
+    await visitStep(customer, id, 'no-show').expect(409); // the Pro still has time
+    await visitStep(stranger, id, 'no-show').expect(404);
+    await visitStep(pro, id, 'no-show').expect(403);
+    await customer.agent.post(`/v1/jobs/${id}/visit/no-show`).send().expect(403); // CSRF
+
+    await visitDue(id, new Date(Date.now() - 1000));
+    await visitStep(customer, id, 'wait-longer').expect(409); // the Pro isn't on the way
+    await pro.agent.post(`/v1/jobs/${id}/on-the-way`).set(CLIENT_HEADER).expect(200);
+    await visitStep(pro, id, 'wait-longer').expect(403);
+    const waited = await visitStep(customer, id, 'wait-longer').expect(200);
+    const due = new Date(waited.body.visit.visitDueAt).getTime();
+    expect((due - Date.now()) / 60_000).toBeCloseTo(30, 0);
+    await visitStep(customer, id, 'no-show').expect(409); // waiting the 30 minutes
+
+    await visitDue(id, new Date(Date.now() - 1000));
+    const cancelled = await visitStep(customer, id, 'no-show').expect(200);
+    expect(cancelled.body).toMatchObject({ refundKobo: 200_000, job: { status: 'CANCELLED' } });
+    const newId = cancelled.body.replacementJob.id as string;
+    await visitStep(customer, id, 'no-show').expect(409); // once
+
+    const entries = await ctx.db.select().from(ledgerEntries).where(eq(ledgerEntries.jobId, id));
+    const sum = (account: string) =>
+      entries
+        .filter((e) => e.account === account)
+        .reduce((n, e) => n + e.creditKobo - e.debitKobo, 0);
+    expect(sum(`escrow:job:${id}`)).toBe(0);
+    expect(sum(`refund-due:customer:${customer.userId}`)).toBe(200_000);
+    expect(sum(`pro:${pro.userId}`)).toBe(0);
+    const code = '0000';
+    await pro.agent.post(`/v1/jobs/${id}/arrived`).set(CLIENT_HEADER).send({ code }).expect(409);
+
+    // The same request again, open to other Pros only.
+    const fresh = await customer.agent.get(`/v1/jobs/${newId}`).expect(200);
+    expect(fresh.body.job).toMatchObject({ status: 'REQUESTED', proId: null, type: 'EMERGENCY' });
+    await pro.agent.get(`/v1/jobs/${newId}`).expect(404);
+    const [skip] = await ctx.db.select().from(jobOffers).where(eq(jobOffers.jobId, newId));
+    expect(skip).toMatchObject({ proId: pro.userId, status: 'DECLINED' });
+    const chat = await pro.agent.get(`/v1/jobs/${id}/messages`).expect(200);
+    expect(chat.body.messages.at(-1).body).toBe(
+      'The visit was cancelled because the Pro didn’t arrive in time. ₦2,000 was refunded to the customer’s GADMO wallet. GADMO is finding the customer another Pro.',
+    );
+  });
+
+  it('no-show: staff can record it for a customer; 3 in 30 days shows on the Pro’s staff page', async () => {
+    const reviewer = await login(ctx);
+    await ctx.db.update(users).set({ role: 'ADMIN' }).where(eq(users.id, reviewer.userId));
+    const first = await paidVisit();
+    await first.customer.agent
+      .post(`/v1/admin/jobs/${first.id}/no-show`)
+      .set(CLIENT_HEADER)
+      .expect(403);
+    const proId = first.pro.userId;
+    for (let i = 0; i < 3; i++) {
+      const v = i === 0 ? first : await paidVisit();
+      if (i > 0) await ctx.db.update(jobs).set({ proId }).where(eq(jobs.id, v.id));
+      // Staff don't wait for the visit time.
+      await reviewer.agent.post(`/v1/admin/jobs/${v.id}/no-show`).set(CLIENT_HEADER).expect(200);
+    }
+    const [row] = await ctx.db.select().from(noShows).where(eq(noShows.jobId, first.id));
+    expect(row).toMatchObject({ proId, recordedById: reviewer.userId, refundKobo: 200_000 });
+    const detail = await reviewer.agent.get(`/v1/admin/users/${proId}`).expect(200);
+    expect(detail.body.user.noShows).toEqual({ total: 3, recent: 3 });
   });
 
   it('a failed payment leaves the fee unpaid and can be tried again', async () => {
