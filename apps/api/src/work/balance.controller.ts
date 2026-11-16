@@ -21,7 +21,7 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { disputes, jobs, messages } from '../db/schema';
 import { DB, type Db, REDIS } from '../infra/infra.module';
 import { PaymentsService } from '../payments/payments.service';
-import { BalanceService } from './balance.service';
+import { accountBalance, BalanceService } from './balance.service';
 
 const idPipe = new ZodValidationPipe(z.uuid());
 
@@ -94,11 +94,19 @@ export class BalanceController {
         .from(jobs)
         .where(eq(jobs.id, jobId))
         .for('update');
-      if (job!.status !== 'BALANCE_HELD' || !job!.releaseAt || job!.releaseAt <= new Date()) {
+      // GADMO holds the customer's money from quote acceptance (the whole quote is paid up
+      // front), so a problem can be reported from then on: before the work is done (say the
+      // Pro stops coming) or within the 12 hours after "Job done".
+      const beforeDone =
+        (job!.status === 'QUOTE_ACCEPTED' || job!.status === 'IN_PROGRESS') &&
+        (await accountBalance(tx, `escrow:job:${jobId}`)) > 0;
+      const duringHold =
+        job!.status === 'BALANCE_HELD' && !!job!.releaseAt && job!.releaseAt > new Date();
+      if (!beforeDone && !duringHold) {
         throw new ConflictException(
           job!.status === 'DISPUTED'
             ? 'You’ve already reported a problem. GADMO is looking into it.'
-            : 'A problem can be reported while GADMO is holding the payment, within 12 hours of paying.',
+            : 'A problem can be reported while GADMO is holding your payment: before the job is done, or within 12 hours of “Job done”.',
         );
       }
       const [dispute] = await tx

@@ -14,7 +14,7 @@ import { ENV, type Env } from '../config/env';
 import { categories, jobs, ledgerEntries, messages, payments, quotes } from '../db/schema';
 import type { FieldCrypto } from '../common/field-crypto';
 import { DB, type Db, FIELD_CRYPTO } from '../infra/infra.module';
-import { BalanceService, jobBalanceKobo } from '../work/balance.service';
+import { BalanceService, jobBalanceKobo, quotePayNowKobo } from '../work/balance.service';
 import { PAYMENT_GATEWAY, type PaymentGateway } from './gateway';
 
 /** A checkout page is reused if the customer taps Pay again within this time. */
@@ -88,8 +88,12 @@ export class PaymentsService {
     });
   }
 
-  /** The customer accepts a quote by paying its materials deposit. */
-  async startDeposit(customerId: string, quoteId: string) {
+  /**
+   * The customer accepts a quote by paying it in full, up front (founder decision): the
+   * materials deposit goes straight to the Pro; the rest is held by GADMO until the job is
+   * done, then released when the customer is satisfied or 12 hours after "Job done".
+   */
+  async startQuotePayment(customerId: string, quoteId: string) {
     const [found] = await this.db
       .select({ jobId: quotes.jobId })
       .from(quotes)
@@ -98,21 +102,24 @@ export class PaymentsService {
     if (!found) throw new NotFoundException();
     return this.checkout(customerId, found.jobId, 'DEPOSIT', async (tx) => {
       const [job] = await tx
-        .select({ status: jobs.status })
+        .select({
+          status: jobs.status,
+          inspectionFeeKobo: jobs.inspectionFeeKobo,
+          arrivedAt: jobs.arrivedAt,
+        })
         .from(jobs)
         .where(eq(jobs.id, found.jobId))
         .for('update');
       const [quote] = await tx
-        .select({ status: quotes.status, depositKobo: quotes.depositKobo })
+        .select({ status: quotes.status, amountKobo: quotes.amountKobo })
         .from(quotes)
         .where(eq(quotes.id, quoteId));
       if (quote!.status !== 'PENDING' || job!.status !== 'QUOTED') {
         throw new ConflictException('This quote can no longer be accepted.');
       }
-      if (quote!.depositKobo <= 0) {
-        throw new ConflictException('This quote has no deposit to pay.');
-      }
-      return { amountKobo: quote!.depositKobo, quoteId };
+      const amountKobo = quotePayNowKobo(quote!.amountKobo, job!);
+      if (amountKobo <= 0) throw new ConflictException('There is nothing to pay on this quote.');
+      return { amountKobo, quoteId };
     });
   }
 
@@ -240,7 +247,7 @@ export class PaymentsService {
       proId: string | null;
       amount: number;
       type: 'INSPECTION_FEE' | 'DEPOSIT' | 'BALANCE';
-      releaseAt?: Date;
+      held?: number;
     } | null = null;
     const result = await this.db.transaction(async (tx) => {
       const [payment] = await tx
@@ -322,37 +329,69 @@ export class PaymentsService {
             : payment.type === 'DEPOSIT' &&
               job!.status === 'QUOTED' &&
               quote?.status === 'PENDING' &&
-              quote.depositKobo === payment.amountKobo;
+              quotePayNowKobo(quote.amountKobo, job!) === payment.amountKobo;
       const txnId = randomUUID();
       const amount = payment.amountKobo;
-      await tx.insert(ledgerEntries).values([
-        {
-          txnId,
-          account: `gateway:${this.gateway.name}:clearing`,
-          debitKobo: amount,
-          jobId: job!.id,
-          description: `Payment ${reference} received`,
-        },
-        {
-          txnId,
-          // A materials deposit goes straight to the Pro, so they can buy what the job
-          // needs (decided by the founder); the inspection fee is held until they arrive.
-          account: !counts
-            ? `refund-due:customer:${job!.customerId}`
-            : payment.type === 'DEPOSIT'
-              ? `pro:${job!.proId}`
-              : `escrow:job:${job!.id}`,
-          creditKobo: amount,
-          jobId: job!.id,
-          description: !counts
-            ? 'Refund: a payment that was no longer needed'
-            : payment.type === 'DEPOSIT'
-              ? 'Materials deposit, paid to the Pro'
-              : payment.type === 'BALANCE'
-                ? `Balance held for ${BALANCE_HOLD_HOURS} hours`
-                : 'Inspection fee held until the Pro arrives',
-        },
-      ]);
+      const received = {
+        txnId,
+        account: `gateway:${this.gateway.name}:clearing`,
+        debitKobo: amount,
+        jobId: job!.id,
+        description: `Payment ${reference} received`,
+      };
+      // A quote is paid in full up front (founder decision): the materials deposit goes
+      // straight to the Pro so they can buy what the job needs; the rest is held by GADMO
+      // until the job is done. The inspection fee is held until the Pro arrives.
+      const deposit =
+        counts && payment.type === 'DEPOSIT' ? Math.min(quote!.depositKobo, amount) : 0;
+      const credits: (typeof ledgerEntries.$inferInsert)[] = !counts
+        ? [
+            {
+              txnId,
+              account: `refund-due:customer:${job!.customerId}`,
+              creditKobo: amount,
+              jobId: job!.id,
+              description: 'Refund: a payment that was no longer needed',
+            },
+          ]
+        : payment.type === 'DEPOSIT'
+          ? [
+              ...(deposit > 0
+                ? [
+                    {
+                      txnId,
+                      account: `pro:${job!.proId}`,
+                      creditKobo: deposit,
+                      jobId: job!.id,
+                      description: 'Materials deposit, paid to the Pro',
+                    },
+                  ]
+                : []),
+              ...(amount - deposit > 0
+                ? [
+                    {
+                      txnId,
+                      account: `escrow:job:${job!.id}`,
+                      creditKobo: amount - deposit,
+                      jobId: job!.id,
+                      description: 'Balance held by GADMO until the job is done',
+                    },
+                  ]
+                : []),
+            ]
+          : [
+              {
+                txnId,
+                account: `escrow:job:${job!.id}`,
+                creditKobo: amount,
+                jobId: job!.id,
+                description:
+                  payment.type === 'BALANCE'
+                    ? `Balance held for ${BALANCE_HOLD_HOURS} hours`
+                    : 'Inspection fee held until the Pro arrives',
+              },
+            ];
+      await tx.insert(ledgerEntries).values([received, ...credits]);
       if (counts && payment.type === 'INSPECTION_FEE') {
         // The customer gives this code to the Pro on arrival; it releases the fee.
         const arrivalCode = String(randomInt(0, 10_000)).padStart(4, '0');
@@ -391,9 +430,18 @@ export class PaymentsService {
           jobId: job!.id,
           senderId: job!.customerId,
           kind: 'EVENT',
-          body: `Quote of ${naira(quote.amountKobo)} accepted. Materials deposit of ${naira(amount)} paid to the Pro for materials.`,
+          body:
+            deposit > 0
+              ? `Quote of ${naira(quote.amountKobo)} accepted and paid: ${naira(deposit)} materials deposit to the Pro now; GADMO holds ${naira(amount - deposit)} until the job is done.`
+              : `Quote of ${naira(quote.amountKobo)} accepted and paid: GADMO holds ${naira(amount)} until the job is done.`,
         });
-        paidJob = { id: job!.id, proId: job!.proId, amount, type: 'DEPOSIT' };
+        paidJob = {
+          id: job!.id,
+          proId: job!.proId,
+          amount: deposit,
+          held: amount - deposit,
+          type: 'DEPOSIT',
+        };
       } else {
         this.log.warn(`Payment ${reference} no longer applies to job ${job!.id}; refund due`);
         await tx.insert(messages).values({
@@ -409,6 +457,7 @@ export class PaymentsService {
       id: string;
       proId: string | null;
       amount: number;
+      held?: number;
       type: 'INSPECTION_FEE' | 'DEPOSIT' | 'BALANCE';
     } | null;
     if (paid?.proId) {
@@ -424,7 +473,10 @@ export class PaymentsService {
           : paid.type === 'DEPOSIT'
             ? {
                 title: 'Quote accepted',
-                body: `The customer accepted your quote and paid the ${naira(paid.amount)} materials deposit. It’s in your GADMO wallet now.`,
+                body:
+                  paid.amount > 0
+                    ? `The customer accepted your quote and paid it in full. The ${naira(paid.amount)} deposit is in your wallet now; GADMO holds ${naira(paid.held ?? 0)} and pays it after the job is done.`
+                    : `The customer accepted your quote and paid it in full. GADMO holds ${naira(paid.held ?? 0)} and pays it after the job is done.`,
                 url: `/jobs/${paid.id}`,
                 tag: `job-${paid.id}`,
               }

@@ -55,6 +55,18 @@ export async function jobBalanceKobo(
   });
 }
 
+/**
+ * What the customer pays when accepting a quote (founder decision: the whole quote, up
+ * front): the quote less the inspection fee, which counts toward the price once the Pro has
+ * arrived. The deposit part goes to the Pro; GADMO holds the rest until the job is done.
+ */
+export function quotePayNowKobo(
+  quoteKobo: number,
+  job: { inspectionFeeKobo: number | null; arrivedAt: Date | null },
+): number {
+  return Math.max(0, quoteKobo - (job.arrivedAt ? (job.inspectionFeeKobo ?? 0) : 0));
+}
+
 /** The money in an account, from the ledger. */
 export async function accountBalance(db: Db | Tx, account: string): Promise<number> {
   const [row] = await db

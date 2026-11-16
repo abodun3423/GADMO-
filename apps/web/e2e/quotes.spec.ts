@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { acceptedJob, signIn, watchCsp } from './helpers';
 
-test('the Pro quotes with a deposit; the customer accepts, pays the deposit, then the balance', async ({
+test('the customer pays the whole quote on accepting; after “Job done” they release it when satisfied', async ({
   page,
   browser,
 }) => {
@@ -29,14 +29,16 @@ test('the Pro quotes with a deposit; the customer accepts, pays the deposit, the
   );
   await proPage.getByLabel(/Materials deposit/).fill('12000');
   await expect(
-    proPage.getByText('The customer pays ₦12,000 now, then ₦18,000 after the job.'),
+    proPage.getByText(
+      'The customer pays ₦30,000 when accepting. ₦12,000 comes to you at once for materials; GADMO holds ₦18,000 and pays you after the job.',
+    ),
   ).toBeVisible();
   await proPage.getByRole('button', { name: 'Send quote' }).click();
   await expect(proPage.getByText('Your quote:')).toBeVisible();
 
   const card = page.locator('.quote-card').last();
   await expect(card).toContainText('₦30,000', { timeout: 10_000 });
-  await expect(card).toContainText('Balance, paid after the job');
+  await expect(card).toContainText('Held by GADMO until the job is done');
   await card.getByRole('button', { name: 'Decline' }).click();
   await expect(card).toContainText('Declined');
 
@@ -47,20 +49,18 @@ test('the Pro quotes with a deposit; the customer accepts, pays the deposit, the
   await proPage.getByRole('button', { name: 'Send quote' }).click();
 
   const second = page.locator('.quote-card', { hasText: '₦28,000' });
-  await second
-    .getByRole('button', { name: 'Accept and pay ₦10,000 deposit' })
-    .click({ timeout: 10_000 });
-  await page.getByRole('button', { name: 'Pay ₦10,000 (test)' }).click();
-  await expect(page.getByRole('status')).toContainText('deposit paid and your quote is accepted');
+  await second.getByRole('button', { name: 'Accept and pay ₦28,000' }).click({ timeout: 10_000 });
+  await page.getByRole('button', { name: 'Pay ₦28,000 (test)' }).click();
+  await expect(page.getByRole('status')).toContainText('₦28,000 paid and your quote is accepted');
   await page.getByRole('link', { name: 'Back to the job chat' }).click();
   await expect(page.getByText('Quote accepted.', { exact: true })).toBeVisible();
   await expect(proPage.getByText('Quote accepted.', { exact: true })).toBeVisible({
     timeout: 10_000,
   });
 
-  // The deposit went straight to the Pro. They start the work, then mark it done.
-  await expect(proPage.locator('.chat-event', { hasText: 'Materials deposit' })).toContainText(
-    'Materials deposit of ₦10,000 paid to the Pro for materials.',
+  // The deposit went straight to the Pro; GADMO holds the rest. They start, then finish.
+  await expect(proPage.locator('.chat-event', { hasText: 'accepted and paid' })).toContainText(
+    'Quote of ₦28,000 accepted and paid: ₦10,000 materials deposit to the Pro now; GADMO holds ₦18,000 until the job is done.',
   );
   await proPage.getByRole('button', { name: 'Start work' }).click();
   await expect(proPage.locator('.chat-event').last()).toHaveText(
@@ -70,24 +70,18 @@ test('the Pro quotes with a deposit; the customer accepts, pays the deposit, the
     timeout: 10_000,
   });
   await proPage.getByRole('button', { name: 'Job done' }).click();
-  await expect(proPage.getByText(/pay the ₦18,000 balance/)).toBeVisible();
-  await proPage.getByRole('button', { name: 'Yes, the job is done' }).click();
   await expect(
-    proPage.getByText('The customer pays the ₦18,000 balance in the app next.', { exact: false }),
+    proPage.getByText(/GADMO pays you the ₦18,000 balance when they release it/),
   ).toBeVisible();
-  await expect(page.locator('.fee-panel')).toContainText('Balance to pay: ₦18,000.', {
-    timeout: 10_000,
-  });
+  await proPage.getByRole('button', { name: 'Yes, the job is done' }).click();
+  await expect(proPage.getByText('Payment held by GADMO.')).toBeVisible();
 
-  // The customer pays the balance in the app; GADMO holds it, then the customer confirms.
-  await page.getByRole('button', { name: 'Pay ₦18,000' }).click();
-  await page.getByRole('button', { name: 'Pay ₦18,000 (test)' }).click();
-  await expect(page.getByRole('status')).toContainText('balance paid. GADMO holds it for 12 hours');
-  await page.getByRole('link', { name: 'Back to the job chat' }).click();
-  await expect(page.getByText('GADMO is holding the payment.')).toBeVisible();
-  await expect(proPage.getByText('Payment held by GADMO.')).toBeVisible({ timeout: 10_000 });
-  await page.getByRole('button', { name: 'All good: pay my Pro' }).click();
-  await page.getByRole('button', { name: 'Yes, pay my Pro now' }).click();
+  // The customer is asked straight away whether they are satisfied, and releases the payment.
+  const ask = page.getByRole('dialog', { name: 'Are you satisfied with the work?' });
+  await expect(ask).toBeVisible({ timeout: 10_000 });
+  await expect(ask).toContainText('GADMO is holding ₦18,000 for them');
+  await expect(ask).toContainText('releases it automatically at');
+  await ask.getByRole('button', { name: 'Yes, release ₦18,000 to my Pro' }).click();
   await expect(page.locator('.fee-panel')).toContainText(
     'Job complete. Thank you for using GADMO.',
   );

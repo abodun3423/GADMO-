@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiError, post } from '@/lib/api';
 import { money } from '@/lib/money';
 import type { Conversation } from '@/lib/types';
@@ -13,9 +13,10 @@ const releaseFormat = new Intl.DateTimeFormat('en-NG', {
 });
 
 /**
- * The work after a quote is accepted: the Pro starts it (which pays them any materials
- * deposit) and marks it done. The customer then pays the balance in the app; GADMO holds it
- * for 12 hours (or until the customer confirms the work is good), then pays the Pro.
+ * The work after a quote is accepted and paid in full (the deposit went to the Pro; GADMO
+ * holds the rest). The Pro starts the work and marks it done. The customer is then asked
+ * whether they are satisfied: they can release the payment at once, or GADMO releases it
+ * automatically 12 hours after "Job done" unless they report a problem (founder decision).
  */
 export function WorkPanel({
   convo,
@@ -30,6 +31,23 @@ export function WorkPanel({
   const [reporting, setReporting] = useState(false);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const satisfied = useRef<HTMLDialogElement>(null);
+  const askSatisfied = job.status === 'BALANCE_HELD' && you !== 'PRO';
+
+  // Once the Pro marks the job done, ask the customer straight away whether they are
+  // satisfied (once per job in this browser session; the panel keeps the same choices).
+  useEffect(() => {
+    if (!askSatisfied) return;
+    const key = `gadmo-asked-satisfied-${job.id}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, '1');
+    } catch {
+      // Storage unavailable: ask anyway.
+    }
+    const dialog = satisfied.current;
+    if (dialog && !dialog.open && typeof dialog.showModal === 'function') dialog.showModal();
+  }, [askSatisfied, job.id]);
 
   async function payBalance() {
     setBusy(true);
@@ -89,15 +107,62 @@ export function WorkPanel({
   );
   const balance = job.balanceKobo ?? 0;
 
+  const reportForm = (
+    <div className="field">
+      <label htmlFor="problem">
+        What is wrong?
+        <span className="hint">
+          GADMO keeps your payment on hold and reviews the chat, the quote and any photos. Add
+          photos in the chat if they help.
+        </span>
+      </label>
+      <textarea
+        id="problem"
+        maxLength={1000}
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      <div className="fee-actions">
+        <button className="button" type="button" disabled={busy} onClick={sendReport}>
+          {busy ? 'Sending…' : 'Send report'}
+        </button>
+        <button
+          className="button button-quiet"
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            setReporting(false);
+            setError(null);
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+  const reportButton = (
+    <button
+      className="button button-quiet button-small"
+      type="button"
+      onClick={() => {
+        setReporting(true);
+        setError(null);
+      }}
+    >
+      Report a problem
+    </button>
+  );
+
   if (job.status === 'QUOTE_ACCEPTED') {
     return (
       <div className="fee-panel fee-agreed">
         <p>
           <strong>Quote accepted.</strong>{' '}
           {you === 'PRO'
-            ? 'Tap “Start work” when you begin, so the customer can follow along.'
-            : 'Your Pro starts the work next. You pay the balance in GADMO when it’s done.'}
+            ? 'Tap “Start work” when you begin, so the customer can follow along. GADMO holds the rest of the payment and pays you after the job.'
+            : 'You’ve paid, and GADMO holds the balance until the job is done. Your Pro starts the work next.'}
         </p>
+        {you !== 'PRO' && (reporting ? reportForm : reportButton)}
         {you === 'PRO' && (
           <button
             className="button"
@@ -116,10 +181,14 @@ export function WorkPanel({
   if (job.status === 'IN_PROGRESS') {
     if (you !== 'PRO') {
       return (
-        <p className="fee-panel fee-agreed">
-          <strong>Work in progress.</strong> Your Pro marks the job done when it’s finished. Check
-          the work before you pay the balance.
-        </p>
+        <div className="fee-panel fee-agreed">
+          <p>
+            <strong>Work in progress.</strong> Your Pro marks the job done when it’s finished. GADMO
+            holds your payment until you’re satisfied with the work.
+          </p>
+          {reporting ? reportForm : reportButton}
+          {failed}
+        </div>
       );
     }
     return (
@@ -127,7 +196,7 @@ export function WorkPanel({
         <p>
           <strong>Work in progress.</strong>{' '}
           {confirming
-            ? `Is all the work finished? The customer is then asked to pay the ${money(balance)} balance.`
+            ? `Is all the work finished? The customer is then asked if they’re satisfied. GADMO pays you the ${money(balance)} balance when they release it, or automatically after 12 hours unless they report a problem.`
             : 'Tap “Job done” when all the work is finished.'}
         </p>
         {confirming ? (
@@ -193,18 +262,66 @@ export function WorkPanel({
     if (you === 'PRO') {
       return (
         <p className="fee-panel fee-agreed">
-          <strong>Payment held by GADMO.</strong> It goes into your wallet
-          {until ? ` by ${until}` : ' within 12 hours'}, less GADMO’s 10% commission, unless the
-          customer reports a problem. It can arrive sooner if they confirm the work is good.
+          <strong>Payment held by GADMO.</strong> The customer is asked if they’re satisfied. It
+          goes into your wallet as soon as they release it, or automatically
+          {until ? ` at ${until}` : ' within 12 hours'} unless they report a problem, less GADMO’s
+          10% commission.
         </p>
       );
     }
     return (
       <div className="fee-panel fee-agreed">
+        <dialog
+          ref={satisfied}
+          className="satisfied-dialog"
+          aria-labelledby="satisfied-title"
+          onClose={() => setError(null)}
+        >
+          <h2 id="satisfied-title">Are you satisfied with the work?</h2>
+          <p>
+            Your Pro marked the job done. GADMO is holding {money(balance)} for them until you’re
+            satisfied.
+          </p>
+          <p className="meta">
+            If you do nothing and don’t report a problem, GADMO releases it automatically
+            {until ? ` at ${until}` : ' in 12 hours'}.
+          </p>
+          <div className="satisfied-actions">
+            <button
+              className="button"
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                satisfied.current?.close();
+                void step('confirm');
+              }}
+            >
+              Yes, release {money(balance)} to my Pro
+            </button>
+            <button
+              className="button button-quiet"
+              type="button"
+              onClick={() => {
+                satisfied.current?.close();
+                setReporting(true);
+              }}
+            >
+              Report a problem
+            </button>
+            <button
+              className="button button-quiet"
+              type="button"
+              onClick={() => satisfied.current?.close()}
+            >
+              Not now
+            </button>
+          </div>
+        </dialog>
         <p>
-          <strong>GADMO is holding the payment.</strong> Your Pro is paid
-          {until ? ` at ${until}` : ' in 12 hours'} unless you report a problem with the work.
-          {confirming ? ' Pay your Pro now? This can’t be undone.' : ' Happy with the job?'}
+          <strong>Are you satisfied with the work?</strong> GADMO is holding {money(balance)} for
+          your Pro. It is released automatically{until ? ` at ${until}` : ' in 12 hours'} unless you
+          report a problem.
+          {confirming ? ' Release it now? This can’t be undone.' : ''}
         </p>
         {confirming ? (
           <div className="fee-actions">
@@ -214,7 +331,7 @@ export function WorkPanel({
               disabled={busy}
               onClick={() => step('confirm')}
             >
-              {busy ? 'Paying…' : 'Yes, pay my Pro now'}
+              {busy ? 'Releasing…' : 'Yes, release it now'}
             </button>
             <button
               className="button button-quiet"
@@ -229,52 +346,13 @@ export function WorkPanel({
             </button>
           </div>
         ) : reporting ? (
-          <div className="field">
-            <label htmlFor="problem">
-              What is wrong with the work?
-              <span className="hint">
-                GADMO keeps the payment on hold and reviews the chat, the quote and any photos. Add
-                photos in the chat if they help.
-              </span>
-            </label>
-            <textarea
-              id="problem"
-              maxLength={1000}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-            />
-            <div className="fee-actions">
-              <button className="button" type="button" disabled={busy} onClick={sendReport}>
-                {busy ? 'Sending…' : 'Send report'}
-              </button>
-              <button
-                className="button button-quiet"
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  setReporting(false);
-                  setError(null);
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+          reportForm
         ) : (
           <div className="fee-actions">
             <button className="button" type="button" onClick={() => setConfirming(true)}>
-              All good: pay my Pro
+              I’m satisfied: release payment
             </button>
-            <button
-              className="button button-quiet"
-              type="button"
-              onClick={() => {
-                setReporting(true);
-                setError(null);
-              }}
-            >
-              Report a problem
-            </button>
+            {reportButton}
           </div>
         )}
         {failed}

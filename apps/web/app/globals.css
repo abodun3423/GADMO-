@@ -3035,6 +3035,26 @@ h1.page-title {
 }
 
 /* ---------- Job cards with a progress bar ---------- */
+.satisfied-dialog {
+  max-width: min(28rem, calc(100vw - 2rem));
+  border: none;
+  border-radius: 20px;
+  padding: 1.5rem;
+  box-shadow: 0 24px 60px rgb(15 22 56 / 30%);
+}
+.satisfied-dialog::backdrop {
+  background: rgb(15 22 56 / 55%);
+}
+.satisfied-dialog h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.3rem;
+}
+.satisfied-actions {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+}
+
 .dispute-chat {
   list-style: none;
   margin: 0 0 1.5rem;

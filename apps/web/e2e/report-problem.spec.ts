@@ -18,15 +18,14 @@ test('the customer reports poor work; staff split the held payment; both see the
   await page.getByRole('button', { name: 'Pay ₦20,000' }).click();
   await page.getByRole('button', { name: 'Pay ₦20,000 (test)' }).click();
   await page.getByRole('link', { name: 'Back to the job chat' }).click();
-  await expect(page.getByText('GADMO is holding the payment.')).toBeVisible();
-
-  // The pipe still leaks: the customer reports it.
-  await page.getByRole('button', { name: 'Report a problem' }).click();
+  // Asked whether they are satisfied: the pipe still leaks, so they report it.
+  const ask = page.getByRole('dialog', { name: 'Are you satisfied with the work?' });
+  await expect(ask).toBeVisible();
+  await ask.getByRole('button', { name: 'Report a problem' }).click();
+  await expect(ask).toBeHidden();
   await page.getByRole('button', { name: 'Send report' }).click();
   await expect(page.locator('p[role="alert"]')).toContainText('Tell us what is wrong');
-  await page
-    .getByLabel(/What is wrong with the work/)
-    .fill('The pipe still drips after the repair.');
+  await page.getByLabel(/What is wrong\?/).fill('The pipe still drips after the repair.');
   await page.getByRole('button', { name: 'Send report' }).click();
   await expect(page.locator('.fee-panel')).toContainText('Problem reported.');
   await proPage.goto(`/jobs/${jobId}`);

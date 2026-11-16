@@ -28,6 +28,7 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { categories, jobs, messages, quotes } from '../db/schema';
 import { DB, type Db, REDIS } from '../infra/infra.module';
 import { PaymentsService } from '../payments/payments.service';
+import { quotePayNowKobo } from '../work/balance.service';
 
 const idPipe = new ZodValidationPipe(z.uuid());
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -122,15 +123,16 @@ export class QuotesController {
   }
 
   /**
-   * The customer accepts. With a deposit, this starts the payment and the quote is
-   * accepted once GADMO confirms it; without one, it is accepted now.
+   * The customer accepts by paying the whole quote up front (founder decision): this starts
+   * the payment, and the quote is accepted once GADMO confirms it. Only a quote fully covered
+   * by the inspection fee already paid is accepted at once.
    */
   @Post('quotes/:id/accept')
   @HttpCode(200)
   async accept(@CurrentUser() user: AuthUser, @Param('id', idPipe) id: string) {
     const quote = await this.quoteForCustomer(id, user);
-    if (quote.depositKobo > 0) {
-      const checkout = await this.payments.startDeposit(user.id, id);
+    if (quotePayNowKobo(quote.amountKobo, quote) > 0) {
+      const checkout = await this.payments.startQuotePayment(user.id, id);
       return { payment: checkout };
     }
     const done = await this.db.transaction(async (tx) => {
@@ -231,8 +233,11 @@ export class QuotesController {
     const [row] = await this.db
       .select({
         jobId: quotes.jobId,
+        amountKobo: quotes.amountKobo,
         depositKobo: quotes.depositKobo,
         customerId: jobs.customerId,
+        inspectionFeeKobo: jobs.inspectionFeeKobo,
+        arrivedAt: jobs.arrivedAt,
         proId: jobs.proId,
       })
       .from(quotes)
