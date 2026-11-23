@@ -6,7 +6,7 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import { EMERGENCY_OFFER_SECONDS } from '@gadmo/shared';
-import { and, asc, eq, isNull, lte, notExists, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, lte, ne, notExists, sql } from 'drizzle-orm';
 import { ENV, type Env } from '../config/env';
 import { AlertsService } from '../alerts/alerts.service';
 import { categories, jobOffers, jobs, proProfiles, users } from '../db/schema';
@@ -109,6 +109,7 @@ export class DispatchService implements OnModuleInit, OnModuleDestroy {
             status: jobs.status,
             type: jobs.type,
             proId: jobs.proId,
+            customerId: jobs.customerId,
             categoryId: jobs.categoryId,
             latitude: jobs.latitude,
             longitude: jobs.longitude,
@@ -154,6 +155,7 @@ export class DispatchService implements OnModuleInit, OnModuleDestroy {
               eq(proProfiles.verificationStatus, 'APPROVED'),
               eq(users.status, 'ACTIVE'),
               eq(users.role, 'PRO'),
+              ne(proProfiles.userId, job.customerId), // a Pro who booked never gets their own job
               sql`${proProfiles.latitude} is not null`,
               sql`${distance} <= ${proProfiles.serviceRadiusKm}`,
               // Not a Pro who declined, holds or held this job, or who let it run out

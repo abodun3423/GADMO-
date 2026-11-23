@@ -11,7 +11,7 @@ import { AlertsService } from '../alerts/alerts.service';
 import { DispatchService } from '../dispatch/dispatch.service';
 import { jobOffers, jobs, ledgerEntries, messages, noShows, users } from '../db/schema';
 import { DB, type Db } from '../infra/infra.module';
-import { accountBalance } from '../work/balance.service';
+import { accountBalance, bookerWallet } from '../work/balance.service';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
@@ -98,7 +98,7 @@ export class NoShowService {
           },
           {
             txnId,
-            account: `refund-due:customer:${job.customerId}`,
+            account: await bookerWallet(tx, job.customerId),
             creditKobo: refund,
             jobId,
             description: 'Refund: the Pro didn’t come',

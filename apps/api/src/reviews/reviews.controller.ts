@@ -110,8 +110,10 @@ export class ReviewsController {
         await tx
           .update(proProfiles)
           .set({
-            ratingAvg: sql`(select coalesce(avg(${reviews.rating}), 0) from ${reviews} where ${reviews.subjectId} = ${subjectId})`,
-            ratingCount: sql`(select count(*) from ${reviews} where ${reviews.subjectId} = ${subjectId})`,
+            // Only ratings for work they did: a Pro who also books services is rated as a
+            // customer too, and those ratings stay with staff.
+            ratingAvg: sql`(select coalesce(avg(r.rating), 0) from ${reviews} r join ${jobs} j on j.id = r.job_id where r.subject_id = ${subjectId} and j.pro_id = ${subjectId})`,
+            ratingCount: sql`(select count(*) from ${reviews} r join ${jobs} j on j.id = r.job_id where r.subject_id = ${subjectId} and j.pro_id = ${subjectId})`,
           })
           .where(eq(proProfiles.userId, subjectId));
       }

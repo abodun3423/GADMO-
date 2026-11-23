@@ -107,9 +107,27 @@ describe('jobs: object-level authorization', () => {
     for (const job of list.body.jobs) expect(job.customerId).toBe(bob.userId);
   });
 
-  it('Pros cannot post jobs', async () => {
+  it('a Pro can book a service for themselves (founder decision); staff cannot', async () => {
     const pro = await login(ctx, { role: 'pro' });
-    await pro.agent.post('/v1/jobs').set(CLIENT_HEADER).send(newJob(electricianId)).expect(403);
+    const made = await pro.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(newJob(electricianId))
+      .expect(201);
+    expect(made.body.job.customerId).toBe(pro.userId);
+    const list = await pro.agent.get('/v1/jobs').expect(200);
+    expect(list.body.jobs.map((j: { id: string }) => j.id)).toContain(made.body.job.id);
+    await pro.agent.post(`/v1/jobs/${made.body.job.id}/cancel`).set(CLIENT_HEADER).expect(200);
+    const staff = await login(ctx);
+    await ctx.db.update(users).set({ role: 'ADMIN' }).where(eq(users.id, staff.userId));
+    const refused = await staff.agent
+      .post('/v1/jobs')
+      .set(CLIENT_HEADER)
+      .send(newJob(electricianId))
+      .expect(403);
+    expect(refused.body.message).toBe(
+      'This needs a customer or a Pro account. You’re signed in as GADMO staff.',
+    );
   });
 
   it('rejects a customer-supplied customerId (no acting on behalf of others)', async () => {
@@ -466,6 +484,44 @@ describe('Pro online switch and nearby requests', () => {
       .expect(403);
   });
 
+  it('a Pro who books a service is never offered or listed for their own job', async () => {
+    // A spot of its own, so waiting emergencies from other tests don't keep these Pros busy.
+    const spot = { latitude: 9 + Math.random(), longitude: 7 + Math.random() };
+    const at = async (online: boolean) => {
+      const pro = await verifiedPro([electricianId], false);
+      await ctx.db.update(proProfiles).set(spot).where(eq(proProfiles.userId, pro.userId));
+      if (online) {
+        await pro.agent
+          .post('/v1/pro/online')
+          .set(CLIENT_HEADER)
+          .send({ online: true })
+          .expect(200);
+      }
+      return pro;
+    };
+    const booker = await at(true);
+    const other = await at(true);
+    const urgent = await postJob(booker, spot);
+    const offers = await ctx.db.select().from(jobOffers).where(eq(jobOffers.jobId, urgent));
+    expect(offers.map((o) => o.proId)).not.toContain(booker.userId);
+    expect(offers.map((o) => o.proId)).toContain(other.userId);
+    await booker.agent.get('/v1/pro/jobs/nearby').expect(200);
+
+    const later = await postJob(booker, {
+      ...spot,
+      type: 'SCHEDULED',
+      scheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    const listed = await booker.agent.get(`/v1/jobs/${later}/pros`).expect(200);
+    const ids = listed.body.pros.map((p: { id: string }) => p.id);
+    expect(ids).not.toContain(booker.userId);
+    await booker.agent
+      .post(`/v1/jobs/${later}/requests`)
+      .set(CLIENT_HEADER)
+      .send({ proId: booker.userId })
+      .expect(422); // not one of the Pros who can be chosen
+  });
+
   it('only a verified Pro with skills and a place can go online', async () => {
     const pro = await login(ctx, { role: 'pro' });
     const goOnline = () =>
@@ -606,7 +662,7 @@ describe('emergency offers and cancelling: object-level authorization', () => {
       .expect(201);
     const id = created.body.job.id as string;
     await bob.agent.post(`/v1/jobs/${id}/cancel`).set(CLIENT_HEADER).expect(404);
-    await pro.agent.post(`/v1/jobs/${id}/cancel`).set(CLIENT_HEADER).expect(403);
+    await pro.agent.post(`/v1/jobs/${id}/cancel`).set(CLIENT_HEADER).expect(404);
     await alice.agent.post(`/v1/jobs/${id}/cancel`).expect(403); // CSRF
     const [row] = await ctx.db.select().from(jobs).where(eq(jobs.id, id));
     expect(row!.status).toBe('REQUESTED');
@@ -1953,9 +2009,33 @@ describe('paying the inspection fee (test checkout)', () => {
     expect(await balanceOf(`refund-due:customer:${customer.userId}`)).toBe(100_000);
     expect(await balanceOf(`escrow:job:${id}`)).toBe(200_000);
     // Only the customer sees it; the test checkout can't be used on it again.
-    await pro.agent.post(`/v1/payments/${reference}/check`).set(CLIENT_HEADER).expect(403);
+    await pro.agent.post(`/v1/payments/${reference}/check`).set(CLIENT_HEADER).expect(404);
     await complete(customer.agent, reference, 'success').expect(200);
     expect(await balanceOf(`escrow:job:${id}`)).toBe(200_000);
+  });
+
+  it('wallet: a Pro who books pays from, and is refunded to, their one Pro wallet', async () => {
+    const { customer, id } = await agreedJob(200_000);
+    await ctx.db.update(users).set({ role: 'PRO' }).where(eq(users.id, customer.userId));
+    const txnId = randomUUID();
+    await ctx.db.insert(ledgerEntries).values([
+      { txnId, account: 'gadmo:test', debitKobo: 250_000, description: 'test' },
+      { txnId, account: `pro:${customer.userId}`, creditKobo: 250_000, description: 'Earnings' },
+    ]);
+    const started = await pay(customer.agent, id).expect(200);
+    expect(new URL(started.body.authorizationUrl).pathname).toBe('/pay/return');
+    expect(await balanceOf(`pro:${customer.userId}`)).toBe(50_000);
+    expect(await balanceOf(`escrow:job:${id}`)).toBe(200_000);
+    // The Pro they booked never came: the refund goes back to the same wallet.
+    await ctx.db
+      .update(jobs)
+      .set({ visitDueAt: new Date(Date.now() - 1000) })
+      .where(eq(jobs.id, id));
+    await customer.agent.post(`/v1/jobs/${id}/visit/no-show`).set(CLIENT_HEADER).expect(200);
+    expect(await balanceOf(`pro:${customer.userId}`)).toBe(250_000);
+    expect(await balanceOf(`refund-due:customer:${customer.userId}`)).toBe(0);
+    const wallet = await customer.agent.get('/v1/wallet').expect(200);
+    expect(wallet.body.wallet.balanceKobo).toBe(250_000);
   });
 
   it('wallet: pays part; the card pays the rest; or the customer keeps the wallet for later', async () => {
@@ -2030,14 +2110,12 @@ describe('paying the inspection fee (test checkout)', () => {
     const ref = (await pay(customer.agent, id).expect(200)).body.reference as string;
     const stranger = await login(ctx);
     await pay(stranger.agent, id).expect(404);
-    await pay(pro.agent, id).expect(403);
+    // The job's Pro is not who pays (it can book its own services, but not pay for this one).
+    await pay(pro.agent, id).expect(404);
     for (const who of [stranger, pro]) {
-      await who.agent
-        .post(`/v1/payments/${ref}/check`)
-        .set(CLIENT_HEADER)
-        .expect(who === pro ? 403 : 404);
-      await who.agent.get(`/v1/payments/test/${ref}`).expect(who === pro ? 403 : 404);
-      await complete(who.agent, ref, 'success').expect(who === pro ? 403 : 404);
+      await who.agent.post(`/v1/payments/${ref}/check`).set(CLIENT_HEADER).expect(404);
+      await who.agent.get(`/v1/payments/test/${ref}`).expect(404);
+      await complete(who.agent, ref, 'success').expect(404);
     }
     await customer.agent.post(`/v1/jobs/${id}/inspection-fee/pay`).send().expect(403); // CSRF
     await customer.agent.get('/v1/payments/test/not-a-reference').expect(400);
@@ -2392,6 +2470,37 @@ describe('quotes: paid in full on acceptance (deposit to the Pro, the rest held)
     expect(detail.body.user.reviewsReceived).toMatchObject([
       { rating: 2, comment: 'Kept changing the job' },
     ]);
+  });
+
+  it('reviews: a Pro who booked is rated as a customer, which never touches their Pro stars', async () => {
+    const { customer, pro, id } = await paidJob();
+    await ctx.db.update(users).set({ role: 'PRO' }).where(eq(users.id, customer.userId));
+    await ctx.db.insert(proProfiles).values({ userId: customer.userId }).onConflictDoNothing();
+    await step(pro, id, 'start-work').expect(200);
+    await step(pro, id, 'work-done').expect(200);
+    await step(customer, id, 'confirm').expect(200);
+    await pro.agent
+      .post(`/v1/jobs/${id}/review`)
+      .set(CLIENT_HEADER)
+      .send({ rating: 1 })
+      .expect(201);
+    await customer.agent
+      .post(`/v1/jobs/${id}/review`)
+      .set(CLIENT_HEADER)
+      .send({ rating: 5 })
+      .expect(201);
+    const [booker] = await ctx.db
+      .select()
+      .from(proProfiles)
+      .where(eq(proProfiles.userId, customer.userId));
+    expect(booker).toMatchObject({ ratingAvg: 0, ratingCount: 0 });
+    const [hired] = await ctx.db
+      .select()
+      .from(proProfiles)
+      .where(eq(proProfiles.userId, pro.userId));
+    expect(hired).toMatchObject({ ratingAvg: 5, ratingCount: 1 });
+    const shown = await pro.agent.get(`/v1/pros/${customer.userId}/reviews`).expect(200);
+    expect(shown.body.reviews).toHaveLength(0);
   });
 
   it('reviews: closed 14 days after the job is complete', async () => {
@@ -3094,7 +3203,7 @@ describe('choosing a Pro: only the job’s customer, only eligible Pros', () => 
       .set(CLIENT_HEADER)
       .send({ proId: pro.userId })
       .expect(404);
-    await pro.agent.get(`/v1/jobs/${id}/pros`).expect(403);
+    await pro.agent.get(`/v1/jobs/${id}/pros`).expect(404);
     await request(ctx.server).get(`/v1/jobs/${id}/pros`).expect(401);
     // An unverified Pro can't be chosen, even by id.
     await alice.agent

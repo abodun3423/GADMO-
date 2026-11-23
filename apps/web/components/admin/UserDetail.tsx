@@ -237,9 +237,7 @@ function Detail({ id }: { id: string }) {
             </section>
           )}
 
-          <h2 className="section-title">
-            {user.role === 'PRO' ? 'Ratings from customers' : 'Ratings from Pros (staff only)'}
-          </h2>
+          <h2 className="section-title">Ratings received</h2>
           {user.reviewsReceived.length === 0 ? (
             <p className="empty">No ratings yet.</p>
           ) : (
@@ -250,7 +248,8 @@ function Detail({ id }: { id: string }) {
                     <span className="review-stars" aria-label={`${r.rating} out of 5 stars`}>
                       {stars(r.rating)}
                     </span>{' '}
-                    · {dateTime.format(new Date(r.createdAt))} ·{' '}
+                    · {r.asPro ? 'for their work' : 'as a customer (staff only)'} ·{' '}
+                    {dateTime.format(new Date(r.createdAt))} ·{' '}
                     <Link href={`/admin/jobs/${r.jobId}`}>Job</Link>
                   </p>
                   {r.comment && <p>{r.comment}</p>}

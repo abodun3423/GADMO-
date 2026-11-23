@@ -1,5 +1,13 @@
 import { expect, test } from '@playwright/test';
-import { clearCode, randomPhone, readCode, signIn, watchCsp } from './helpers';
+import {
+  clearCode,
+  createStaff,
+  randomPhone,
+  readCode,
+  signIn,
+  staffSignIn,
+  watchCsp,
+} from './helpers';
 
 test('a new customer signs in, books a plumber for later, and sees it in My jobs', async ({
   page,
@@ -72,17 +80,32 @@ test('the form explains what is missing instead of sending', async ({ page }) =>
   await expect(page.locator('p[role="alert"]')).toContainText('Describe the job');
 });
 
-test('a Pro is told customer booking is not available from a Pro account', async ({ page }) => {
+test('a Pro can book a service for themselves, and sees it in My jobs as theirs', async ({
+  page,
+}) => {
   await page.goto('/signin');
   await signIn(page, 'pro');
   await expect(page).toHaveURL('/pro');
+  await page.getByRole('link', { name: 'Book a service' }).click();
+  await expect(page).toHaveURL('/jobs');
   await page.goto('/request?service=painter');
-  await expect(page.getByText(/You’re signed in as a Pro/)).toBeVisible();
+  const tomorrow = new Date(Date.now() + 24 * 3600 * 1000);
+  const local = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}T10:30`;
+  await page.getByLabel('Date and time', { exact: true }).fill(local);
+  await page.getByLabel(/What do you need done/).fill('Paint my workshop walls, one coat');
+  await page.getByRole('radio', { name: /Somewhere in Ado-Ekiti/ }).check();
+  await page.getByRole('button', { name: 'Send request' }).click();
+  await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}\/choose/);
   await page.goto('/jobs');
-  await expect(page.getByText(/Signed in as .* \(Pro\)/)).toBeVisible();
+  const mine = page.locator('article', { hasText: 'Paint my workshop walls' });
+  await expect(mine.getByText('You booked this')).toBeVisible();
+  await expect(mine.getByRole('link', { name: 'Choose a Pro' })).toBeVisible();
+  await mine.getByRole('button', { name: 'Cancel request' }).click();
+  await mine.getByRole('button', { name: 'Yes, cancel it' }).click();
+  await expect(mine).toContainText('Cancelled');
 });
 
-test('signed in as someone else in another tab: the request form says so and offers to switch', async ({
+test('signed in as staff in another tab: the request form says so and offers to switch', async ({
   page,
   context,
 }) => {
@@ -91,10 +114,11 @@ test('signed in as someone else in another tab: the request form says so and off
   await signIn(page, 'customer');
   await expect(page).toHaveURL(/\/request\?service=baker/);
 
-  // Another tab of the same browser signs in as a Pro, which replaces the sign-in.
+  // Another tab of the same browser signs in as staff, which replaces the sign-in.
+  const staff = await createStaff();
   const other = await context.newPage();
-  await other.goto('/signin');
-  await signIn(other, 'pro');
+  await staffSignIn(other, staff);
+  await expect(other).toHaveURL('/admin');
   await other.close();
 
   const tomorrow = new Date(Date.now() + 24 * 3600 * 1000);
@@ -104,11 +128,9 @@ test('signed in as someone else in another tab: the request form says so and off
   await page.getByRole('radio', { name: /Somewhere in Ado-Ekiti/ }).check();
   await page.getByRole('button', { name: 'Send request' }).click();
   await expect(
-    page.getByText('You’re signed in as a Pro. Only customer accounts can request a service.', {
-      exact: false,
-    }),
+    page.getByText(/You’re signed in as GADMO staff\. Staff accounts can’t/),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Sign out and use a customer account' }).click();
+  await page.getByRole('button', { name: 'Sign out and use another account' }).click();
   await expect(page).toHaveURL(/\/signin\?next=/);
 });
 

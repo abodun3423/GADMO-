@@ -121,8 +121,8 @@ export function MyJobs({
       {jobs?.length === 0 &&
         (me.role === 'PRO' ? (
           <p className="empty">
-            Jobs assigned to you will appear here.{' '}
-            <Link href="/pro/profile">Set up your Pro profile</Link> so customers can find you.
+            Jobs assigned to you, and services you book for yourself, will appear here.{' '}
+            <Link href="/">Find a service</Link> to book one.
           </p>
         ) : (
           <p className="empty">
@@ -133,6 +133,9 @@ export function MyJobs({
       {jobs?.map((job) => (
         <article key={job.id} className={`job${job.type === 'EMERGENCY' ? ' job-urgent' : ''}`}>
           <h3>{serviceNames[job.categoryId] ?? 'Service'}</h3>
+          {me.role === 'PRO' && (
+            <p className="job-tag">{job.customerId === me.id ? 'You booked this' : 'Your work'}</p>
+          )}
           <p className="meta">
             {job.type === 'EMERGENCY'
               ? `Emergency, requested ${dateFormat.format(new Date(job.createdAt))}`
@@ -142,7 +145,7 @@ export function MyJobs({
           <p className={`job-status${job.dispatch === 'NO_PRO_YET' ? ' job-status-wait' : ''}`}>
             {statusText(job)}
           </p>
-          {job.dispatch === 'CHOOSE_PRO' && me.role !== 'PRO' && (
+          {job.dispatch === 'CHOOSE_PRO' && job.customerId === me.id && (
             <Link className="button button-small" href={`/jobs/${job.id}/choose`}>
               Choose a Pro
             </Link>
@@ -153,7 +156,7 @@ export function MyJobs({
             </Link>
           )}
           {job.status === 'REQUESTED' &&
-            me.role !== 'PRO' &&
+            job.customerId === me.id &&
             (confirming === job.id ? (
               <div className="confirm">
                 <p>Cancel this request?</p>
