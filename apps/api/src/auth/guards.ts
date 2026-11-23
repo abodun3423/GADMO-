@@ -67,7 +67,9 @@ export class JwtAuthGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (allowed && !allowed.includes(user.role)) throw new ForbiddenException();
+    if (allowed && !allowed.includes(user.role)) {
+      throw new ForbiddenException(wrongAccountMessage(allowed, user.role));
+    }
 
     req.user = { id: user.id, role: user.role };
     return true;
@@ -101,4 +103,24 @@ export class CsrfGuard implements CanActivate {
     if (req.headers[CSRF_HEADER] !== 'web') throw new ForbiddenException('Missing client header');
     return true;
   }
+}
+
+const ACCOUNT_NAMES: Record<string, string> = {
+  CUSTOMER: 'a customer',
+  PRO: 'a Pro',
+  ADMIN: 'GADMO staff',
+  SUPER_ADMIN: 'GADMO staff',
+};
+
+/**
+ * Says which account the action needs and which one is signed in, e.g. after signing in
+ * as staff in another tab: "This needs a customer account. You’re signed in as GADMO staff."
+ */
+export function wrongAccountMessage(allowed: readonly string[], role: string): string {
+  const needed = [...new Set(allowed.map((r) => ACCOUNT_NAMES[r] ?? r))];
+  const need =
+    needed.length === 1 && needed[0] === 'GADMO staff'
+      ? 'This is for GADMO staff only.'
+      : `This needs ${needed.join(' or ')} account.`;
+  return `${need} You’re signed in as ${ACCOUNT_NAMES[role] ?? role}.`;
 }
