@@ -82,6 +82,36 @@ test('a Pro is told customer booking is not available from a Pro account', async
   await expect(page.getByText(/Signed in as .* \(Pro\)/)).toBeVisible();
 });
 
+test('signed in as someone else in another tab: the request form says so and offers to switch', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/request?service=baker');
+  await page.getByRole('link', { name: 'Sign in to continue' }).click();
+  await signIn(page, 'customer');
+  await expect(page).toHaveURL(/\/request\?service=baker/);
+
+  // Another tab of the same browser signs in as a Pro, which replaces the sign-in.
+  const other = await context.newPage();
+  await other.goto('/signin');
+  await signIn(other, 'pro');
+  await other.close();
+
+  const tomorrow = new Date(Date.now() + 24 * 3600 * 1000);
+  const local = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}T10:30`;
+  await page.getByLabel('Date and time', { exact: true }).fill(local);
+  await page.getByLabel(/What do you need done/).fill('A birthday cake for Saturday');
+  await page.getByRole('radio', { name: /Somewhere in Ado-Ekiti/ }).check();
+  await page.getByRole('button', { name: 'Send request' }).click();
+  await expect(
+    page.getByText('You’re signed in as a Pro. Only customer accounts can request a service.', {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Sign out and use a customer account' }).click();
+  await expect(page).toHaveURL(/\/signin\?next=/);
+});
+
 test('a wrong phone number or code gets a clear message', async ({ page }) => {
   await page.goto('/signin');
   await page.getByLabel('Phone number').fill('12345');

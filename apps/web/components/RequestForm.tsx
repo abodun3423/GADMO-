@@ -3,10 +3,11 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
+import { forgetAlerts } from '@/lib/alerts';
 import { ApiError, post } from '@/lib/api';
 import { ADO_EKITI_CENTRE } from '@/lib/places';
 import type { Category } from '@/lib/types';
-import { useSession } from '@/lib/useSession';
+import { loadMe, useSession } from '@/lib/useSession';
 
 type Place =
   | { kind: 'none' }
@@ -46,11 +47,24 @@ export function RequestForm({
   }
 
   if (me.role !== 'CUSTOMER') {
+    // Only customers request services. A Pro or staff member (perhaps signed in from another
+    // tab) signs out here and back in with a customer number.
+    async function switchAccount() {
+      await forgetAlerts();
+      await post('/v1/auth/logout').catch(() => undefined);
+      await loadMe(true);
+      router.push(`/signin?next=${encodeURIComponent(here)}`);
+    }
     return (
-      <p className="alert alert-info">
-        You’re signed in as a Pro. Requesting services from a Pro account isn’t available yet. Pro
-        tools (jobs near you, quotes and payouts) are coming next.
-      </p>
+      <>
+        <p className="alert alert-info">
+          You’re signed in as {me.role === 'PRO' ? 'a Pro' : 'GADMO staff'}. Only customer accounts
+          can request a service. Sign out, then sign in with a customer number.
+        </p>
+        <button className="button" type="button" onClick={switchAccount}>
+          Sign out and use a customer account
+        </button>
+      </>
     );
   }
 
@@ -102,6 +116,11 @@ export function RequestForm({
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not send your request. Try again.');
       setBusy(false);
+      // Signed in as someone else since this page opened (e.g. staff in another tab): show
+      // who is signed in now.
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        void loadMe(true);
+      }
     }
   }
 
