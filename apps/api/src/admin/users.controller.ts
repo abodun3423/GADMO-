@@ -216,8 +216,11 @@ export class AdminUsersController {
         rating: reviews.rating,
         comment: reviews.comment,
         createdAt: reviews.createdAt,
+        /** Rated for work they did (else as the person who booked: a Pro can book too). */
+        asPro: sql<boolean>`${jobs.proId} = ${id}`,
       })
       .from(reviews)
+      .innerJoin(jobs, eq(jobs.id, reviews.jobId))
       .where(eq(reviews.subjectId, id))
       .orderBy(desc(reviews.createdAt))
       .limit(20);

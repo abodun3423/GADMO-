@@ -31,7 +31,7 @@ const testOutcomeSchema = z.object({ outcome: z.enum(['success', 'failed']) }).s
 
 @Controller()
 @UseGuards(JwtAuthGuard)
-@Roles(['CUSTOMER'])
+@Roles(['CUSTOMER', 'PRO'])
 export class PaymentsController {
   constructor(
     private readonly payments: PaymentsService,

@@ -22,6 +22,7 @@ import { DB, type Db, FIELD_CRYPTO } from '../infra/infra.module';
 import {
   accountBalance,
   BalanceService,
+  bookerWallet,
   jobBalanceKobo,
   quotePayNowKobo,
 } from '../work/balance.service';
@@ -34,11 +35,6 @@ export const REFERENCE_PATTERN = /^gadmo_[0-9a-f]{32}$/;
 
 /** The `gateway` of a payment made wholly from the customer's GADMO wallet. */
 export const WALLET_GATEWAY = 'wallet';
-
-/** A customer's GADMO wallet (their refunds), as a ledger account. */
-function customerWallet(customerId: string): string {
-  return `refund-due:customer:${customerId}`;
-}
 
 /** The same lock withdrawals take, so wallet money can't be spent twice at once. */
 async function lockWallet(tx: Tx, userId: string): Promise<void> {
@@ -197,7 +193,10 @@ export class PaymentsService {
       let walletKobo = 0;
       if (useWallet) {
         await lockWallet(tx, customerId);
-        walletKobo = Math.min(amountKobo, await accountBalance(tx, customerWallet(customerId)));
+        walletKobo = Math.min(
+          amountKobo,
+          await accountBalance(tx, await bookerWallet(tx, customerId)),
+        );
       }
       if (walletKobo === amountKobo) {
         const reference = `gadmo_${randomUUID().replace(/-/g, '')}`;
@@ -411,7 +410,7 @@ export class PaymentsService {
       if (payment.walletKobo > 0) {
         await lockWallet(tx, job!.customerId);
         walletOk =
-          (await accountBalance(tx, customerWallet(job!.customerId))) >= payment.walletKobo;
+          (await accountBalance(tx, await bookerWallet(tx, job!.customerId))) >= payment.walletKobo;
       }
       const counts =
         walletOk &&
@@ -445,7 +444,7 @@ export class PaymentsService {
       if (counts && payment.walletKobo > 0) {
         received.push({
           txnId,
-          account: customerWallet(job!.customerId),
+          account: await bookerWallet(tx, job!.customerId),
           debitKobo: payment.walletKobo,
           jobId: job!.id,
           description: 'Paid from your GADMO wallet',
@@ -456,11 +455,12 @@ export class PaymentsService {
       // until the job is done. The inspection fee is held until the Pro arrives.
       const deposit =
         counts && payment.type === 'DEPOSIT' ? Math.min(quote!.depositKobo, amount) : 0;
+      const wallet = await bookerWallet(tx, job!.customerId);
       const credits: (typeof ledgerEntries.$inferInsert)[] = !counts
         ? [
             {
               txnId,
-              account: `refund-due:customer:${job!.customerId}`,
+              account: wallet,
               creditKobo: amount,
               jobId: job!.id,
               description: 'Refund: a payment that was no longer needed',

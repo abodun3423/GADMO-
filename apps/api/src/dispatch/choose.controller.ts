@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { type ChoosePro, chooseProSchema, SCHEDULED_REQUEST_HOURS } from '@gadmo/shared';
-import { and, asc, desc, eq, inArray, notExists, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne, notExists, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { AlertsService } from '../alerts/alerts.service';
 import { type AuthUser, CurrentUser, JwtAuthGuard, Roles } from '../auth/guards';
@@ -23,7 +23,13 @@ import { distanceKmSql, roughKm } from './geo';
 
 const idPipe = new ZodValidationPipe(z.uuid());
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
-type Job = { id: string; categoryId: string; latitude: number; longitude: number };
+type Job = {
+  id: string;
+  customerId: string;
+  categoryId: string;
+  latitude: number;
+  longitude: number;
+};
 /** The job's own skill, then related skills (see RELATED in db/categories.ts). */
 type Skills = string[];
 
@@ -35,7 +41,7 @@ type Skills = string[];
  */
 @Controller('jobs/:jobId')
 @UseGuards(JwtAuthGuard)
-@Roles(['CUSTOMER'])
+@Roles(['CUSTOMER', 'PRO'])
 export class ChooseProController {
   constructor(
     @Inject(DB) private readonly db: Db,
@@ -161,6 +167,7 @@ export class ChooseProController {
         type: jobs.type,
         status: jobs.status,
         proId: jobs.proId,
+        customerId: jobs.customerId,
         categoryId: jobs.categoryId,
         latitude: jobs.latitude,
         longitude: jobs.longitude,
@@ -210,6 +217,7 @@ export class ChooseProController {
           eq(proProfiles.verificationStatus, 'APPROVED'),
           eq(users.status, 'ACTIVE'),
           eq(users.role, 'PRO'),
+          ne(proProfiles.userId, job.customerId), // never the Pro who booked it
           sql`${proProfiles.latitude} is not null`,
           sql`${distance} <= ${proProfiles.serviceRadiusKm}`,
           // Not someone who was already asked about this job.

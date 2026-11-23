@@ -46,9 +46,9 @@ export function RequestForm({
     );
   }
 
-  if (me.role !== 'CUSTOMER') {
-    // Only customers request services. A Pro or staff member (perhaps signed in from another
-    // tab) signs out here and back in with a customer number.
+  if (me.role !== 'CUSTOMER' && me.role !== 'PRO') {
+    // Customers and Pros request services (a Pro can book for themselves). Staff (perhaps
+    // signed in from another tab) sign out here and back in with a customer number.
     async function switchAccount() {
       await forgetAlerts();
       await post('/v1/auth/logout').catch(() => undefined);
@@ -58,11 +58,11 @@ export function RequestForm({
     return (
       <>
         <p className="alert alert-info">
-          You’re signed in as {me.role === 'PRO' ? 'a Pro' : 'GADMO staff'}. Only customer accounts
-          can request a service. Sign out, then sign in with a customer number.
+          You’re signed in as GADMO staff. Staff accounts can’t request a service. Sign out, then
+          sign in with a customer or Pro number.
         </p>
         <button className="button" type="button" onClick={switchAccount}>
-          Sign out and use a customer account
+          Sign out and use another account
         </button>
       </>
     );

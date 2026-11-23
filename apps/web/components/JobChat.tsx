@@ -194,13 +194,14 @@ export function JobChat({ jobId }: { jobId: string }) {
     );
   }
 
-  const back = me.role === 'PRO' ? '/pro' : '/jobs';
+  // A Pro who booked this job is its customer here: back to their bookings.
+  const back = convo?.you === 'PRO' ? '/pro' : '/jobs';
   const otherLabel = convo?.you === 'CUSTOMER' ? 'Your Pro' : 'Customer';
 
   return (
     <>
       <p className="meta">
-        <Link href={back}>← {me.role === 'PRO' ? 'Pro home' : 'My jobs'}</Link>
+        <Link href={back}>← {back === '/pro' ? 'Pro home' : 'My jobs'}</Link>
       </p>
       {error && (
         <p className="alert alert-error" role="alert">

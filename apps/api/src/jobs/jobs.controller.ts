@@ -115,7 +115,7 @@ export class JobsController {
   }
 
   @Post()
-  @Roles(['CUSTOMER'])
+  @Roles(['CUSTOMER', 'PRO']) // a Pro can book services for themselves too (founder decision)
   async create(
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createJobSchema)) body: CreateJob,
@@ -200,7 +200,7 @@ export class JobsController {
    */
   @Post(':id/cancel')
   @HttpCode(200)
-  @Roles(['CUSTOMER'])
+  @Roles(['CUSTOMER', 'PRO'])
   async cancel(
     @CurrentUser() user: AuthUser,
     @Param('id', new ZodValidationPipe(z.uuid())) id: string,

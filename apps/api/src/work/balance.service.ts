@@ -16,7 +16,7 @@ import {
 import { and, desc, eq, lte, sql } from 'drizzle-orm';
 import { AlertsService } from '../alerts/alerts.service';
 import { ENV, type Env } from '../config/env';
-import { jobs, ledgerEntries, messages, quotes } from '../db/schema';
+import { jobs, ledgerEntries, messages, quotes, users } from '../db/schema';
 import { DB, type Db } from '../infra/infra.module';
 
 export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -65,6 +65,20 @@ export function quotePayNowKobo(
   job: { inspectionFeeKobo: number | null; arrivedAt: Date | null },
 ): number {
   return Math.max(0, quoteKobo - (job.arrivedAt ? (job.inspectionFeeKobo ?? 0) : 0));
+}
+
+/**
+ * The GADMO wallet of the person who booked a job, as a ledger account: a customer's
+ * refunds, or, for a Pro who booked a service, their one Pro wallet (founder decision,
+ * November 2026: one wallet for earnings and refunds).
+ */
+export async function bookerWallet(db: Db | Tx, customerId: string): Promise<string> {
+  const [user] = await db
+    .select({ role: users.role })
+    .from(users)
+    .where(eq(users.id, customerId))
+    .limit(1);
+  return user?.role === 'PRO' ? `pro:${customerId}` : `refund-due:customer:${customerId}`;
 }
 
 /** The money in an account, from the ledger. */
@@ -218,6 +232,7 @@ export async function settle(
   const held = await accountBalance(tx, escrow);
   const toPro = Math.min(Math.max(0, s.toProKobo), held);
   const refund = held - toPro;
+  const wallet = refund > 0 ? await bookerWallet(tx, s.customerId) : '';
   const pro = `pro:${s.proId}`;
   const txnId = randomUUID();
   const entries: (typeof ledgerEntries.$inferInsert)[] = [];
@@ -239,7 +254,7 @@ export async function settle(
       { txnId, account: escrow, debitKobo: refund, jobId, description: 'Refund to the customer' },
       {
         txnId,
-        account: `refund-due:customer:${s.customerId}`,
+        account: wallet,
         creditKobo: refund,
         jobId,
         description: 'Refund for the job',

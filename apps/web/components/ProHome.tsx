@@ -223,6 +223,9 @@ export function ProHome({ serviceNames }: { serviceNames: Record<string, string>
         <Link className="button button-ghost" href="/account/wallet">
           Wallet
         </Link>
+        <Link className="button button-ghost" href="/jobs">
+          Book a service
+        </Link>
       </Welcome>
 
       {summary && (

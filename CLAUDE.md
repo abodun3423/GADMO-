@@ -19,6 +19,10 @@ Ask the founder before deciding anything the PRD leaves open.
   until release) keeps it held. There is no cash option: every payment goes through GADMO, so every job is
   covered by the GADMO Guarantee (founder decision, November 2026).
 - Commission: 10% (`COMMISSION_BPS`).
+- Pros can book services too (customer or Pro account; staff cannot). A booking Pro is never offered or
+  listed for their own job, appears to the hired Pro as a normal customer, and uses one wallet: earnings
+  pay for bookings and refunds return to it (`bookerWallet`). Ratings they get as a customer stay
+  staff-only and never count toward their Pro stars (founder decision, November 2026).
 - Wallet: refunds go to the customer's GADMO wallet. When paying (inspection fee, quote, balance) the
   wallet pays first unless the customer unticks it; the card pays the rest, and a payment the wallet
   covers fully is made at once. The wallet part is taken only when the payment is confirmed, under the

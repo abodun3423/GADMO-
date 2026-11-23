@@ -442,7 +442,14 @@ export interface AdminUserDetail extends Omit<AdminUserRow, 'verificationStatus'
   /** Ratings this user received: customers' ratings of a Pro, or Pros' ratings of a customer. */
   /** Visits this Pro didn't come to: in the last 30 days, and ever. */
   noShows: { total: number; recent: number };
-  reviewsReceived: { jobId: string; rating: number; comment: string | null; createdAt: string }[];
+  reviewsReceived: {
+    jobId: string;
+    rating: number;
+    comment: string | null;
+    createdAt: string;
+    /** For work they did as a Pro; false when rated as the one who booked. */
+    asPro: boolean;
+  }[];
   statusHistory: {
     action: string;
     metadata: { from?: string; to?: string; reason?: string } | null;
