@@ -532,6 +532,21 @@ describe('Pro work photos', () => {
     await customer.agent.get('/v1/pro/photos').expect(403);
     await add(pro, Buffer.from('<svg onload=alert(1)>')).expect(400);
     await add(pro, jpeg(1), 'x'.repeat(101)).expect(400);
+    // A caption sent twice arrives as a list: refused, never stored.
+    await pro.agent
+      .post('/v1/pro/photos?caption=a&caption=b')
+      .set(CLIENT_HEADER)
+      .set('content-type', 'image/jpeg')
+      .send(jpeg(1))
+      .expect(400);
+    // JSON or text instead of image bytes is refused too.
+    await pro.agent.post('/v1/pro/photos').set(CLIENT_HEADER).send({ a: 1 }).expect(400);
+    await pro.agent
+      .post('/v1/pro/photos')
+      .set(CLIENT_HEADER)
+      .set('content-type', 'text/plain')
+      .send('hello')
+      .expect(400);
     await pro.agent
       .post('/v1/pro/photos?extra=1')
       .set(CLIENT_HEADER)

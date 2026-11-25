@@ -73,15 +73,21 @@ export class WorkPhotosController {
     @Query(new ZodValidationPipe(workPhotoQuerySchema)) query: WorkPhotoQuery,
     @Req() req: Request,
   ) {
-    const bytes: unknown = req.body;
-    const type = sniffImageType(bytes);
-    if (!type || !Buffer.isBuffer(bytes)) {
+    // Raw image bytes only: never text or a list (as with chat photos).
+    const body: unknown = req.body;
+    if (typeof body === 'string' || Array.isArray(body) || !Buffer.isBuffer(body)) {
       throw new BadRequestException('Send a JPEG, PNG or WebP photo.');
     }
+    const bytes: Buffer = body;
+    const type = sniffImageType(bytes);
+    if (!type) throw new BadRequestException('Send a JPEG, PNG or WebP photo.');
     await enforceLimits(this.redis, [
       { key: `work-photo:${pro.id}`, max: 30, windowSeconds: 60 * 60 },
     ]);
-    const caption = query.caption ? maskContactInfo(query.caption).text : null;
+    const caption =
+      typeof query.caption === 'string' && query.caption
+        ? maskContactInfo(query.caption).text
+        : null;
     const photo = await this.db.transaction(async (tx) => {
       // One upload at a time per Pro, so the limit can't be passed by sending several at once.
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`work-photos:${pro.id}`}))`);
