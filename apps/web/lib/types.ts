@@ -161,6 +161,27 @@ export interface ProProfile {
   serviceRadiusKm: number;
   isOnline: boolean;
   verificationStatus: VerificationStatus;
+  /** Price guide shown on the public profile (kobo); null when not set. */
+  priceFromKobo: number | null;
+  priceToKobo: number | null;
+  priceNote: string;
+}
+
+/** A Pro's public profile (GET /v1/users/:id): never their location, phone or email. */
+export interface PublicPro {
+  id: string;
+  name: string | null;
+  role: 'PRO';
+  bio: string | null;
+  ratingAvg: number;
+  ratingCount: number;
+  verificationStatus: VerificationStatus;
+  priceFromKobo: number | null;
+  priceToKobo: number | null;
+  priceNote: string | null;
+  memberSince: string;
+  jobsCompleted: number;
+  skills: { id: string; name: string; slug: string }[];
 }
 
 /** An open request near a Pro (GET /v1/pro/jobs/nearby). No customer identity or exact spot. */

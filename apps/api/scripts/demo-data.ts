@@ -156,6 +156,7 @@ async function main(): Promise<void> {
           ratingAvg: p.rating,
           ratingCount: p.reviews,
           verificationStatus: 'APPROVED' as const,
+          ...priceGuides[p.name],
         };
         await tx
           .insert(proProfiles)
@@ -200,3 +201,50 @@ async function main(): Promise<void> {
 }
 
 void main();
+
+/** Demo price guides (naira × 100 = kobo), shown on each demo Pro's profile. */
+const priceGuides: Record<
+  string,
+  { priceFromKobo: number; priceToKobo: number | null; priceNote: string }
+> = {
+  // Electrician and generator repair
+  'Tunde Bakare': { priceFromKobo: 500_000, priceToKobo: 3_000_000, priceNote: 'Parts are extra.' },
+  // Hair
+  'Aduke Ogunleye': {
+    priceFromKobo: 800_000,
+    priceToKobo: 4_000_000,
+    priceNote: 'Bridal hair by quote.',
+  },
+  // Mechanic
+  'Kolawole Fashola': {
+    priceFromKobo: 1_000_000,
+    priceToKobo: 8_000_000,
+    priceNote: 'Depends on the fault and parts.',
+  },
+  // Websites
+  'Chiamaka Eze': {
+    priceFromKobo: 15_000_000,
+    priceToKobo: null,
+    priceNote: 'Online shops from ₦250,000.',
+  },
+  // Plumber
+  'Ibrahim Musa': {
+    priceFromKobo: 500_000,
+    priceToKobo: 2_500_000,
+    priceNote: 'Pipes and fittings are extra.',
+  },
+  // Cakes
+  'Folake Adeyemi': {
+    priceFromKobo: 1_500_000,
+    priceToKobo: 10_000_000,
+    priceNote: 'Depends on size and design.',
+  },
+  // Carpenter
+  'Segun Ojo': { priceFromKobo: 1_000_000, priceToKobo: 15_000_000, priceNote: 'Timber is extra.' },
+  // Cleaning
+  'Blessing Akande': {
+    priceFromKobo: 1_500_000,
+    priceToKobo: 6_000_000,
+    priceNote: 'By the number of rooms.',
+  },
+};

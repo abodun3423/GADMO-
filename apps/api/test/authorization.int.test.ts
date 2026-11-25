@@ -441,6 +441,43 @@ describe('Pro profile', () => {
     expect(res.body.user.longitude).toBeUndefined();
     expect(res.body.user.phone).toBeUndefined();
   });
+
+  it('a price guide is saved, checked, cleaned of contacts and shown on the public profile', async () => {
+    const pro = await login(ctx, { role: 'pro' });
+    const put = (extra: Record<string, unknown>) =>
+      pro.agent.put('/v1/pro/profile').set(CLIENT_HEADER).send(profile(extra));
+    await put({ priceFromKobo: 2_000_000, priceToKobo: 500_000 }).expect(400); // to below from
+    await put({ priceToKobo: 500_000 }).expect(400); // a top price needs a lowest one
+    await put({ priceFromKobo: 5_000 }).expect(400); // under ₦100
+    await put({ priceFromKobo: 1.5 }).expect(400);
+    await put({ priceNote: 'x'.repeat(141) }).expect(400);
+    const saved = await put({
+      priceFromKobo: 500_000,
+      priceToKobo: 2_000_000,
+      priceNote: 'Depends on materials. WhatsApp 08031234567',
+    }).expect(200);
+    expect(saved.body.profile).toMatchObject({ priceFromKobo: 500_000, priceToKobo: 2_000_000 });
+    expect(saved.body.profile.priceNote).not.toContain('08031234567');
+
+    const customer = await login(ctx);
+    const shown = await customer.agent.get(`/v1/users/${pro.userId}`).expect(200);
+    expect(shown.body.user).toMatchObject({
+      priceFromKobo: 500_000,
+      priceToKobo: 2_000_000,
+      jobsCompleted: 0,
+    });
+    expect(shown.body.user.priceNote).toContain('Depends on materials');
+    expect(shown.body.user.memberSince).toBeTruthy();
+    // "From ₦5,000" alone is fine; clearing it removes the guide.
+    await put({ priceFromKobo: 500_000 }).expect(200);
+    const cleared = await put({}).expect(200);
+    expect(cleared.body.profile).toMatchObject({
+      priceFromKobo: null,
+      priceToKobo: null,
+      priceNote: '',
+    });
+    await request(ctx.server).get(`/v1/users/${pro.userId}`).expect(401);
+  });
 });
 
 describe('Pro online switch and nearby requests', () => {

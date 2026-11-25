@@ -68,6 +68,9 @@ export class ProController {
       latitude: body.latitude,
       longitude: body.longitude,
       serviceRadiusKm: body.serviceRadiusKm,
+      priceFromKobo: body.priceFromKobo,
+      priceToKobo: body.priceToKobo,
+      priceNote: body.priceNote ? maskContactInfo(body.priceNote).text : null,
     };
     await this.db.transaction(async (tx) => {
       await tx
@@ -177,6 +180,9 @@ export class ProController {
         serviceRadiusKm: proProfiles.serviceRadiusKm,
         isOnline: proProfiles.isOnline,
         verificationStatus: proProfiles.verificationStatus,
+        priceFromKobo: proProfiles.priceFromKobo,
+        priceToKobo: proProfiles.priceToKobo,
+        priceNote: proProfiles.priceNote,
       })
       .from(proProfiles)
       .where(eq(proProfiles.userId, proId))
@@ -192,6 +198,9 @@ export class ProController {
       serviceRadiusKm: row?.serviceRadiusKm ?? 10,
       isOnline: row?.isOnline ?? false,
       verificationStatus: row?.verificationStatus ?? 'NOT_STARTED',
+      priceFromKobo: row?.priceFromKobo ?? null,
+      priceToKobo: row?.priceToKobo ?? null,
+      priceNote: row?.priceNote ?? '',
       categoryIds: skills.map((s) => s.categoryId),
     };
   }
