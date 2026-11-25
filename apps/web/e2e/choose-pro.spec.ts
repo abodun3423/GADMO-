@@ -1,6 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { approvePro, signIn, watchCsp } from './helpers';
 
+/** A real 1×1 PNG, for the photo upload (the phone shrinks and re-encodes it as JPEG). */
+const TINY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
 const letters = () =>
   Array.from({ length: 6 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join(
     '',
@@ -40,6 +46,14 @@ test('a customer books for later, chooses a Pro, and they can chat once the Pro 
   await proPage.getByLabel(/^Note/).fill('Depends on the size of the room');
   await proPage.getByRole('button', { name: 'Save profile' }).click();
   await expect(proPage.getByRole('status')).toContainText('Profile saved.');
+  // A photo of past work, with a caption: it shows on the profile at once.
+  await proPage.getByLabel(/^Caption/).fill('Sitting room, two coats');
+  await proPage.locator('input[type=file]').setInputFiles({
+    name: 'room.png',
+    mimeType: 'image/png',
+    buffer: TINY_PNG,
+  });
+  await expect(proPage.getByRole('img', { name: 'Sitting room, two coats' })).toBeVisible();
   await approvePro(pro.e164);
 
   // The customer books a painter for tomorrow.
@@ -66,6 +80,9 @@ test('a customer books for later, chooses a Pro, and they can chat once the Pro 
   await expect(page.locator('.price-guide')).toHaveText('₦5,000 – ₦20,000');
   await expect(page.getByText('Depends on the size of the room')).toBeVisible();
   await expect(page.getByText('No reviews yet.')).toBeVisible();
+  const photo = page.getByRole('img', { name: 'Sitting room, two coats' });
+  await expect(photo).toBeVisible();
+  expect(await photo.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
   await expect(page.getByText('0 jobs done on GADMO', { exact: false })).toBeVisible();
   await page.getByRole('link', { name: '← Back' }).click();
   await expect(page.getByRole('heading', { name: 'Choose a Pro' })).toBeVisible();

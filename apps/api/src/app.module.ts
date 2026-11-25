@@ -17,6 +17,7 @@ import { InfraModule } from './infra/infra.module';
 import { JobsController } from './jobs/jobs.controller';
 import { PaymentsModule } from './payments/payments.module';
 import { ProController } from './pro/pro.controller';
+import { AdminWorkPhotosController, WorkPhotosController } from './pro/work-photos.controller';
 import { ReviewsController } from './reviews/reviews.controller';
 import { NoShowService } from './visit/no-show.service';
 import { AdminNoShowController, VisitController } from './visit/visit.controller';
@@ -38,6 +39,8 @@ import { VerificationController } from './verification/verification.controller';
     InspectionController,
     JobsController,
     ProController,
+    WorkPhotosController,
+    AdminWorkPhotosController,
     ReviewsController,
     VerificationController,
     VisitController,

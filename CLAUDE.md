@@ -36,6 +36,9 @@ Ask the founder before deciding anything the PRD leaves open.
   edits) within 14 days (`REVIEW_WINDOW_DAYS`). Customers' ratings of a Pro make up the Pro's stars and
   are shown to customers without the customer's name; Pros' ratings of a customer are seen only by
   staff (founder decision, November 2026).
+- Pro profile: a public page for each verified Pro (skills, stars, price guide, up to 8 work photos,
+  reviews; never location or contacts). Work photos show at once; staff remove ones that break the rules
+  (founder decision, November 2026).
 - Money is integer kobo everywhere. Use `@gadmo/shared` money helpers. The ledger is append-only.
 - The service catalogue lives in `apps/api/src/db/categories.ts`; `db:seed` upserts it by slug.
 - The client is a lightweight PWA (JS budget < 200 KB gzipped on first load).

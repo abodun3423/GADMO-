@@ -24,6 +24,10 @@ test('staff sign in on their own page, not the customer one', async ({ page }) =
   await staffSignIn(page, staff);
   await expect(page).toHaveURL('/admin');
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
+  await page.getByRole('link', { name: 'Work photos' }).click();
+  await expect(page.getByRole('heading', { name: 'Work photos' })).toBeVisible();
+  await page.getByRole('link', { name: 'Overview' }).click();
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
   await expect(page.getByRole('list', { name: 'GADMO in numbers' })).toContainText('Customers');
 
   // Staff change the password they were given.

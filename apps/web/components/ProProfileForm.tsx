@@ -6,6 +6,7 @@ import { api, ApiError, fieldMessage, put } from '@/lib/api';
 import { ADO_EKITI_CENTRE } from '@/lib/places';
 import type { CategoryGroup, ProProfile } from '@/lib/types';
 import { useSession } from '@/lib/useSession';
+import { ProWorkPhotos } from './ProWorkPhotos';
 
 const MAX_SKILLS = 10;
 const RADIUS_KM = [5, 10, 20, 30, 50];
@@ -414,6 +415,7 @@ export function ProProfileForm({ groups }: { groups: CategoryGroup[] }) {
           </button>
         </form>
       )}
+      {profile && me && <ProWorkPhotos proId={me.id} />}
     </>
   );
 }

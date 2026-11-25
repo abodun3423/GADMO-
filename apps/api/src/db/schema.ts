@@ -295,6 +295,7 @@ export const privateFilePurposeEnum = pgEnum('private_file_purpose', [
   'CERTIFICATE',
   'CHAT_PHOTO',
   'CHAT_VOICE',
+  'WORK_PHOTO',
 ]);
 
 /**
@@ -319,6 +320,30 @@ export const privateFiles = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('private_files_owner_idx').on(t.ownerId, t.purpose)],
+);
+
+/**
+ * Photos of a Pro's past work on their public profile (PRD; founder decision, November
+ * 2026): up to MAX_WORK_PHOTOS, shown at once; staff can remove any that break the rules
+ * (contact details, not their work). Removed photos stay recorded for the audit trail.
+ */
+export const proWorkPhotos = pgTable(
+  'pro_work_photos',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    proId: uuid('pro_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    fileId: uuid('file_id')
+      .notNull()
+      .references(() => privateFiles.id, { onDelete: 'cascade' }),
+    caption: text('caption'),
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+    /** The Pro themself, or the staff member who removed it. */
+    removedById: uuid('removed_by_id').references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('pro_work_photos_pro_idx').on(t.proId, t.createdAt)],
 );
 
 export const jobs = pgTable(
