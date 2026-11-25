@@ -21,6 +21,10 @@ export function ProProfileForm({ groups }: { groups: CategoryGroup[] }) {
   const [skills, setSkills] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
   const [bio, setBio] = useState('');
+  // Price guide, typed in naira ("5000"); saved in kobo.
+  const [priceFrom, setPriceFrom] = useState('');
+  const [priceTo, setPriceTo] = useState('');
+  const [priceNote, setPriceNote] = useState('');
   const [place, setPlace] = useState<Place>({ kind: 'none' });
   const [radius, setRadius] = useState(10);
   const [busy, setBusy] = useState(false);
@@ -46,6 +50,9 @@ export function ProProfileForm({ groups }: { groups: CategoryGroup[] }) {
           ),
         );
         setBio(p.bio);
+        setPriceFrom(p.priceFromKobo === null ? '' : String(p.priceFromKobo / 100));
+        setPriceTo(p.priceToKobo === null ? '' : String(p.priceToKobo / 100));
+        setPriceNote(p.priceNote);
         setRadius(p.serviceRadiusKm);
         if (p.latitude !== null && p.longitude !== null) {
           setPlace({ kind: 'saved', latitude: p.latitude, longitude: p.longitude });
@@ -97,6 +104,20 @@ export function ProProfileForm({ groups }: { groups: CategoryGroup[] }) {
       setError('Choose where you work from.');
       return;
     }
+    const from = nairaToKobo(priceFrom);
+    const to = nairaToKobo(priceTo);
+    if (from === undefined || to === undefined) {
+      setError('Write prices in naira, numbers only (for example 5000).');
+      return;
+    }
+    if (to !== null && from === null) {
+      setError('Add your lowest price too.');
+      return;
+    }
+    if (from !== null && to !== null && to < from) {
+      setError('Your highest price can’t be below your lowest.');
+      return;
+    }
     setBusy(true);
     try {
       const { profile: p } = await put<{ profile: ProProfile }>('/v1/pro/profile', {
@@ -105,9 +126,13 @@ export function ProProfileForm({ groups }: { groups: CategoryGroup[] }) {
         latitude: place.latitude,
         longitude: place.longitude,
         serviceRadiusKm: radius,
+        priceFromKobo: from,
+        priceToKobo: to,
+        priceNote,
       });
       setProfile(p);
       setBio(p.bio);
+      setPriceNote(p.priceNote);
       setSaved(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
@@ -183,6 +208,14 @@ export function ProProfileForm({ groups }: { groups: CategoryGroup[] }) {
               go online and receive jobs.
             </>
           )}{' '}
+          {profile?.verificationStatus === 'APPROVED' && me && (
+            <>
+              <Link href={`/pros/${me.id}?back=/pro/profile`}>
+                See your profile as customers do
+              </Link>
+              {' · '}
+            </>
+          )}
           <Link href="/pro">Go to Pro home</Link>
         </div>
       )}
@@ -270,6 +303,61 @@ export function ProProfileForm({ groups }: { groups: CategoryGroup[] }) {
 
           <fieldset className="fieldset">
             <legend className="legend">
+              Price guide
+              <span className="hint">
+                Optional. What most of your jobs cost, shown on your profile. You still agree the
+                real price with each customer in chat.
+              </span>
+            </legend>
+            <div className="price-row">
+              <div className="field">
+                <label htmlFor="price-from">From (₦)</label>
+                <input
+                  id="price-from"
+                  inputMode="numeric"
+                  value={priceFrom}
+                  onChange={(e) => {
+                    setPriceFrom(e.target.value);
+                    setSaved(false);
+                  }}
+                  placeholder="5000"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="price-to">
+                  To (₦) <span className="hint">Optional</span>
+                </label>
+                <input
+                  id="price-to"
+                  inputMode="numeric"
+                  value={priceTo}
+                  onChange={(e) => {
+                    setPriceTo(e.target.value);
+                    setSaved(false);
+                  }}
+                  placeholder="20000"
+                />
+              </div>
+            </div>
+            <div className="field">
+              <label htmlFor="price-note">
+                Note <span className="hint">Optional</span>
+              </label>
+              <input
+                id="price-note"
+                maxLength={140}
+                value={priceNote}
+                onChange={(e) => {
+                  setPriceNote(e.target.value);
+                  setSaved(false);
+                }}
+                placeholder="e.g. Depends on materials and distance"
+              />
+            </div>
+          </fieldset>
+
+          <fieldset className="fieldset">
+            <legend className="legend">
               Where do you work from?
               <span className="hint">
                 We send you jobs near this place. Customers never see your exact location.
@@ -328,4 +416,12 @@ export function ProProfileForm({ groups }: { groups: CategoryGroup[] }) {
       )}
     </>
   );
+}
+
+/** "5,000" or "5000" naira → kobo; "" → null; anything else → undefined (not a price). */
+function nairaToKobo(text: string): number | null | undefined {
+  const t = text.replace(/[,\s₦]/g, '');
+  if (t === '') return null;
+  if (!/^\d{1,7}$/.test(t)) return undefined;
+  return Number(t) * 100;
 }

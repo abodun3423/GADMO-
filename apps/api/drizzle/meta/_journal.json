@@ -176,6 +176,13 @@
       "when": 1794846060385,
       "tag": "0024_pay_from_wallet",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795604966584,
+      "tag": "0025_pro_price_guide",
+      "breakpoints": true
     }
   ]
 }

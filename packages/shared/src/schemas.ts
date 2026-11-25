@@ -74,8 +74,20 @@ export const proProfileSchema = z
       .refine((km) => (SERVICE_RADIUS_KM as readonly number[]).includes(km), {
         message: 'Choose a distance from the list',
       }),
+    // The price guide (PRD: Pro profile). Optional; naira amounts in kobo.
+    priceFromKobo: z.number().int().min(10_000).max(1_000_000_000).nullable().default(null),
+    priceToKobo: z.number().int().min(10_000).max(1_000_000_000).nullable().default(null),
+    priceNote: z.string().trim().max(140, 'Keep it under 140 characters').default(''),
   })
-  .strict();
+  .strict()
+  .refine((p) => p.priceToKobo === null || p.priceFromKobo !== null, {
+    message: 'Add the lowest price too',
+    path: ['priceFromKobo'],
+  })
+  .refine(
+    (p) => p.priceFromKobo === null || p.priceToKobo === null || p.priceToKobo >= p.priceFromKobo,
+    { message: 'The highest price can’t be below the lowest', path: ['priceToKobo'] },
+  );
 export type ProProfileInput = z.infer<typeof proProfileSchema>;
 
 export const setOnlineSchema = z.object({ online: z.boolean() }).strict();

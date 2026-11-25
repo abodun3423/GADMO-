@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react';
 import { api, ApiError, post } from '@/lib/api';
 import type { ChoosablePro } from '@/lib/types';
 import { useSession } from '@/lib/useSession';
-import { ProReviews } from './ProReviews';
 
 const answerBy = new Intl.DateTimeFormat('en-NG', {
   weekday: 'short',
@@ -123,7 +122,11 @@ export function ChoosePro({ jobId }: { jobId: string }) {
               {' · '}about {p.distanceKm} km away
             </p>
             {p.bio && <p>{p.bio}</p>}
-            <ProReviews proId={p.id} count={p.ratingCount} />
+            <p>
+              <Link href={`/pros/${p.id}?back=${encodeURIComponent(`/jobs/${jobId}/choose`)}`}>
+                See profile, prices and reviews
+              </Link>
+            </p>
             <p className="meta">
               {!p.exactSkill && 'Does related work: '}
               {p.skills.join(', ')}

@@ -3500,3 +3500,39 @@ a.tile {
   font-size: 13px;
   font-weight: 600;
 }
+
+/* ---------- Pro profile page ---------- */
+.profile-head {
+  margin-bottom: 16px;
+}
+.profile-head .page-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.profile-section {
+  margin-bottom: 16px;
+}
+.profile-section h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+.chip-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.price-guide {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 700;
+}
+.price-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}

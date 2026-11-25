@@ -176,6 +176,13 @@ export const proProfiles = pgTable('pro_profiles', {
   isOnline: boolean('is_online').notNull().default(false),
   ratingAvg: doublePrecision('rating_avg').notNull().default(0),
   ratingCount: integer('rating_count').notNull().default(0),
+  /**
+   * Price guide on the Pro's profile (PRD): what most of their jobs cost, in kobo, and a
+   * short note. Only a guide; the real price is always the quote agreed in chat.
+   */
+  priceFromKobo: integer('price_from_kobo'),
+  priceToKobo: integer('price_to_kobo'),
+  priceNote: text('price_note'),
   verificationStatus: verificationStatusEnum('verification_status')
     .notNull()
     .default('NOT_STARTED'),

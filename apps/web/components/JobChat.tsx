@@ -226,6 +226,16 @@ export function JobChat({ jobId }: { jobId: string }) {
                   {convo.other
                     ? `${otherLabel}: ${convo.other.name ?? 'name not added yet'}`
                     : 'Waiting for a Pro to accept'}
+                  {convo.other && convo.you === 'CUSTOMER' && (
+                    <>
+                      {' · '}
+                      <Link
+                        href={`/pros/${convo.other.id}?back=${encodeURIComponent(`/jobs/${jobId}`)}`}
+                      >
+                        See profile
+                      </Link>
+                    </>
+                  )}
                 </p>
               </div>
             </div>

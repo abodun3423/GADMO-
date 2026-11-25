@@ -27,7 +27,17 @@ test('a customer books for later, chooses a Pro, and they can chat once the Pro 
     .first()
     .check();
   await proPage.getByLabel(/About you/).fill('Interior painting, 6 years');
+  // A price guide for the profile: a top price below the lowest is refused.
+  await proPage.getByLabel('From (₦)').fill('20000');
+  await proPage.getByLabel(/To \(₦\)/).fill('5000');
   await proPage.getByRole('radio', { name: /Ado-Ekiti/ }).check();
+  await proPage.getByRole('button', { name: 'Save profile' }).click();
+  await expect(proPage.locator('p[role="alert"]')).toHaveText(
+    'Your highest price can’t be below your lowest.',
+  );
+  await proPage.getByLabel('From (₦)').fill('5,000');
+  await proPage.getByLabel(/To \(₦\)/).fill('20000');
+  await proPage.getByLabel(/^Note/).fill('Depends on the size of the room');
   await proPage.getByRole('button', { name: 'Save profile' }).click();
   await expect(proPage.getByRole('status')).toContainText('Profile saved.');
   await approvePro(pro.e164);
@@ -49,6 +59,16 @@ test('a customer books for later, chooses a Pro, and they can chat once the Pro 
   await expect(card).toContainText('Verified');
   await expect(card).toContainText('Interior painting, 6 years');
   await expect(card).toContainText('New on GADMO');
+
+  // The Pro's profile: price guide, no reviews yet, and back to the list.
+  await card.getByRole('link', { name: 'See profile, prices and reviews' }).click();
+  await expect(page.getByRole('heading', { name: new RegExp(name) })).toContainText('Verified');
+  await expect(page.locator('.price-guide')).toHaveText('₦5,000 – ₦20,000');
+  await expect(page.getByText('Depends on the size of the room')).toBeVisible();
+  await expect(page.getByText('No reviews yet.')).toBeVisible();
+  await expect(page.getByText('0 jobs done on GADMO', { exact: false })).toBeVisible();
+  await page.getByRole('link', { name: '← Back' }).click();
+  await expect(page.getByRole('heading', { name: 'Choose a Pro' })).toBeVisible();
   await card.getByRole('button', { name: `Send request to ${name}` }).click();
   await expect(page.getByRole('heading', { name: `Sent to ${name}` })).toBeVisible();
   await page.getByRole('link', { name: 'Go to My jobs' }).click();
@@ -66,6 +86,10 @@ test('a customer books for later, chooses a Pro, and they can chat once the Pro 
   await page.reload();
   await expect(page.locator('article.job').first()).toContainText(`${name} accepted`);
   await page.getByRole('link', { name: 'Open chat' }).first().click();
+  await expect(page.getByText(`Your Pro: ${name}`)).toBeVisible();
+  await page.getByRole('link', { name: 'See profile' }).click();
+  await expect(page.locator('.price-guide')).toHaveText('₦5,000 – ₦20,000');
+  await page.getByRole('link', { name: '← Back' }).click();
   await expect(page.getByText(`Your Pro: ${name}`)).toBeVisible();
   await proPage.close();
   noCspViolations();

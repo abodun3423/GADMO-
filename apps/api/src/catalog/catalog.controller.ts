@@ -1,9 +1,9 @@
 import { Controller, Get, Inject, NotFoundException, Param, UseGuards } from '@nestjs/common';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { JwtAuthGuard } from '../auth/guards';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { categories, proCategories, proProfiles, users } from '../db/schema';
+import { categories, jobs, proCategories, proProfiles, users } from '../db/schema';
 import { DB, type Db } from '../infra/infra.module';
 
 @Controller()
@@ -108,6 +108,11 @@ export class CatalogController {
         ratingAvg: proProfiles.ratingAvg,
         ratingCount: proProfiles.ratingCount,
         verificationStatus: proProfiles.verificationStatus,
+        // Price guide (PRD: Pro profile): only a guide; the price is the quote agreed in chat.
+        priceFromKobo: proProfiles.priceFromKobo,
+        priceToKobo: proProfiles.priceToKobo,
+        priceNote: proProfiles.priceNote,
+        memberSince: proProfiles.createdAt,
       })
       .from(users)
       .leftJoin(proProfiles, eq(proProfiles.userId, users.id))
@@ -123,7 +128,11 @@ export class CatalogController {
       .innerJoin(categories, eq(categories.id, proCategories.categoryId))
       .where(eq(proCategories.proId, row.id))
       .orderBy(asc(categories.name));
-    return { user: { ...row, skills } };
+    const [done] = await this.db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(jobs)
+      .where(and(eq(jobs.proId, row.id), inArray(jobs.status, ['COMPLETED', 'CASH_COMPLETED'])));
+    return { user: { ...row, skills, jobsCompleted: done?.n ?? 0 } };
   }
 }
 
