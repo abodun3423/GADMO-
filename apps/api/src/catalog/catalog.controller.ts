@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../auth/guards';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { categories, jobs, proCategories, proProfiles, users } from '../db/schema';
 import { DB, type Db } from '../infra/infra.module';
+import { liveWorkPhotos } from '../pro/work-photos.controller';
 
 @Controller()
 export class CatalogController {
@@ -132,7 +133,8 @@ export class CatalogController {
       .select({ n: sql<number>`count(*)::int` })
       .from(jobs)
       .where(and(eq(jobs.proId, row.id), inArray(jobs.status, ['COMPLETED', 'CASH_COMPLETED'])));
-    return { user: { ...row, skills, jobsCompleted: done?.n ?? 0 } };
+    const photos = await liveWorkPhotos(this.db, row.id);
+    return { user: { ...row, skills, jobsCompleted: done?.n ?? 0, photos } };
   }
 }
 

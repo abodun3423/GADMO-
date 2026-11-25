@@ -3536,3 +3536,45 @@ a.tile {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
+
+/* ---------- Work photos ---------- */
+.photo-grid {
+  list-style: none;
+  margin: 8px 0 12px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (min-width: 640px) {
+  .photo-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.photo-grid li {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+.photo-grid img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+.photo-grid .meta {
+  margin: 0;
+}
+.file-button {
+  cursor: pointer;
+}
+.file-button:has(input:focus-visible) {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.photo-removed img {
+  opacity: 0.4;
+}

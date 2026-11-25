@@ -182,6 +182,13 @@ export interface PublicPro {
   memberSince: string;
   jobsCompleted: number;
   skills: { id: string; name: string; slug: string }[];
+  photos: WorkPhoto[];
+}
+
+/** A photo of a Pro's past work, served at /v1/pros/:proId/photos/:id to signed-in users. */
+export interface WorkPhoto {
+  id: string;
+  caption: string | null;
 }
 
 /** An open request near a Pro (GET /v1/pro/jobs/nearby). No customer identity or exact spot. */

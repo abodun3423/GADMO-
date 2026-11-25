@@ -414,3 +414,14 @@ export const NO_SHOW_ALERT_DAYS = 30;
  */
 export const payOptionsSchema = z.object({ useWallet: z.boolean().optional() }).strict().optional(); // a request with no body uses the wallet
 export type PayOptions = z.infer<typeof payOptionsSchema>;
+
+/** Photos of past work on a Pro's profile (founder decision, November 2026). */
+export const MAX_WORK_PHOTOS = 8;
+
+/** The caption sent with a work photo (as ?caption=). */
+export const workPhotoQuerySchema = z
+  .object({
+    caption: z.string().trim().max(100, 'Keep the caption under 100 characters').optional(),
+  })
+  .strict();
+export type WorkPhotoQuery = z.infer<typeof workPhotoQuerySchema>;

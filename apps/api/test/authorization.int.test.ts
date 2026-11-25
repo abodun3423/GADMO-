@@ -480,6 +480,112 @@ describe('Pro profile', () => {
   });
 });
 
+describe('Pro work photos', () => {
+  const jpeg = (fill: number) =>
+    Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(1500, fill)]);
+  const add = (pro: Awaited<ReturnType<typeof login>>, body: Buffer, caption?: string) =>
+    pro.agent
+      .post(
+        `/v1/pro/photos${caption === undefined ? '' : `?caption=${encodeURIComponent(caption)}`}`,
+      )
+      .set(CLIENT_HEADER)
+      .set('content-type', 'image/jpeg')
+      .send(body);
+
+  it('a Pro adds up to 8, captions are cleaned, and signed-in users see them on the profile', async () => {
+    const pro = await login(ctx, { role: 'pro' });
+    const customer = await login(ctx);
+    const first = await add(pro, jpeg(1), 'New wiring, call 08031234567').expect(201);
+    expect(first.body.photo.caption).toContain('New wiring');
+    expect(first.body.photo.caption).not.toContain('08031234567');
+    for (let i = 2; i <= 8; i++) await add(pro, jpeg(i)).expect(201);
+    const full = await add(pro, jpeg(9)).expect(409);
+    expect(full.body.message).toBe('You can show up to 8 photos. Remove one to add another.');
+
+    const profile = await customer.agent.get(`/v1/users/${pro.userId}`).expect(200);
+    expect(profile.body.user.photos).toHaveLength(8);
+    const id = first.body.photo.id as string;
+    const image = await customer.agent.get(`/v1/pros/${pro.userId}/photos/${id}`).expect(200);
+    expect(image.headers['content-type']).toBe('image/jpeg');
+    expect(Buffer.compare(image.body as Buffer, jpeg(1))).toBe(0);
+    await request(ctx.server).get(`/v1/pros/${pro.userId}/photos/${id}`).expect(401);
+    // The photo belongs to that Pro only.
+    const other = await login(ctx, { role: 'pro' });
+    await customer.agent.get(`/v1/pros/${other.userId}/photos/${id}`).expect(404);
+
+    // Removing one makes room; the removed photo is gone for everyone.
+    await other.agent.delete(`/v1/pro/photos/${id}`).set(CLIENT_HEADER).expect(404);
+    await pro.agent.delete(`/v1/pro/photos/${id}`).expect(403); // CSRF
+    await pro.agent.delete(`/v1/pro/photos/${id}`).set(CLIENT_HEADER).expect(200);
+    await pro.agent.delete(`/v1/pro/photos/${id}`).set(CLIENT_HEADER).expect(404);
+    await customer.agent.get(`/v1/pros/${pro.userId}/photos/${id}`).expect(404);
+    await add(pro, jpeg(9)).expect(201);
+    const mine = await pro.agent.get('/v1/pro/photos').expect(200);
+    expect(mine.body).toMatchObject({ max: 8 });
+    expect(mine.body.photos).toHaveLength(8);
+  });
+
+  it('only Pros add photos, only real images, with a short caption and the CSRF header', async () => {
+    const pro = await login(ctx, { role: 'pro' });
+    const customer = await login(ctx);
+    await add(customer, jpeg(1)).expect(403);
+    await customer.agent.get('/v1/pro/photos').expect(403);
+    await add(pro, Buffer.from('<svg onload=alert(1)>')).expect(400);
+    await add(pro, jpeg(1), 'x'.repeat(101)).expect(400);
+    // A caption sent twice arrives as a list: refused, never stored.
+    await pro.agent
+      .post('/v1/pro/photos?caption=a&caption=b')
+      .set(CLIENT_HEADER)
+      .set('content-type', 'image/jpeg')
+      .send(jpeg(1))
+      .expect(400);
+    // JSON or text instead of image bytes is refused too.
+    await pro.agent.post('/v1/pro/photos').set(CLIENT_HEADER).send({ a: 1 }).expect(400);
+    await pro.agent
+      .post('/v1/pro/photos')
+      .set(CLIENT_HEADER)
+      .set('content-type', 'text/plain')
+      .send('hello')
+      .expect(400);
+    await pro.agent
+      .post('/v1/pro/photos?extra=1')
+      .set(CLIENT_HEADER)
+      .set('content-type', 'image/jpeg')
+      .send(jpeg(1))
+      .expect(400);
+    await pro.agent
+      .post('/v1/pro/photos')
+      .set('content-type', 'image/jpeg')
+      .send(jpeg(1))
+      .expect(403);
+  });
+
+  it('staff see new photos and remove one that breaks the rules, recorded in the audit log', async () => {
+    const pro = await login(ctx, { role: 'pro' });
+    const added = await add(pro, jpeg(3), 'My signboard').expect(201);
+    const id = added.body.photo.id as string;
+    await pro.agent.get('/v1/admin/work-photos').expect(403);
+    const staff = await login(ctx);
+    await ctx.db.update(users).set({ role: 'ADMIN' }).where(eq(users.id, staff.userId));
+    const list = await staff.agent.get('/v1/admin/work-photos').expect(200);
+    expect(list.body.photos.find((p: { id: string }) => p.id === id)).toMatchObject({
+      proId: pro.userId,
+      caption: 'My signboard',
+      removedAt: null,
+    });
+    await pro.agent.post(`/v1/admin/work-photos/${id}/remove`).set(CLIENT_HEADER).expect(403);
+    await staff.agent.post(`/v1/admin/work-photos/${id}/remove`).set(CLIENT_HEADER).expect(200);
+    await staff.agent.post(`/v1/admin/work-photos/${id}/remove`).set(CLIENT_HEADER).expect(404);
+    const shown = await staff.agent.get(`/v1/users/${pro.userId}`).expect(200);
+    expect(shown.body.user.photos).toHaveLength(0);
+    const [log] = await ctx.db
+      .select()
+      .from(auditLogs)
+      .where(and(eq(auditLogs.actorId, staff.userId), eq(auditLogs.action, 'WORK_PHOTO_REMOVED')));
+    expect(log).toMatchObject({ target: `user:${pro.userId}`, metadata: { photoId: id } });
+  });
+});
+
 describe('Pro online switch and nearby requests', () => {
   const ADO = { latitude: 7.6233, longitude: 5.2209 };
   const LAGOS = { latitude: 6.4541, longitude: 3.3947 };

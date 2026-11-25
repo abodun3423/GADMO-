@@ -120,6 +120,26 @@ export function ProProfileView({ proId, back }: { proId: string; back: string | 
         {pro.bio && <p>{pro.bio}</p>}
       </section>
 
+      {pro.photos.length > 0 && (
+        <section className="panel profile-section" aria-labelledby="photos-title">
+          <h2 id="photos-title">Photos of their work</h2>
+          <ul className="photo-grid">
+            {pro.photos.map((p) => (
+              <li key={p.id}>
+                <a href={`/v1/pros/${pro.id}/photos/${p.id}`} target="_blank" rel="noopener">
+                  <img
+                    src={`/v1/pros/${pro.id}/photos/${p.id}`}
+                    alt={p.caption ?? 'Photo of their work'}
+                    loading="lazy"
+                  />
+                </a>
+                {p.caption && <p className="meta">{p.caption}</p>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="panel profile-section" aria-labelledby="prices-title">
         <h2 id="prices-title">Price guide</h2>
         {prices ? (
